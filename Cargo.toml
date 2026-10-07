@@ -23,10 +23,8 @@ sha2 = "0.10"
 [lints.rust]
 unsafe_op_in_unsafe_fn = "deny"
 
-[lints.clippy]
-chunks_exact_to_as_chunks = "allow"
-
 [workspace]
+exclude = ["fuzz"]
 
 [profile.release]
 lto = "thin"

@@ -49,3 +49,17 @@ jobs:
       - name: Install QEMU oracle
         run: sudo apt-get update && sudo apt-get install -y qemu-utils
       - run: cargo test --test qcow2 --locked -- --ignored --test-threads=1
+
+  fuzz-check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@1.99.0
+        with:
+          components: rustfmt, clippy
+      - run: cargo fmt --manifest-path fuzz/Cargo.toml -- --check
+      - run: cargo clippy --manifest-path fuzz/Cargo.toml --all-targets --locked -- -D warnings
+      - run: cargo test --manifest-path fuzz/Cargo.toml --locked

@@ -264,7 +264,7 @@ impl Qcow2 {
             add_extent(&mut metadata, self.l1_offset, length, 2, budget)?;
         }
         let mut refcount_blocks = std::collections::HashSet::new();
-        for entry in table.chunks_exact(8) {
+        for entry in table.as_chunks::<8>().0 {
             budget.step()?;
             let offset = be64(entry);
             if offset != 0 {
@@ -338,7 +338,7 @@ impl Qcow2 {
                 return Err(invalid("QCOW2 L1 copied bit disagrees with ownership"));
             }
             self.source.read_exact_at(l2_offset, &mut l2_bytes)?;
-            for (index, entry) in l2_bytes.chunks_exact(8).enumerate() {
+            for (index, entry) in l2_bytes.as_chunks::<8>().0.iter().enumerate() {
                 budget.step()?;
                 let raw = be64(entry);
                 if raw == 0 {
@@ -402,7 +402,7 @@ impl Qcow2 {
             parser.metadata(self.cluster_size)?;
         }
         let mut refcount_block = vec![0; self.cluster_size as usize];
-        for (table_index, entry) in table.chunks_exact(8).enumerate() {
+        for (table_index, entry) in table.as_chunks::<8>().0.iter().enumerate() {
             let offset = be64(entry);
             if offset == 0 {
                 continue;
