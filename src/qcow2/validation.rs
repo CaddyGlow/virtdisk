@@ -1,4 +1,4 @@
-//! Strict active-map structural checks; never repair or change the image.
+//! Strict global ownership checks; never repair or change the image.
 use super::{COPIED, OFFSET_MASK, Qcow2, be64, invalid, unsupported};
 use std::io;
 
@@ -7,7 +7,7 @@ const METADATA_LIMIT: usize = 1024 * 1024;
 const HOST_CLUSTER_LIMIT: u64 = 16 * 1024 * 1024;
 const COMPRESSED_OUTPUT_LIMIT: u64 = 64 * 1024 * 1024 * 1024;
 
-/// Evidence returned by strict active-map validation across an opened chain.
+/// Evidence returned by strict ownership validation across an opened chain.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Qcow2Validation {
     /// Number of QCOW2 containers checked; raw backing files are excluded.
@@ -149,13 +149,14 @@ fn reference(expected: &mut [u32], cluster: u64, budget: &mut Budget<'_>) -> io:
 }
 
 impl Qcow2 {
-    /// Validate active mapping structure and every retained QCOW2 backing container.
+    /// Validate active and snapshot mapping ownership across retained QCOW2 containers.
     ///
     /// Checks disjoint metadata extents, data/metadata separation, descriptor
     /// validity, exact reconstructed refcounts, copied-bit ownership, and leaked
     /// allocations across all represented refcount blocks.
-    /// Internal snapshots and extensions with unaudited external metadata
-    /// (including persistent bitmaps) are rejected.
+    /// Internal snapshot disk maps are included. Snapshots with saved VM state
+    /// and extensions with unaudited external metadata (including persistent
+    /// bitmaps) are rejected. Inactive copied flags are not ownership evidence.
     /// Payloads are not decompressed here; read/checksum failures still propagate
     /// when consumed. Host-cluster accounting is capped at 16 million entries
     /// (64 MiB of reconstructed counts) per container.
@@ -212,9 +213,10 @@ impl Qcow2 {
     fn validate_inner(&self, budget: &mut Budget<'_>) -> io::Result<()> {
         budget.step()?;
         budget.stats.containers += 1;
-        if self.snapshots != 0 {
+        let (snapshots, snapshot_directory_length) = self.snapshot_directory()?;
+        if snapshots.iter().any(|snapshot| snapshot.vm_state_size != 0) {
             return Err(unsupported(
-                "QCOW2 strict validation does not support internal snapshots",
+                "QCOW2 snapshot VM-state ownership is not supported",
             ));
         }
         if self.extra_metadata {
@@ -250,18 +252,38 @@ impl Qcow2 {
             1,
             budget,
         )?;
-        if self.l1_size != 0 {
-            let length = (self.l1_size * 8).div_ceil(self.cluster_size) * self.cluster_size;
-            // QEMU writes only the actual L1 entries when this allocation ends
-            // the file. Its unused cluster tail need not be physically present;
-            // ownership and overlap accounting still reserve the whole cluster.
-            Self::cluster_range(
-                &*self.source,
-                self.l1_offset,
-                self.l1_size * 8,
-                self.cluster_size,
+        if let Some(parser) = &budget.parser {
+            parser.metadata((snapshots.len() as u64 + 1) * 32)?;
+        }
+        // QEMU's format specifies one L2/data reference per saved L1 state,
+        // even when several states point to the same physical L2 table.
+        // https://www.qemu.org/docs/master/interop/qcow2.html#snapshots
+        let mut states = vec![(self.l1_offset, self.l1_size, self.size, true)];
+        states.extend(snapshots.iter().map(|snapshot| {
+            (
+                snapshot.l1_table_offset,
+                u64::from(snapshot.l1_entries),
+                snapshot.virtual_size,
+                false,
+            )
+        }));
+        if snapshot_directory_length != 0 {
+            add_extent(
+                &mut metadata,
+                self.snapshots_offset,
+                snapshot_directory_length.div_ceil(self.cluster_size) * self.cluster_size,
+                5,
+                budget,
             )?;
-            add_extent(&mut metadata, self.l1_offset, length, 2, budget)?;
+        }
+        for &(l1_offset, l1_size, _, _) in &states {
+            if l1_size == 0 {
+                continue;
+            }
+            let length = (l1_size * 8).div_ceil(self.cluster_size) * self.cluster_size;
+            // Allocation ownership includes a final L1 cluster's omitted tail.
+            Self::cluster_range(&*self.source, l1_offset, l1_size * 8, self.cluster_size)?;
+            add_extent(&mut metadata, l1_offset, length, 2, budget)?;
         }
         let mut refcount_blocks = std::collections::HashSet::new();
         for entry in table.as_chunks::<8>().0 {
@@ -276,25 +298,27 @@ impl Qcow2 {
             }
         }
         let mut l2_tables = Vec::new();
-        for index in 0..self.l1_size {
-            budget.step()?;
-            let entry = self.entry(self.l1_offset + index * 8)?;
-            if entry & !(OFFSET_MASK | COPIED) != 0 {
-                return Err(invalid("QCOW2 L1 reserved bits are set"));
-            }
-            let offset = entry & OFFSET_MASK;
-            if offset == 0 {
-                if entry != 0 {
-                    return Err(invalid("QCOW2 unallocated L1 entry has copied flag"));
+        for &(l1_offset, l1_size, virtual_size, active) in &states {
+            for index in 0..l1_size {
+                budget.step()?;
+                let entry = self.entry(l1_offset + index * 8)?;
+                if entry & !(OFFSET_MASK | COPIED) != 0 {
+                    return Err(invalid("QCOW2 L1 reserved bits are set"));
                 }
-                continue;
+                let offset = entry & OFFSET_MASK;
+                if offset == 0 {
+                    if active && entry != 0 {
+                        return Err(invalid("QCOW2 unallocated L1 entry has copied flag"));
+                    }
+                    continue;
+                }
+                Self::cluster_range(&*self.source, offset, self.cluster_size, self.cluster_size)?;
+                add_extent(&mut metadata, offset, self.cluster_size, 4, budget)?;
+                if let Some(parser) = &budget.parser {
+                    parser.metadata(32)?;
+                }
+                l2_tables.push((index, offset, entry & COPIED != 0, virtual_size, active));
             }
-            Self::cluster_range(&*self.source, offset, self.cluster_size, self.cluster_size)?;
-            add_extent(&mut metadata, offset, self.cluster_size, 4, budget)?;
-            if let Some(parser) = &budget.parser {
-                parser.metadata(32)?;
-            }
-            l2_tables.push((index, offset, entry & COPIED != 0));
         }
         // Count every L1 reference to shared L2 metadata before deduplication.
         for extent in &metadata {
@@ -333,22 +357,23 @@ impl Qcow2 {
         }
         let mut l2_bytes = vec![0; self.cluster_size as usize];
         let entries = self.cluster_size / 8;
-        for (l1_index, l2_offset, copied) in l2_tables {
-            if (refs.value(l2_offset)? == 1) != copied {
+        for (l1_index, l2_offset, copied, virtual_size, active) in l2_tables {
+            if active && (refs.value(l2_offset)? == 1) != copied {
                 return Err(invalid("QCOW2 L1 copied bit disagrees with ownership"));
             }
             self.source.read_exact_at(l2_offset, &mut l2_bytes)?;
             for (index, entry) in l2_bytes.as_chunks::<8>().0.iter().enumerate() {
                 budget.step()?;
                 let raw = be64(entry);
-                if raw == 0 {
+                let descriptor = if active { raw } else { raw & !COPIED };
+                if descriptor == 0 {
                     continue;
                 }
                 let guest = (l1_index * entries + index as u64) * self.cluster_size;
-                if guest >= self.size {
+                if guest >= virtual_size {
                     return Err(invalid("QCOW2 allocated L2 entry lies beyond virtual size"));
                 }
-                let mapping = self.mapping_descriptor(raw)?;
+                let mapping = self.mapping_descriptor(descriptor)?;
                 let (start, length) = match mapping {
                     super::Mapping::Allocated(start) => (start, self.cluster_size),
                     super::Mapping::Compressed(start, length) => (start, length as u64),
@@ -361,7 +386,8 @@ impl Qcow2 {
                     }
                     super::Mapping::Backing => continue,
                 };
-                if !matches!(mapping, super::Mapping::Compressed(_, _))
+                if active
+                    && !matches!(mapping, super::Mapping::Compressed(_, _))
                     && (refs.value(start)? == 1) != (raw & COPIED != 0)
                 {
                     return Err(invalid("QCOW2 L2 copied bit disagrees with ownership"));

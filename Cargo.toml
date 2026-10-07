@@ -5,20 +5,33 @@ edition = "2024"
 rust-version = "1.99"
 license = "MIT"
 repository = "https://github.com/CaddyGlow/virtdisk"
-description = "Bounded read-only virtual disk access for raw and QCOW2 images with parser budgets"
+description = "Bounded virtual disk readers and offline image operations with explicit writable profiles"
 
 readme = "README.md"
 homepage = "https://github.com/CaddyGlow/virtdisk"
 keywords = ["qcow2", "disk", "virtual-disk"]
 categories = ["filesystem", "parser-implementations"]
 
+[features]
+cli = []
+
+[[bin]]
+name = "virtdisk"
+path = "src/bin/virtdisk.rs"
+required-features = ["cli"]
+
 [dependencies]
+same-file = "1.0"
+getrandom = "0.3"
+sha2 = "0.10"
 flate2 = { version = "1.1", default-features = false, features = ["rust_backend"] }
 ruzstd = { package = "ms-compress-ruzstd", version = "=0.9.1" }
 
+[target.'cfg(target_os = "linux")'.dependencies]
+rustix = { version = "=1.1.5", features = ["fs"] }
+
 [dev-dependencies]
 tempfile = "3.23"
-sha2 = "0.10"
 
 [lints.rust]
 unsafe_op_in_unsafe_fn = "deny"

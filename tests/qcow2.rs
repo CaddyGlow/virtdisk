@@ -660,7 +660,7 @@ fn active_validator_checks_metadata_ownership_refcounts_and_cancellation() {
     let disk = Qcow2::open(Arc::new(Bytes(snapshot))).unwrap();
     assert_eq!(
         disk.validate_active_mapping().unwrap_err().kind(),
-        io::ErrorKind::Unsupported
+        io::ErrorKind::InvalidData
     );
 }
 
@@ -902,4 +902,94 @@ fn warmed_zero_mappings_still_exhaust_tightened_work_limits() {
         assert!(error.to_string().contains("work"));
         assert_eq!(disk.budget().unwrap().usage().work_items, 32);
     }
+}
+
+#[test]
+fn extent_visitor_allocated_zero_clipped_and_short_backing() {
+    use virtdisk::ExtentKind;
+    let mut image = fixture(3);
+    image[24..32].copy_from_slice(&1300u64.to_be_bytes());
+    image[1544..1552].copy_from_slice(&1u64.to_be_bytes());
+    let d = Qcow2::open(Arc::new(Bytes(image))).unwrap();
+    let mut extents = Vec::new();
+    d.visit_extents(&mut |e| {
+        extents.push((e.offset, e.length, e.kind));
+        Ok(())
+    })
+    .unwrap();
+    assert_eq!(
+        extents,
+        [
+            (0, 512, ExtentKind::Allocated),
+            (512, 512, ExtentKind::Zero),
+            (1024, 276, ExtentKind::Zero)
+        ]
+    );
+    let dir = tempfile::tempdir().unwrap();
+    let parent = dir.path().join("parent.raw");
+    std::fs::write(&parent, vec![3; 700]).unwrap();
+    let child = dir.path().join("child.qcow2");
+    let mut image = fixture(3);
+    image[1536..1544].fill(0);
+    set_backing(&mut image, "parent.raw", "raw");
+    std::fs::write(&child, image).unwrap();
+    let d = Qcow2::open_chain(&child, &[parent]).unwrap();
+    extents.clear();
+    d.visit_extents(&mut |e| {
+        extents.push((e.offset, e.length, e.kind));
+        Ok(())
+    })
+    .unwrap();
+    assert_eq!(
+        extents,
+        [
+            (0, 512, ExtentKind::Inherited),
+            (512, 188, ExtentKind::Inherited),
+            (700, 324, ExtentKind::Zero),
+            (1024, 512, ExtentKind::Zero)
+        ]
+    );
+    let mut count = 0;
+    assert!(
+        d.visit_extents(&mut |_| {
+            count += 1;
+            Err(io::Error::other("cancel"))
+        })
+        .is_err()
+    );
+    assert_eq!(count, 1);
+}
+
+#[test]
+fn compressed_extent_visitation_does_not_decode_payload() {
+    let mut image = fixture(3);
+    image[1536..1544].copy_from_slice(&((1u64 << 62) | 2048).to_be_bytes());
+    let d = Qcow2::open(Arc::new(Bytes(image))).unwrap();
+    let mut first = None;
+    d.visit_extents(&mut |e| {
+        if first.is_none() {
+            first = Some(e);
+        }
+        Ok(())
+    })
+    .unwrap();
+    assert_eq!(first.unwrap().kind, virtdisk::ExtentKind::Allocated);
+    assert!(d.read_exact_at(0, &mut [0; 1]).is_err());
+}
+
+#[test]
+fn warmed_extent_visitation_still_charges_work() {
+    let limits = virtdisk::ParserLimits {
+        work_items: 40,
+        ..Default::default()
+    };
+    let disk = Qcow2::open_with_limits(Arc::new(Bytes(fixture(3))), limits).unwrap();
+    let mut exhausted = false;
+    for _ in 0..32 {
+        if disk.visit_extents(&mut |_| Ok(())).is_err() {
+            exhausted = true;
+            break;
+        }
+    }
+    assert!(exhausted);
 }

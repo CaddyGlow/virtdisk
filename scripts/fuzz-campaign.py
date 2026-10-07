@@ -15,9 +15,15 @@ output = (args.output or ROOT / "target/fuzz-runs" / f"{stamp}-{os.getpid()}").r
 output.mkdir(parents=True, exist_ok=False)
 env = dict(os.environ, RUSTC_WRAPPER="", CARGO_INCREMENTAL="0", CC="gcc", NIX_HARDENING_ENABLE="", HFUZZ_BUILD_ARGS="--locked", HFUZZ_WORKSPACE=str(output / "workspace"), CARGO_TARGET_DIR=str(ROOT / "target/honggfuzz"))
 receipt = {"iterations_requested": args.iterations, "targets": {}, "scope": "bounded coverage-guided smoke; not security qualification"}
+def source_hashes():
+    paths = list((ROOT / "src").rglob("*.rs")) + list((ROOT / "fuzz/src").rglob("*.rs"))
+    paths += [ROOT / name for name in ("Cargo.toml", "Cargo.lock", "fuzz/Cargo.toml", "fuzz/Cargo.lock", "fuzz/targets.json", "flake.nix", "flake.lock", "rust-toolchain.toml", "scripts/fuzz-campaign.py")]
+    return {str(p.relative_to(ROOT)): hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(paths)}
+receipt["source_sha256"] = source_hashes()
+(output / "summary.json").write_text(json.dumps(receipt, indent=2) + "\n")
 for tool in [["rustc", "--version"], ["cargo", "hfuzz", "version"]]:
     receipt[" ".join(tool)] = subprocess.check_output(tool, text=True).strip()
-receipt["source_sha256"] = {str(p.relative_to(ROOT)): hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted((ROOT / "fuzz/src").rglob("*.rs"))}
+receipt["revision"] = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
 for target, limit in config.items():
     corpus = ROOT / "fuzz/corpus" / target
     corpus.mkdir(parents=True, exist_ok=True)
@@ -32,6 +38,9 @@ for target, limit in config.items():
     if summaries:
         iterations, crashes, timeouts = map(int, summaries[-1])
         row.update(iterations=iterations, crashes=crashes, timeouts=timeouts, passed=result.returncode == 0 and iterations >= args.iterations and crashes == timeouts == 0)
+    receipt["source_changed_during_campaign"] = source_hashes() != receipt["source_sha256"]
+    if receipt["source_changed_during_campaign"]:
+        row["passed"] = False
     (output / "summary.json").write_text(json.dumps(receipt, indent=2) + "\n")
     if not row["passed"]:
         raise SystemExit(f"Fuzz campaign failed; retained evidence: {output}")

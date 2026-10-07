@@ -7,7 +7,9 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+mod snapshots;
 mod validation;
+pub use snapshots::{Qcow2Snapshot, Qcow2SnapshotView};
 pub use validation::Qcow2Validation;
 
 const OFFSET_MASK: u64 = 0x00ff_ffff_ffff_fe00;
@@ -56,10 +58,25 @@ pub struct Qcow2 {
     refcount_clusters: u64,
     refcount_order: u32,
     snapshots: u32,
+    snapshots_offset: u64,
+    inactive_mapping: bool,
     extra_metadata: bool,
 }
 
 impl Qcow2 {
+    pub(crate) fn declared_backing(&self) -> Option<(&str, Option<&str>)> {
+        self.backing_name
+            .as_deref()
+            .map(|name| (name, self.backing_format.as_deref()))
+    }
+    pub(crate) fn info_profile(&self) -> (u32, u64, bool, u32) {
+        (
+            self.version,
+            self.cluster_size,
+            self.backing.is_some(),
+            self.snapshots,
+        )
+    }
     /// Parse a bounded header and retain its container reader.
     ///
     /// Embedded backing paths are never opened by this constructor. Images
@@ -86,6 +103,18 @@ impl Qcow2 {
     }
 
     fn parse(source: Arc<dyn ReadAt>) -> io::Result<Self> {
+        if let Some(path) = source.context().container {
+            match std::fs::symlink_metadata(crate::qcow2_writer::journal_path(&path)) {
+                Ok(_) => {
+                    return Err(io::Error::new(
+                        io::ErrorKind::WouldBlock,
+                        "QCOW2 transaction journal requires writer recovery before read-only access",
+                    ));
+                }
+                Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error),
+            }
+        }
         let mut header = [0; 104];
         source.read_exact_at(0, &mut header[..72])?;
         if &header[..4] != b"QFI\xfb" {
@@ -193,6 +222,8 @@ impl Qcow2 {
                 4
             },
             snapshots: be32(&header[60..64]),
+            snapshots_offset: be64(&header[64..72]),
+            inactive_mapping: false,
             extra_metadata,
         })
     }
@@ -298,8 +329,57 @@ impl Qcow2 {
             }
         }
         let context = source.context();
-        let mut disk = Self::parse(budget.reader(source))
+        let disk = Self::parse(budget.reader(source))
             .map_err(|e| context.error("parse QCOW2 backing container", e))?;
+        Self::attach_backing(disk, path, approved, paths, identities, depth, budget)
+    }
+
+    pub(crate) fn open_locked_chain(
+        source: Arc<dyn ReadAt>,
+        path: &Path,
+        authorized_backing_paths: &[PathBuf],
+        identity: Option<(u64, u64)>,
+    ) -> io::Result<Self> {
+        let budget = crate::ReadBudget::new(crate::ParserLimits::default())?;
+        let mut approved = HashSet::new();
+        for path in authorized_backing_paths {
+            budget.work(1)?;
+            budget.metadata(
+                (path.as_os_str().as_encoded_bytes().len() + std::mem::size_of::<PathBuf>()) as u64
+                    * 2,
+            )?;
+            approved.insert(path.canonicalize()?);
+        }
+        let mut paths = HashSet::from([path.to_path_buf()]);
+        let mut identities = HashSet::new();
+        if let Some(identity) = identity {
+            identities.insert(identity);
+        }
+        let disk = Self::parse(budget.reader(source))?;
+        Self::attach_backing(
+            disk,
+            path,
+            &approved,
+            &mut paths,
+            &mut identities,
+            0,
+            &budget,
+        )
+    }
+
+    pub(crate) fn backing_reader(&self) -> Option<Arc<dyn ReadAt>> {
+        self.backing.clone()
+    }
+
+    fn attach_backing(
+        mut disk: Self,
+        path: &Path,
+        approved: &HashSet<PathBuf>,
+        paths: &mut HashSet<PathBuf>,
+        identities: &mut HashSet<(u64, u64)>,
+        depth: usize,
+        budget: &crate::ReadBudget,
+    ) -> io::Result<Self> {
         if let Some(name) = &disk.backing_name {
             // QCOW2 also allows URI protocols. Never pass these to a filesystem
             // resolver, including Windows alternate-data-stream syntax.
@@ -321,6 +401,9 @@ impl Qcow2 {
                     io::ErrorKind::PermissionDenied,
                     "QCOW2 backing path is not explicitly authorized",
                 ));
+            }
+            if paths.contains(&backing_path) {
+                return Err(invalid("QCOW2 backing cycle"));
             }
             let raw = Arc::new(RawDisk::open(&backing_path)?);
             let mut magic = [0; 4];
@@ -522,7 +605,12 @@ impl Qcow2 {
         budget.metadata(128)?;
         let mut entry = [0; 8];
         self.source.read_exact_at(offset, &mut entry)?;
-        let entry = be64(&entry);
+        let entry = be64(&entry)
+            & if self.inactive_mapping {
+                !COPIED
+            } else {
+                u64::MAX
+            };
         // Retain only validated descriptors. Cached words never bypass the
         // normal mapping checks, nor the independent active ownership audit.
         if offset >= self.l1_offset && offset < self.l1_offset + self.l1_size * 8 {
@@ -573,6 +661,12 @@ impl Qcow2 {
     }
 
     fn mapping_descriptor(&self, l2: u64) -> io::Result<Mapping> {
+        let l2 = l2
+            & if self.inactive_mapping {
+                !COPIED
+            } else {
+                u64::MAX
+            };
         if l2 & COMPRESSED != 0 {
             if l2 & COPIED != 0 {
                 return Err(invalid("QCOW2 compressed cluster has copied flag"));
@@ -615,6 +709,51 @@ enum Mapping {
 }
 
 impl ReadAt for Qcow2 {
+    fn visit_extents(
+        &self,
+        visitor: &mut dyn FnMut(crate::DiskExtent) -> io::Result<()>,
+    ) -> io::Result<()> {
+        let mut offset = 0;
+        while offset < self.size {
+            if let Some(budget) = self.budget() {
+                budget.work(1)?;
+            }
+            let length = (self.size - offset).min(self.cluster_size);
+            let kind = match self.mapping(offset)? {
+                Mapping::Allocated(_) | Mapping::Compressed(_, _) => crate::ExtentKind::Allocated,
+                Mapping::Zero => crate::ExtentKind::Zero,
+                Mapping::Backing => {
+                    let inherited = self
+                        .backing
+                        .as_ref()
+                        .map_or(0, |parent| parent.len().saturating_sub(offset).min(length));
+                    if inherited != 0 {
+                        visitor(crate::DiskExtent {
+                            offset,
+                            length: inherited,
+                            kind: crate::ExtentKind::Inherited,
+                        })?;
+                    }
+                    if inherited < length {
+                        visitor(crate::DiskExtent {
+                            offset: offset + inherited,
+                            length: length - inherited,
+                            kind: crate::ExtentKind::Zero,
+                        })?;
+                    }
+                    offset += length;
+                    continue;
+                }
+            };
+            visitor(crate::DiskExtent {
+                offset,
+                length,
+                kind,
+            })?;
+            offset += length;
+        }
+        Ok(())
+    }
     fn context(&self) -> crate::ReadContext {
         self.source.context()
     }

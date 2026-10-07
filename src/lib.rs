@@ -1,4 +1,4 @@
-//! Bounded read-only virtual disk access: raw images and QCOW2 chains.
+//! Bounded virtual disk readers and explicit offline writable profiles.
 //!
 //! Callers must keep the underlying image immutable for the entire capture and
 //! any deferred reads. Read-only handles do not prevent another process writing
@@ -13,13 +13,92 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 mod policy;
+#[cfg(test)]
+mod test_sync;
+mod transaction;
 pub use policy::{
     CacheReservation, ParserLimits, ReadBudget, ReadBudgetUsage, ReadContext, ReadError,
     contextual_reader,
 };
 
 mod qcow2;
-pub use qcow2::{Qcow2, Qcow2Validation};
+pub use qcow2::{Qcow2, Qcow2Snapshot, Qcow2SnapshotView, Qcow2Validation};
+
+mod raw_write;
+pub use raw_write::RawWriter;
+mod vdi;
+pub use vdi::Vdi;
+mod vmdk;
+pub use vmdk::Vmdk;
+mod image;
+mod image_writer;
+pub use image::{
+    Image, ImageFormat, ImageInfo, ShrinkPolicy, compare_images, convert_image, copy_image,
+    copy_image_with_cancel, detect_format, hash_image, resize_image,
+};
+pub use image_writer::ImageWriter;
+mod qcow2_write;
+pub use qcow2_write::{create_qcow2, create_sparse_qcow2};
+mod qcow2_writer;
+pub use qcow2_writer::Qcow2Writer;
+mod qcow2_overlay;
+pub use qcow2_overlay::{create_qcow2_overlay, create_qcow2_overlay_with_chain};
+mod graph;
+pub use graph::{ImageGraph, ImageSpec};
+mod compact;
+pub use compact::{compact_image, compact_image_with_cancel};
+mod check;
+pub use check::{
+    CheckOptions, CheckReport, CheckScope, check_image, check_image_with_cancel,
+    check_payload_with_cancel,
+};
+mod vdi_write;
+pub use vdi_write::{create_vdi, create_vdi_overlay};
+mod vdi_writer;
+pub use vdi_writer::VdiWriter;
+mod vhdx;
+pub use vhdx::Vhdx;
+mod vhdx_write;
+pub use vhdx_write::{create_vhdx, create_vhdx_overlay};
+mod vhdx_writer;
+pub use vhdx_writer::VhdxWriter;
+mod vhdx_recover;
+pub use vhdx_recover::{recover_vhdx, recover_vhdx_chain};
+mod vmdk_write;
+pub use vmdk_write::create_vmdk;
+mod vmdk_writer;
+pub use vmdk_writer::VmdkWriter;
+mod write;
+pub use write::{DiscardPolicy, DiscardResult, WriteAt};
+mod info;
+pub use info::{
+    Capability, DiskGeometry, ImageCapabilities, ImageInspection, ImageOperation, ImageProfile,
+    InspectImage, UnsupportedReason, ValidationLevel,
+};
+
+/// Logical allocation classification; it does not identify guest free space.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExtentKind {
+    /// Container payload allocation, regardless of its byte content.
+    Allocated,
+    /// Reads return zero without consulting a parent.
+    Zero,
+    /// Logical bytes are resolved through an immutable backing image.
+    Inherited,
+    /// Allocation information is unavailable for this reader.
+    Unknown,
+}
+
+/// One ordered, nonempty logical allocation extent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DiskExtent {
+    /// Logical starting byte offset.
+    pub offset: u64,
+    /// Extent length in bytes, wholly within the reader.
+    pub length: u64,
+    /// Logical allocation semantics.
+    pub kind: ExtentKind,
+}
 
 /// An exact positional reader with a fixed logical length.
 ///
@@ -30,6 +109,25 @@ pub use qcow2::{Qcow2, Qcow2Validation};
 pub trait ReadAt: Send + Sync {
     /// Logical length in bytes, fixed for this reader's lifetime.
     fn len(&self) -> u64;
+
+    /// Visit ordered extents covering the disk using bounded scratch memory.
+    ///
+    /// Adjacent extents may share a kind. Returning an error from the visitor
+    /// stops traversal immediately, permitting cancellation. The default
+    /// conservatively reports unknown allocation without reading payload data.
+    fn visit_extents(
+        &self,
+        visitor: &mut dyn FnMut(DiskExtent) -> io::Result<()>,
+    ) -> io::Result<()> {
+        if self.len() != 0 {
+            visitor(DiskExtent {
+                offset: 0,
+                length: self.len(),
+                kind: ExtentKind::Unknown,
+            })?;
+        }
+        Ok(())
+    }
 
     /// Logical sparse hole ranges as half-open byte offsets. Empty means no known holes.
     fn sparse_holes(&self) -> io::Result<Vec<(u64, u64)>> {
@@ -76,6 +174,14 @@ pub struct RawDisk {
 }
 
 impl RawDisk {
+    pub(crate) fn identity(&self) -> io::Result<same_file::Handle> {
+        let file = self
+            .file
+            .lock()
+            .map_err(|_| io::Error::other("disk reader mutex poisoned"))?;
+        same_file::Handle::from_file(file.try_clone()?)
+    }
+
     /// Open a regular raw image. Device files and directories are rejected.
     pub fn open(path: impl AsRef<Path>) -> io::Result<Self> {
         let path = path.as_ref();
@@ -162,6 +268,28 @@ impl DiskView {
 }
 
 impl ReadAt for DiskView {
+    fn visit_extents(
+        &self,
+        visitor: &mut dyn FnMut(DiskExtent) -> io::Result<()>,
+    ) -> io::Result<()> {
+        if self.length == 0 {
+            return Ok(());
+        }
+        let end = self.start + self.length;
+        self.source.visit_extents(&mut |extent| {
+            check_range(extent.offset, extent.length, self.source.len())?;
+            let start = extent.offset.max(self.start);
+            let stop = (extent.offset + extent.length).min(end);
+            if start < stop {
+                visitor(DiskExtent {
+                    offset: start - self.start,
+                    length: stop - start,
+                    kind: extent.kind,
+                })?;
+            }
+            Ok(())
+        })
+    }
     fn context(&self) -> ReadContext {
         self.context.clone()
     }

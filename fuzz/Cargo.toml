@@ -10,6 +10,7 @@ publish = false
 [dependencies]
 honggfuzz = "=0.5.62"
 virtdisk = { path = ".." }
+tempfile = "3.23"
 
 [lints.rust]
 unsafe_op_in_unsafe_fn = "deny"

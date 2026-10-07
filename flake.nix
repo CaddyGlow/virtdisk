@@ -68,7 +68,8 @@
         in
         {
           default = mkDevShell rust [ ];
-          fuzz = mkDevShell nightly [ pkgs.cargo-fuzz ];
+          fuzz = mkDevShell rust [ ];
+          nightly = mkDevShell nightly [ ];
         }
       );
     };

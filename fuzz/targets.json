@@ -1,3 +1,12 @@
 {
-  "qcow2": 1048576
+  "qcow2": 1048576,
+  "vdi": 1048576,
+  "vmdk": 1048576,
+  "vhdx": 8388608,
+  "raw-write": 768,
+  "qcow2-write": 385,
+  "vdi-write": 193,
+  "vmdk-write": 193,
+  "vhdx-write": 193,
+  "vhdx-chain": 8388608
 }
