@@ -7,6 +7,11 @@ license = "MIT"
 repository = "https://github.com/CaddyGlow/virtdisk"
 description = "Bounded read-only virtual disk access for raw and QCOW2 images with parser budgets"
 
+readme = "README.md"
+homepage = "https://github.com/CaddyGlow/virtdisk"
+keywords = ["qcow2", "disk", "virtual-disk"]
+categories = ["filesystem", "parser-implementations"]
+
 [dependencies]
 flate2 = { version = "1.1", default-features = false, features = ["rust_backend"] }
 ruzstd = { package = "ms-compress-ruzstd", version = "=0.9.1" }

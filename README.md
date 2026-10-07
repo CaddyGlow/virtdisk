@@ -46,4 +46,9 @@ cluster sizes, explicit-zero masking in backing chains, shared table/data
 ownership, and QEMU's minimally stored L1 table. Host regression and bounded
 fuzz tests cover malformed/truncated inputs. These checks do not establish
 Windows installation correctness; see the
-[conversion evidence ledger](../../docs/qcow2-capture-status.md).
+conversion evidence ledger in the historical windows-uup workspace.
+
+## Releases
+
+CI checks formatting, Clippy and tests on Linux and Windows. A matching version tag runs validation, verifies and publishes the crate to crates.io, then creates its GitHub Release with the crate and SHA-256 checksums.
+CI also runs the ignored QCOW2 integration tests against QEMU as an independent oracle.
