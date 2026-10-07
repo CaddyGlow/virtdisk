@@ -1,0 +1,28 @@
+[package]
+name = "virtdisk"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.99"
+license = "MIT"
+repository = "https://github.com/CaddyGlow/virtdisk"
+description = "Bounded read-only virtual disk access for raw and QCOW2 images with parser budgets"
+
+[dependencies]
+flate2 = { version = "1.1", default-features = false, features = ["rust_backend"] }
+ruzstd = { package = "ms-compress-ruzstd", version = "=0.9.1" }
+
+[dev-dependencies]
+tempfile = "3.23"
+sha2 = "0.10"
+
+[lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+
+[lints.clippy]
+chunks_exact_to_as_chunks = "allow"
+
+[workspace]
+
+[profile.release]
+lto = "thin"
+strip = true
