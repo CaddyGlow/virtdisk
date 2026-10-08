@@ -26,6 +26,11 @@ pub use policy::{
 mod qcow2;
 pub use qcow2::{Qcow2, Qcow2Snapshot, Qcow2SnapshotView, Qcow2Validation};
 
+mod physical_validation;
+pub use physical_validation::{
+    PhysicalFingerprint, PhysicalValidationBudget, PhysicalValidationLimitExceeded,
+    PhysicalValidationLimits, PhysicalValidationResource, PhysicalValidationUsage,
+};
 mod raw_write;
 pub use raw_write::RawWriter;
 mod vdi;

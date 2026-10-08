@@ -2351,3 +2351,70 @@ manifest replacement cannot substitute for its image/manifest transaction.
 Native budgets, persistent transactions and other common/format/platform gates
 remain open. Fuzz campaigns/replay remain paused; the broad plan remains active
 and changes remain unpublished.
+
+## Retained-lock manifest publication states
+
+The existing Linux manifest replacement path now uses owned internal
+`LockedManifest`, `PreparedManifest` and `PublishedManifest` values. Preparation
+consumes and retains the validated old source/directory handles, writes and
+syncs private staging, and locks the successor file. Publication consumes
+preparation, revalidates exact source/staging bytes and identities, renames once,
+and returns an explicit visible-successor state. Parent sync is a separate
+fallible method. Both file locks survive through sync. Drop only performs
+best-effort identity-checked cleanup of unpublished owned staging; it never
+syncs, rolls back or removes a foreign replacement.
+
+This is the retained-lock publication prerequisite for the
+[persistent deletion protocol](graph-deletion-transaction-design.md), not an
+implemented persistent deletion operation. It avoids reopening/relocking the
+manifest between a future journal's steps and permits the coordinator to update
+live state after rename before reporting a later directory-sync failure.
+Existing public `replace`/`replace_with_context` still publish and explicitly sync
+with the same cancellation, authority and post-publication error contract.
+
+Tests first failed for missing owned preparation/publication states. Kernel/file
+behavior checks prove the source remains locked while staging is prepared,
+abort preserves the source and removes staging, foreign staging is retained on
+refusal, and the published successor remains locked until explicit sync. The
+existing injected post-rename sync-error and all public replacement regressions
+also pass.
+
+Formatting, Linux Clippy and Windows x86_64 MSVC cross-target Clippy passed.
+The final full serial host run passed: **591 passed, 0 failed, 73 ignored**,
+87 result groups. The first full invocation ended mid-test without a summary;
+its handle was unavailable and no Cargo/test process remained, so it was
+restarted rather than treated as passed. Authoritative complete evidence is
+`/data/cache/virtdisk-manifest-lock-full-retry.log`.
+Other logs: `/data/cache/virtdisk-manifest-lock-red.log`,
+`/data/cache/virtdisk-manifest-publication-red.log`,
+`/data/cache/virtdisk-manifest-lock-targeted.log`,
+`/data/cache/virtdisk-manifest-lock-clippy.log`,
+`/data/cache/virtdisk-manifest-lock-windows-clippy.log`.
+Actual power-loss and native Windows servicing/capture acceptance remain
+unestablished. Deletion framing/authority, physical budgets, pending-open guards,
+coordinated image/manifest journal mutation, recovery and destructive CLI still
+require implementation and acceptance. Other common/format/platform gates
+remain open. Fuzz campaigns/replay remain paused; the broad plan remains active
+and changes remain unpublished.
+
+## Bounded physical validation prerequisite
+
+Added validated physical byte/read-call/scratch limits, typed quota errors,
+cumulative usage and SHA-256 fingerprints. `RawWriter` scans through its retained
+locked handle under its mutex. Whole-scan preflight precedes reads/allocation;
+failed read attempts consume requested-byte/call budgets while completed hashed
+bytes remain separately visible. Limits and exclusions are documented in
+[physical validation](physical-validation.md). Existing native journal hashing
+has not been migrated; persistent graph deletion journal/recovery/CLI remain open.
+
+Validation: required formatting and Linux all-target/all-feature Clippy passed;
+Windows x86_64 MSVC cross-target Clippy passed. The full locked all-feature suite
+ran serially with one build job: 595 passed, 0 failed, 73 ignored across 88 result
+groups. New cases cover known SHA-256 bytes, cumulative refusal, empty files,
+invalid configuration, stale physical length and failed-read accounting.
+Complete test evidence: `/data/cache/virtdisk-physical-validation-full.log`;
+Windows check: `/data/cache/virtdisk-physical-validation-windows-clippy.log`.
+Host and cross-target checks do not establish native Windows runtime correctness
+or actual power-loss acceptance. Fuzz campaigns and replay remain paused. The
+broad implementation plan pauses here at the user's explicit request to stop
+after the current task; changes remain unpublished.

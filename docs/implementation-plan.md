@@ -808,3 +808,24 @@ requirements and fault-state acceptance matrix are written in
 [the transaction design](graph-deletion-transaction-design.md). They are design
 prerequisites, not implemented deletion support. Backend budgets, persistent
 transactions and remaining format/platform gates stay open; fuzzing stays paused.
+
+### Retained-lock manifest transaction prerequisite
+
+Manifest replacement now uses owned locked/prepared/published states rather than
+reopening its source between transaction steps. Preparation transfers source
+lock ownership; publication returns a visible-successor state before explicit
+fallible directory sync, while Drop only cleans owned staging. These states are
+used by the existing public replacement path and tested for lock lifetime and
+foreign-object preservation. They provide the publication prerequisite for the
+[persistent deletion protocol](graph-deletion-transaction-design.md); the journal,
+authority/budget work, recovery and destructive CLI remain unimplemented.
+
+### Physical validation prerequisite
+
+The common API now includes a separate cumulative physical validation budget and
+`RawWriter::physical_fingerprint`, hashing through the retained locked handle
+with bounded fallible scratch. Requested read bytes and attempts stay charged on
+failure; completed hashed bytes are accounted separately. See
+[the contract](physical-validation.md). This completes the physical-budget
+prerequisite only; deletion journal integration, recovery and CLI remain pending.
+Work pauses after this task at the user's request. Fuzzing remains paused.

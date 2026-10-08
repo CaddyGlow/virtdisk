@@ -386,3 +386,11 @@ framing, so FIFO paths are refused without waiting for a producer. Regular-file
 reads retain the existing size, checksum and decoding limits. Regression tests
 cover alternate valid path encoding, equivalent encoding changes at the final
 boundary (still refused), and a FIFO CLI probe with bounded timeout/child cleanup.
+
+Manifest replacement now has internal owned preparation/publication states for
+reuse by persistent graph transactions. Preparation retains the original file
+lock, staged successors also retain an exclusive lock, and rename returns an
+explicit published state before directory sync. Drop cleans only owned staging;
+it performs no sync or rollback. Existing public replacement still performs both
+publication and explicit sync, retaining its post-publication error contract.
+Persistent image/manifest deletion remains unimplemented.

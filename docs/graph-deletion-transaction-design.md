@@ -29,9 +29,12 @@ Expose a dedicated persistent deletion operation and recovery entry point with
 the original complete path authority even if the leaf has already disappeared.
 A pending record blocks ordinary persistent manifest management and graph binding;
 parsing the record grants no path access. Metadata-only manifest replacement must
-also refuse a pending graph transaction. Initial selection replacement's retained
-source lock/rename machinery must be factored for reuse: do not reacquire a lock
-on the same manifest through a second file descriptor.
+also refuse a pending graph transaction. Selection replacement now uses internal owned `LockedManifest`,
+`PreparedManifest` and `PublishedManifest` states. Preparation consumes and
+retains the old lock; publication consumes prepared staging and returns an
+explicit visible-successor state; directory sync is a separate fallible method.
+Old and successor handles remain locked through sync. Reuse these primitives;
+do not reopen the manifest or reacquire its lock through another descriptor.
 
 ## Journal framing and authority
 
@@ -52,10 +55,12 @@ parent directory and basename, without canonicalizing a journal-supplied foreign
 path or treating the tombstone as a fresh implicit grant.
 
 Hash the physical leaf through its retained handle with bounded fallible scratch.
-Add an explicit physical-byte/work ceiling for this backend validation rather
-than calling physical hashing logical payload work. Its supported default and
-maximum must be measured and documented before enablement. Do not introduce
-unbounded hashing or pretend the current payload quotas cover native journal work.
+`RawWriter::physical_fingerprint` now provides a separate bounded physical
+validation budget; see [its accounting contract](physical-validation.md). The
+33 GiB ceiling follows the existing native journal profile; maximum-size
+throughput has not been established. Integrating this prerequisite with the
+deletion journal and recovery remains pending. Logical payload quotas do not
+cover native journal work.
 Source identity plus digest protects stale recovery; inode identity alone does
 not establish immutable data. Remount/identity ambiguities are refusal cases until
 an explicit tested recovery profile exists.
@@ -128,7 +133,11 @@ pending state without cleanup or recovery. General garbage collection is separat
 - Run formatting, warnings-denied Linux/Windows cross-target Clippy and the locked
   serial host suite. Fuzz campaigns and replay remain paused by user instruction.
 
-Implementation sequence: framing/authority and physical validation budgets;
-retained-lock manifest publication primitive; pending-open guards; transaction
+Implemented prerequisite: retained-lock manifest preparation/publication/sync
+states, exercised by existing replacement and ownership/failure regressions.
+This does not implement the image/manifest journal or persistent deletion.
+
+Remaining implementation sequence: framing/authority and physical validation
+budgets; pending-open guards; transaction
 and public recovery together; full interruption/foreign-state matrix; then CLI
 and platform/native acceptance. No step by itself completes persistent deletion.

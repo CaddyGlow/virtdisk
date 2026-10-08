@@ -2,8 +2,10 @@
 /dist/
 __pycache__/
 .direnv/
+.envrc
 
 /fuzz/target/
 /fuzz/corpus/
 /fuzz/hfuzz_target/
 /fuzz/hfuzz_workspace/
+

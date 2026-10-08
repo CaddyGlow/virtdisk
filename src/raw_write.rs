@@ -23,6 +23,25 @@ struct State {
 }
 
 impl RawWriter {
+    /// Fingerprint complete physical bytes under the retained mutex and file lock.
+    ///
+    /// Uses a distinct cumulative physical budget, not logical image accounting.
+    /// Whole-scan quota refusal precedes data reads; scratch is fallible and at
+    /// most 64 KiB. Requested read bytes and exact-read attempts remain charged
+    /// on error; completed hashed bytes are tracked separately. Capacity/content
+    /// are not modified and no flush/callback occurs.
+    /// Local writer operations cannot interleave with the scan. Callers exclude
+    /// noncooperating external mutation and validate path identity separately;
+    /// this digest does not grant authority or capture a guest filesystem state.
+    pub fn physical_fingerprint(
+        &self,
+        budget: &mut crate::PhysicalValidationBudget,
+    ) -> io::Result<crate::PhysicalFingerprint> {
+        let mut state = self.state()?;
+        let length = state.length;
+        budget.fingerprint(&mut state.file, length)
+    }
+
     /// Create a new zero-filled logical image without overwriting an existing path.
     ///
     /// Host filesystems may store the initial contents sparsely. A failed size
