@@ -34,7 +34,7 @@ jobs:
           workspaces: virtdisk -> target
       - run: cargo fmt -- --check
       - run: cargo clippy --all-targets --all-features --locked -- -D warnings
-      - run: cargo test --all-features --locked
+      - run: cargo test --all-features --locked --no-fail-fast
 
   independent-fixtures:
     runs-on: ubuntu-latest
