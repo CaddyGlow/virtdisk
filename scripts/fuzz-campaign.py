@@ -3,45 +3,56 @@
 from pathlib import Path
 import argparse, datetime, hashlib, json, os, re, subprocess
 ROOT = Path(__file__).resolve().parent.parent
-parser = argparse.ArgumentParser(description=__doc__)
-parser.add_argument("--iterations", type=int, default=10000)
-parser.add_argument("--output", type=Path)
-args = parser.parse_args()
-if args.iterations < 1:
-    parser.error("iterations must be positive")
-config = json.loads((ROOT / "fuzz/targets.json").read_text())
-stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-output = (args.output or ROOT / "target/fuzz-runs" / f"{stamp}-{os.getpid()}").resolve()
-output.mkdir(parents=True, exist_ok=False)
-env = dict(os.environ, RUSTC_WRAPPER="", CARGO_INCREMENTAL="0", CC="gcc", NIX_HARDENING_ENABLE="", HFUZZ_BUILD_ARGS="--locked", HFUZZ_WORKSPACE=str(output / "workspace"), CARGO_TARGET_DIR=str(ROOT / "target/honggfuzz"))
-receipt = {"iterations_requested": args.iterations, "targets": {}, "scope": "bounded coverage-guided smoke; not security qualification"}
-def source_hashes():
-    paths = list((ROOT / "src").rglob("*.rs")) + list((ROOT / "fuzz/src").rglob("*.rs"))
-    paths += [ROOT / name for name in ("Cargo.toml", "Cargo.lock", "fuzz/Cargo.toml", "fuzz/Cargo.lock", "fuzz/targets.json", "flake.nix", "flake.lock", "rust-toolchain.toml", "scripts/fuzz-campaign.py")]
-    return {str(p.relative_to(ROOT)): hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(paths)}
-receipt["source_sha256"] = source_hashes()
-(output / "summary.json").write_text(json.dumps(receipt, indent=2) + "\n")
-for tool in [["rustc", "--version"], ["cargo", "hfuzz", "version"]]:
-    receipt[" ".join(tool)] = subprocess.check_output(tool, text=True).strip()
-receipt["revision"] = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
-for target, limit in config.items():
-    corpus = ROOT / "fuzz/corpus" / target
-    corpus.mkdir(parents=True, exist_ok=True)
-    subprocess.run(["cargo", "run", "--manifest-path", str(ROOT / "fuzz/Cargo.toml"), "--locked", "--bin", "seed", "--", target, str(corpus)], cwd=ROOT, check=True)
-    receipt["targets"][target] = {"seeds": {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(corpus.iterdir()) if p.is_file()}}
-    run_args = f"-n 1 -t 5 -N {args.iterations} -F {limit} --exit_upon_crash"
-    with (output / f"{target}.log").open("w") as log:
-        result = subprocess.run(["cargo", "hfuzz", "run", target], cwd=ROOT / "fuzz", env=dict(env, HFUZZ_INPUT=str(corpus), HFUZZ_RUN_ARGS=run_args), stdout=log, stderr=subprocess.STDOUT)
-    summaries = re.findall(r"Summary iterations:(\d+) .*?crashes_count:(\d+) timeout_count:(\d+)[^\n]*", (output / f"{target}.log").read_text(errors="replace"))
-    row = receipt["targets"][target]
-    row.update(exit_code=result.returncode, arguments=run_args, passed=False)
-    if summaries:
-        iterations, crashes, timeouts = map(int, summaries[-1])
-        row.update(iterations=iterations, crashes=crashes, timeouts=timeouts, passed=result.returncode == 0 and iterations >= args.iterations and crashes == timeouts == 0)
-    receipt["source_changed_during_campaign"] = source_hashes() != receipt["source_sha256"]
-    if receipt["source_changed_during_campaign"]:
-        row["passed"] = False
+def source_hashes(root=ROOT):
+    paths = list((root / "src").rglob("*.rs")) + list((root / "fuzz/src").rglob("*.rs"))
+    paths += list((root / "tests/support").rglob("*.rs"))
+    paths += [root / name for name in ("Cargo.toml", "Cargo.lock", "fuzz/Cargo.toml", "fuzz/Cargo.lock", "fuzz/targets.json", "nix/flake.nix", "nix/flake.lock", "rust-toolchain.toml", "scripts/fuzz-campaign.py")]
+    missing = [str(p.relative_to(root)) for p in paths if not p.is_file()]
+    if missing:
+        raise SystemExit("Missing fuzz evidence files: " + ", ".join(sorted(missing)))
+    return {str(p.relative_to(root)): hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(paths)}
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--iterations", type=int, default=10000)
+    parser.add_argument("--output", type=Path)
+    args = parser.parse_args(argv)
+    if args.iterations < 1:
+        parser.error("iterations must be positive")
+    source_sha256 = source_hashes()
+    config = json.loads((ROOT / "fuzz/targets.json").read_text())
+    stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    output = (args.output or ROOT / "target/fuzz-runs" / f"{stamp}-{os.getpid()}").resolve()
+    env = dict(os.environ, RUSTC_WRAPPER="", CARGO_INCREMENTAL="0", CC="gcc", NIX_HARDENING_ENABLE="", HFUZZ_BUILD_ARGS="--locked", HFUZZ_WORKSPACE=str(output / "workspace"), CARGO_TARGET_DIR=str(ROOT / "target/honggfuzz"))
+    receipt = {"iterations_requested": args.iterations, "targets": {}, "scope": "bounded coverage-guided smoke; not security qualification"}
+    receipt["source_sha256"] = source_sha256
+    output.mkdir(parents=True, exist_ok=False)
     (output / "summary.json").write_text(json.dumps(receipt, indent=2) + "\n")
-    if not row["passed"]:
-        raise SystemExit(f"Fuzz campaign failed; retained evidence: {output}")
-print(output)
+    for tool in [["rustc", "--version"], ["cargo", "hfuzz", "version"]]:
+        receipt[" ".join(tool)] = subprocess.check_output(tool, text=True).strip()
+    receipt["revision"] = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
+    for target, limit in config.items():
+        corpus = ROOT / "fuzz/corpus" / target
+        corpus.mkdir(parents=True, exist_ok=True)
+        subprocess.run(["cargo", "run", "--manifest-path", str(ROOT / "fuzz/Cargo.toml"), "--locked", "--bin", "seed", "--", target, str(corpus)], cwd=ROOT, check=True)
+        receipt["targets"][target] = {"seeds": {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(corpus.iterdir()) if p.is_file()}}
+        run_args = f"-n 1 -t 5 -N {args.iterations} -F {limit} --exit_upon_crash"
+        with (output / f"{target}.log").open("w") as log:
+            result = subprocess.run(["cargo", "hfuzz", "run", target], cwd=ROOT / "fuzz", env=dict(env, HFUZZ_INPUT=str(corpus), HFUZZ_RUN_ARGS=run_args), stdout=log, stderr=subprocess.STDOUT)
+        summaries = re.findall(r"Summary iterations:(\d+) .*?crashes_count:(\d+) timeout_count:(\d+)[^\n]*", (output / f"{target}.log").read_text(errors="replace"))
+        row = receipt["targets"][target]
+        row.update(exit_code=result.returncode, arguments=run_args, passed=False)
+        if summaries:
+            iterations, crashes, timeouts = map(int, summaries[-1])
+            row.update(iterations=iterations, crashes=crashes, timeouts=timeouts, passed=result.returncode == 0 and iterations >= args.iterations and crashes == timeouts == 0)
+        receipt["source_changed_during_campaign"] = source_hashes() != receipt["source_sha256"]
+        if receipt["source_changed_during_campaign"]:
+            row["passed"] = False
+        (output / "summary.json").write_text(json.dumps(receipt, indent=2) + "\n")
+        if not row["passed"]:
+            raise SystemExit(f"Fuzz campaign failed; retained evidence: {output}")
+    print(output)
+
+
+if __name__ == "__main__":
+    main()

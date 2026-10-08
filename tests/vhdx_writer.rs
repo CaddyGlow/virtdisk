@@ -1,18 +1,10 @@
-use std::{io, sync::Arc};
+use std::sync::Arc;
 use virtdisk::{RawDisk, ReadAt, Vhdx, VhdxWriter, create_vhdx};
 const M: usize = 1 << 20;
-struct Bytes(Vec<u8>);
-impl ReadAt for Bytes {
-    fn len(&self) -> u64 {
-        self.0.len() as u64
-    }
-    fn read_exact_at(&self, o: u64, b: &mut [u8]) -> io::Result<()> {
-        let s = o as usize;
-        let e = s.checked_add(b.len()).ok_or(io::ErrorKind::UnexpectedEof)?;
-        b.copy_from_slice(self.0.get(s..e).ok_or(io::ErrorKind::UnexpectedEof)?);
-        Ok(())
-    }
-}
+#[path = "support/bytes.rs"]
+mod bytes;
+use bytes::Bytes;
+
 fn fixture() -> (tempfile::TempDir, std::path::PathBuf) {
     let d = tempfile::tempdir().unwrap();
     let p = d.path().join("disk.vhdx");

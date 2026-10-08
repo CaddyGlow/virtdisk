@@ -44,18 +44,7 @@ struct WriteContext {
     parent: Option<Arc<dyn ReadAt>>,
 }
 
-struct LockedSource {
-    raw: Arc<RawWriter>,
-    size: u64,
-}
-impl ReadAt for LockedSource {
-    fn len(&self) -> u64 {
-        self.size
-    }
-    fn read_exact_at(&self, offset: u64, dst: &mut [u8]) -> io::Result<()> {
-        self.raw.read_exact_at(offset, dst)
-    }
-}
+use crate::source::{LockedSource, ZeroSource};
 
 impl Qcow2Writer {
     pub(crate) fn container_size(&self) -> u64 {
@@ -85,21 +74,10 @@ impl Qcow2Writer {
 
     fn create_profile(path: &Path, size: u64, sparse: bool) -> io::Result<Self> {
         Self::check_size(size)?;
-        struct Zero(u64);
-        impl ReadAt for Zero {
-            fn len(&self) -> u64 {
-                self.0
-            }
-            fn read_exact_at(&self, offset: u64, dst: &mut [u8]) -> io::Result<()> {
-                crate::check_range(offset, dst.len() as u64, self.0)?;
-                dst.fill(0);
-                Ok(())
-            }
-        }
         let file = if sparse {
-            crate::qcow2_write::create_locked_sparse_qcow2(path, &Zero(size))?
+            crate::qcow2_write::create_locked_sparse_qcow2(path, &ZeroSource(size))?
         } else {
-            crate::qcow2_write::create_locked_qcow2(path, &Zero(size))?
+            crate::qcow2_write::create_locked_qcow2(path, &ZeroSource(size))?
         };
         Self::from_raw(
             RawWriter::from_locked_file(file)?,

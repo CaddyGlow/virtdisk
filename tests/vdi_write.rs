@@ -1,19 +1,9 @@
 use std::{io, sync::Arc};
 use virtdisk::{RawDisk, ReadAt, Vdi, create_vdi};
-struct Bytes(Vec<u8>);
-impl ReadAt for Bytes {
-    fn len(&self) -> u64 {
-        self.0.len() as u64
-    }
-    fn read_exact_at(&self, at: u64, out: &mut [u8]) -> io::Result<()> {
-        let start = usize::try_from(at).map_err(|_| io::ErrorKind::UnexpectedEof)?;
-        let end = start
-            .checked_add(out.len())
-            .ok_or(io::ErrorKind::UnexpectedEof)?;
-        out.copy_from_slice(self.0.get(start..end).ok_or(io::ErrorKind::UnexpectedEof)?);
-        Ok(())
-    }
-}
+#[path = "support/bytes.rs"]
+mod bytes;
+use bytes::Bytes;
+
 #[test]
 fn export_streams_large_blocks_in_bounded_reads() {
     struct Bounded(Bytes);

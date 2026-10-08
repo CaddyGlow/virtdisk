@@ -1,19 +1,9 @@
 use std::{io, sync::Arc};
-use virtdisk::{Qcow2, ReadAt};
-struct Bytes(Vec<u8>);
-impl ReadAt for Bytes {
-    fn len(&self) -> u64 {
-        self.0.len() as u64
-    }
-    fn read_exact_at(&self, offset: u64, out: &mut [u8]) -> io::Result<()> {
-        let start = usize::try_from(offset).map_err(|_| io::ErrorKind::UnexpectedEof)?;
-        let end = start
-            .checked_add(out.len())
-            .ok_or(io::ErrorKind::UnexpectedEof)?;
-        out.copy_from_slice(self.0.get(start..end).ok_or(io::ErrorKind::UnexpectedEof)?);
-        Ok(())
-    }
-}
+use virtdisk::Qcow2;
+#[path = "support/bytes.rs"]
+mod bytes;
+use bytes::Bytes;
+
 fn put64(bytes: &mut [u8], at: usize, value: u64) {
     bytes[at..at + 8].copy_from_slice(&value.to_be_bytes());
 }

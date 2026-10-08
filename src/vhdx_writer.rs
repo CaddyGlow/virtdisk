@@ -1,6 +1,7 @@
 //! Exclusive payload writes with native logged sparse allocation.
 #[path = "vhdx_allocate.rs"]
 mod allocator;
+use crate::source::FileSource;
 use crate::{CacheReservation, ReadAt, ReadBudget, Vhdx, check_range};
 use std::{
     fs::{File, OpenOptions},
@@ -8,21 +9,6 @@ use std::{
     path::Path,
     sync::{Arc, Mutex},
 };
-struct FileReader(Mutex<File>, u64);
-impl ReadAt for FileReader {
-    fn len(&self) -> u64 {
-        self.1
-    }
-    fn read_exact_at(&self, at: u64, out: &mut [u8]) -> io::Result<()> {
-        check_range(at, out.len() as u64, self.1)?;
-        let mut file = self
-            .0
-            .lock()
-            .map_err(|_| io::Error::other("VHDX source mutex poisoned"))?;
-        file.seek(SeekFrom::Start(at))?;
-        file.read_exact(out)
-    }
-}
 struct State {
     file: File,
     header: [u8; 4096],
@@ -161,7 +147,7 @@ impl VhdxWriter {
                 "VHDX writer requires a regular file",
             ));
         }
-        let source = Arc::new(FileReader(Mutex::new(file.try_clone()?), metadata.len()));
+        let source = Arc::new(FileSource::new(file.try_clone()?, metadata.len()));
         let image = if let Some((path, authorized)) = chain {
             Vhdx::open_locked_chain(
                 source,

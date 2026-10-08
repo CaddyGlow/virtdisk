@@ -1,29 +1,14 @@
 //! Explicit locked native redo recovery for standalone VHDX images.
-use crate::{ParserLimits, ReadAt, Vhdx, check_range};
+use crate::source::FileSource;
+use crate::{ParserLimits, Vhdx};
+#[cfg(test)]
+use crate::{ReadAt, check_range};
 use std::{
     fs::{File, OpenOptions},
-    io::{self, Read, Seek, SeekFrom, Write},
+    io::{self, Seek, SeekFrom, Write},
     path::Path,
-    sync::{Arc, Mutex},
+    sync::Arc,
 };
-struct Source {
-    file: Mutex<File>,
-    length: u64,
-}
-impl ReadAt for Source {
-    fn len(&self) -> u64 {
-        self.length
-    }
-    fn read_exact_at(&self, offset: u64, out: &mut [u8]) -> io::Result<()> {
-        check_range(offset, out.len() as u64, self.length)?;
-        let mut file = self
-            .file
-            .lock()
-            .map_err(|_| io::Error::other("VHDX recovery source mutex poisoned"))?;
-        file.seek(SeekFrom::Start(offset))?;
-        file.read_exact(out)
-    }
-}
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Stage {
     Validated,
@@ -109,10 +94,7 @@ fn recover_locked_with_hook(
             "VHDX recovery requires a regular file",
         ));
     }
-    let source = Arc::new(Source {
-        file: Mutex::new(file.try_clone()?),
-        length: meta.len(),
-    });
+    let source = Arc::new(FileSource::new(file.try_clone()?, meta.len()));
     let (_image, overlay) = if let Some(approved) = authorized {
         Vhdx::recovered_chain_parts(
             source,

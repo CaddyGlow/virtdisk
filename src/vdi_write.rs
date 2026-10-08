@@ -10,14 +10,7 @@ const MAX_MAP: u64 = 64 * 1024 * 1024;
 fn put(b: &mut [u8], at: usize, n: u32) {
     b[at..at + 4].copy_from_slice(&n.to_le_bytes());
 }
-fn identity() -> io::Result<[u8; 16]> {
-    let mut id = [0; 16];
-    getrandom::fill(&mut id).map_err(|e| io::Error::other(e.to_string()))?;
-    // VDI stores UUID fields in the native little-endian RTUUID representation.
-    id[7] = (id[7] & 15) | 64;
-    id[8] = (id[8] & 63) | 128;
-    Ok(id)
-}
+use crate::native_id::identity;
 /// Export an immutable reader to a new dynamic VDI 1.1 image.
 ///
 /// Requires nonempty sector-aligned capacity, at most 16 million 1 MiB blocks.

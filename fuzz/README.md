@@ -4,6 +4,11 @@ Owned targets: qcow2, vdi, vmdk, vhdx, raw-write, qcow2-write, vdi-write, vmdk-w
 
 Run `cargo test --manifest-path fuzz/Cargo.toml --locked` and `cargo clippy --manifest-path fuzz/Cargo.toml --all-targets --locked -- -D warnings`. Install honggfuzz 0.5.62 plus GCC/binutils/libunwind/liblzma development libraries, then run `python3 scripts/fuzz-campaign.py --iterations 10000`. Replay with `cargo run --manifest-path fuzz/Cargo.toml --locked --bin replay -- TARGET FILE`.
 
+The deterministic corpus smoke test uses up to four workers, capped by available
+parallelism. Every seed, truncation, and mutation is still replayed; independent
+temporary files permit concurrent durability work. Failures identify the target,
+seed index, and input variant.
+
 The weekly/manual workflow instruments code and retains seed/production-source/harness hashes, tool versions, raw logs, summary counts, and findings even on failure. Source changes during a campaign invalidate its result. Each case has a five-second timeout. Bounded smoke campaigns do not establish absence of bugs or replace sustained sanitizer campaigns. Fuzzing operates only on memory or temporary files created by the harness; no input-supplied host paths are opened.
 
 The `qcow2-write` target uses at most 385 input bytes, 64 operations and 192 KiB
@@ -37,7 +42,8 @@ stops after 32 callbacks. Metadata, chain depth and work budgets are tightened.
 
 QCOW2 writer mutations also include native capacity transactions, keeping capacity
 at most 192 KiB and updating the byte model for zero growth and explicit shrink
-policies. Backed resize must reject without changing inherited bytes or capacity.
+policies. Authorized backed resize preserves saved states and masks inherited
+bytes in the newly grown suffix after shrink/regrowth.
 Raw preallocation operations preserve the logical model and check ranges; hosts
 without preallocation support must report Unsupported. Native VDI cases use
 sparse standalone or differencing profiles and include whole-block discard plus
@@ -59,14 +65,13 @@ saved states, and reads bounded selected ranges under tightened work, cache,
 metadata and decompression budgets. Snapshot directory truncations and mutated
 refcounts exercise expected parser errors.
 
-The QCOW2 writer model also creates, reverts, and deletes up to four standalone native disk snapshots.
+The QCOW2 writer model also creates, reverts, and deletes up to four standalone or authorized backed native disk snapshots.
 Each retains an independent saved capacity/byte model checked through audited
 views after reopen and at the final checkpoint. Duplicate/invalid requests and
-backed creation refusal preserve exact container bytes. Active write, zero,
-discard and reopen must preserve every saved state; native capacity changes
-with saved states must be refused. Deterministic seeds cover snapshot creation,
+unauthorized-open refusal preserve exact container bytes. Active write, zero,
+discard, resize, and reopen must preserve every saved state. Deterministic seeds cover snapshot creation,
 saved-state selection, deletion, missing IDs, ID reuse, and subsequent active
-mutations. Both standalone success and backed refusal sequences are replayed.
+mutations. Both standalone and authorized backed lifecycle sequences are replayed.
 
 VHDX chain seeds include the ordinary drive-rooted parent hints emitted by the
 Microsoft provider, alongside rejected alternate-stream and device-path hints.

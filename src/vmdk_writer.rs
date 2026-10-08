@@ -28,52 +28,53 @@ pub struct VmdkWriter {
     raw: Arc<RawWriter>,
     _identity: same_file::Handle,
     path: std::path::PathBuf,
+    size: u64,
+    backend: Backend,
+}
+
+enum Backend {
+    Hosted(Hosted),
+    Flat(FlatBackend),
+    #[cfg(target_os = "linux")]
+    SplitSparse(Box<sparse_set::Sparse>),
+}
+struct Hosted {
     primary: Vec<u64>,
     redundant: Vec<Option<u64>>,
     cid_offset: u64,
     cid_width: usize,
-    size: u64,
-    flat: Option<flat::Flat>,
-    #[cfg(target_os = "linux")]
-    sparse: Option<Box<sparse_set::Sparse>>,
     parent: Option<Arc<Vmdk>>,
     operation: Mutex<State>,
 }
-
-struct State {
-    mappings: Vec<u64>,
-    zero_mask: Vec<bool>,
+struct FlatBackend {
+    flat: flat::Flat,
+    cid_offset: u64,
+    cid_width: usize,
+    operation: Mutex<Mutation>,
+}
+#[derive(Default)]
+struct Mutation {
     epoch: bool,
     failed: bool,
 }
-struct LockedSource {
-    raw: Arc<RawWriter>,
-    size: u64,
+struct State {
+    mappings: Vec<u64>,
+    zero_mask: Vec<bool>,
+    mutation: Mutation,
 }
+use crate::source::LockedSource;
 
 fn resize_descriptor(bytes: &[u8], sectors: u64) -> io::Result<Vec<u8>> {
-    let end = bytes
-        .iter()
-        .rposition(|byte| *byte != 0)
-        .map_or(0, |index| index + 1);
-    let mut text = std::str::from_utf8(&bytes[..end])
-        .map_err(|_| io::ErrorKind::InvalidData)?
-        .to_owned();
+    let mut text = crate::vmdk_descriptor::text(bytes)?.to_owned();
     let mut cursor = 0;
     let mut range = None;
     for line in text.split_inclusive('\n') {
-        let mut tokens = line.split_whitespace();
-        if tokens.next() == Some("RW") {
-            if range.is_some() {
+        if line.trim_start().starts_with("RW") {
+            let extent = crate::vmdk_descriptor::extent(line, cursor)?;
+            if range.is_some() || extent.access != "RW" || extent.kind != "SPARSE" {
                 return Err(io::ErrorKind::Unsupported.into());
             }
-            let count = tokens.next().ok_or(io::ErrorKind::InvalidData)?;
-            if tokens.next() != Some("SPARSE") {
-                return Err(io::ErrorKind::Unsupported.into());
-            }
-            let start = line.find("RW").unwrap() + 2;
-            let start = start + line[start..].len() - line[start..].trim_start().len();
-            range = Some(cursor + start..cursor + start + count.len());
+            range = Some(extent.count.range);
         }
         cursor += line.len();
     }
@@ -90,31 +91,23 @@ fn resize_descriptor(bytes: &[u8], sectors: u64) -> io::Result<Vec<u8>> {
 }
 
 fn descriptor_cid_offset(bytes: &[u8], offset: u64) -> io::Result<u64> {
-    let end = bytes
-        .iter()
-        .rposition(|byte| *byte != 0)
-        .map_or(0, |index| index + 1);
-    let text = std::str::from_utf8(&bytes[..end]).map_err(|_| io::ErrorKind::InvalidData)?;
+    let text = crate::vmdk_descriptor::text(bytes)?;
     let mut cursor = 0;
+    let mut range = None;
+    let mut properties = crate::vmdk_descriptor::Properties::default();
     for line in text.split_inclusive('\n') {
-        if let Some((key, value)) = line.split_once('=')
-            && key.trim() == "CID"
-        {
-            return Ok(offset
-                + (cursor + line.find('=').unwrap() + 1 + value.len() - value.trim_start().len())
-                    as u64);
+        if let Some(("CID", value)) = crate::vmdk_descriptor::property(line, cursor) {
+            if properties.duplicate("CID") {
+                return Err(io::ErrorKind::InvalidData.into());
+            }
+            crate::vmdk_descriptor::hexadecimal(value.text)?;
+            range = Some(value.range);
         }
         cursor += line.len();
     }
-    Err(io::ErrorKind::InvalidData.into())
-}
-impl ReadAt for LockedSource {
-    fn len(&self) -> u64 {
-        self.size
-    }
-    fn read_exact_at(&self, offset: u64, dst: &mut [u8]) -> io::Result<()> {
-        self.raw.read_exact_at(offset, dst)
-    }
+    offset
+        .checked_add(range.ok_or(io::ErrorKind::InvalidData)?.start as u64)
+        .ok_or_else(|| io::ErrorKind::InvalidData.into())
 }
 
 impl VmdkWriter {
@@ -132,12 +125,16 @@ impl VmdkWriter {
     pub(crate) fn container_sizes(&self) -> (u64, Option<u64>) {
         let primary = self.raw.len();
         #[cfg(target_os = "linux")]
-        if let Some(sparse) = &self.sparse {
+        if let Backend::SplitSparse(sparse) = &self.backend {
             return (primary, sparse.container_set_size());
         }
-        let aggregate = self.flat.as_ref().map_or(Some(primary), |flat| {
-            primary.checked_add(flat.container_extents_size()?)
-        });
+        let aggregate = match &self.backend {
+            Backend::Flat(flat) => flat
+                .flat
+                .container_extents_size()
+                .and_then(|size| primary.checked_add(size)),
+            _ => Some(primary),
+        };
         (primary, aggregate)
     }
 
@@ -184,7 +181,7 @@ impl VmdkWriter {
             if state.zero_mask[index as usize] && state.mappings[index as usize] == 0 {
                 continue;
             }
-            self.begin_mutation(&mut state)?;
+            self.begin_mutation(&mut state.mutation)?;
             self.discard_grain(index as usize, &mut state, None)?;
         }
         Ok(crate::DiscardResult::Deallocated)
@@ -198,7 +195,7 @@ impl VmdkWriter {
         if flags & 4 == 0 {
             patches.push(self.resize_patch(8, (flags | 4).to_le_bytes().to_vec(), 0)?);
         }
-        if let Some(offset) = self.redundant[index] {
+        if let Some(offset) = self.hosted()?.redundant[index] {
             patches.push(self.resize_patch(
                 offset,
                 1u32.to_le_bytes().to_vec(),
@@ -206,7 +203,7 @@ impl VmdkWriter {
             )?);
         }
         patches.push(self.resize_patch(
-            self.primary[index],
+            self.hosted()?.primary[index],
             1u32.to_le_bytes().to_vec(),
             patches.len() as u32,
         )?);
@@ -225,7 +222,7 @@ impl VmdkWriter {
     pub(crate) fn native_resize_supported(&self) -> bool {
         cfg!(target_os = "linux")
             && !self.is_descriptor()
-            && self.parent.is_none()
+            && !self.has_parent()
             && self.raw.len().is_multiple_of(65536)
     }
     /// Resize a standalone hosted sparse image with explicit shrink policy.
@@ -247,7 +244,7 @@ impl VmdkWriter {
         cut: Option<(usize, usize)>,
     ) -> io::Result<()> {
         Self::check_size(new_size)?;
-        if !cfg!(target_os = "linux") || self.is_descriptor() || self.parent.is_some() {
+        if !cfg!(target_os = "linux") || self.is_descriptor() || self.has_parent() {
             return Err(io::Error::new(
                 io::ErrorKind::Unsupported,
                 "native VMDK resize requires standalone Linux hosted sparse profile",
@@ -319,7 +316,7 @@ impl VmdkWriter {
         self.raw.require_single_link_for_journal()?;
         let mut transaction_index = 0;
         let mut state = self.operation()?;
-        self.begin_mutation(&mut state)?;
+        self.begin_mutation(&mut state.mutation)?;
         // Clear hidden suffix on growth too: arbitrary existing padding must
         // never become newly addressable guest bytes.
         let boundary = new_size.min(self.size);
@@ -354,9 +351,12 @@ impl VmdkWriter {
                     index = end;
                     continue;
                 }
-                let mut patches =
-                    vec![self.resize_patch(self.primary[index], vec![0; (end - index) * 4], 0)?];
-                if let Some(offset) = self.redundant[index] {
+                let mut patches = vec![self.resize_patch(
+                    self.hosted()?.primary[index],
+                    vec![0; (end - index) * 4],
+                    0,
+                )?];
+                if let Some(offset) = self.hosted()?.redundant[index] {
                     patches.push(self.resize_patch(offset, vec![0; (end - index) * 4], 1)?);
                 }
                 self.resize_commit(
@@ -387,9 +387,9 @@ impl VmdkWriter {
                     .to_vec();
                 let mut patches = vec![
                     self.resize_patch(destination, payload, 0)?,
-                    self.resize_patch(self.primary[index], entry.clone(), 1)?,
+                    self.resize_patch(self.hosted()?.primary[index], entry.clone(), 1)?,
                 ];
-                if let Some(offset) = self.redundant[index] {
+                if let Some(offset) = self.hosted()?.redundant[index] {
                     patches.push(self.resize_patch(offset, entry, 2)?);
                 }
                 self.resize_commit(
@@ -496,9 +496,9 @@ impl VmdkWriter {
         state.zero_mask = zero_mask;
         drop(state);
         self.size = new_size;
-        self.cid_offset = cid_offset;
-        self.primary = primary;
-        self.redundant = redundant;
+        self.hosted_mut()?.cid_offset = cid_offset;
+        self.hosted_mut()?.primary = primary;
+        self.hosted_mut()?.redundant = redundant;
         Ok(())
     }
 
@@ -544,10 +544,10 @@ impl VmdkWriter {
         *index += 1;
         if let Err(error) =
             crate::transaction::commit(&self.path, self.raw.clone(), record, stage, &|source| {
-                Vmdk::open_parented(source, self.parent.clone()).map(drop)
+                Vmdk::open_parented(source, self.hosted()?.parent.clone()).map(drop)
             })
         {
-            state.failed = true;
+            state.mutation.failed = true;
             return Err(error);
         }
         Ok(())
@@ -588,60 +588,41 @@ impl VmdkWriter {
             raw: opened.descriptor,
             _identity: opened.identity,
             path: opened.path,
-            primary: Vec::new(),
-            redundant: Vec::new(),
-            cid_offset: opened.cid_offset,
-            cid_width: opened.cid_width,
             size: opened.length,
-            flat: Some(opened.flat),
-            #[cfg(target_os = "linux")]
-            sparse: None,
-            parent: None,
-            operation: Mutex::new(State {
-                mappings: Vec::new(),
-                zero_mask: Vec::new(),
-                epoch: false,
-                failed: false,
+            backend: Backend::Flat(FlatBackend {
+                flat: opened.flat,
+                cid_offset: opened.cid_offset,
+                cid_width: opened.cid_width,
+                operation: Mutex::new(Mutation::default()),
             }),
         })
     }
     #[cfg(target_os = "linux")]
     fn from_sparse(opened: sparse_set::Opened) -> io::Result<Self> {
-        let size = opened.sparse.len();
-        let parent = opened.sparse.parent_reader();
         Ok(Self {
+            size: opened.sparse.len(),
             raw: opened.raw,
             _identity: opened.identity,
             path: opened.path,
-            primary: Vec::new(),
-            redundant: Vec::new(),
-            cid_offset: 0,
-            cid_width: 0,
-            size,
-            flat: None,
-            sparse: Some(Box::new(opened.sparse)),
-            parent,
-            operation: Mutex::new(State {
-                mappings: Vec::new(),
-                zero_mask: Vec::new(),
-                epoch: false,
-                failed: false,
-            }),
+            backend: Backend::SplitSparse(Box::new(opened.sparse)),
         })
     }
+    fn hosted(&self) -> io::Result<&Hosted> {
+        match &self.backend {
+            Backend::Hosted(hosted) => Ok(hosted),
+            _ => Err(io::ErrorKind::Unsupported.into()),
+        }
+    }
+    fn hosted_mut(&mut self) -> io::Result<&mut Hosted> {
+        match &mut self.backend {
+            Backend::Hosted(hosted) => Ok(hosted),
+            _ => Err(io::ErrorKind::Unsupported.into()),
+        }
+    }
+
     /// Whether this opened writer uses an explicitly authorized external descriptor.
     pub fn is_descriptor(&self) -> bool {
-        self.flat.is_some() || self.has_sparse_descriptor()
-    }
-    fn has_sparse_descriptor(&self) -> bool {
-        #[cfg(target_os = "linux")]
-        {
-            self.sparse.is_some()
-        }
-        #[cfg(not(target_os = "linux"))]
-        {
-            false
-        }
+        !matches!(self.backend, Backend::Hosted(_))
     }
     pub(crate) fn info_profile(&self) -> (Option<u64>, bool) {
         (
@@ -681,20 +662,9 @@ impl VmdkWriter {
         let parent = Arc::new(Vmdk::open_chain(&parent_path, authorized_paths)?);
         Self::check_size(parent.len())?;
         let hint = parent_path.to_str().ok_or(io::ErrorKind::InvalidInput)?;
-        struct Zero(u64);
-        impl ReadAt for Zero {
-            fn len(&self) -> u64 {
-                self.0
-            }
-            fn read_exact_at(&self, offset: u64, dst: &mut [u8]) -> io::Result<()> {
-                crate::check_range(offset, dst.len() as u64, self.0)?;
-                dst.fill(0);
-                Ok(())
-            }
-        }
         let file = crate::vmdk_write::create_locked_vmdk_with_parent(
             path.as_ref(),
-            &Zero(parent.len()),
+            &crate::source::ZeroSource(parent.len()),
             false,
             Some((parent.content_id().ok_or(io::ErrorKind::InvalidData)?, hint)),
         )?;
@@ -733,7 +703,12 @@ impl VmdkWriter {
     }
     /// Whether writes use an authorized immutable parent for copy-on-write reads.
     pub fn has_parent(&self) -> bool {
-        self.parent.is_some()
+        match &self.backend {
+            Backend::Hosted(hosted) => hosted.parent.is_some(),
+            Backend::Flat(_) => false,
+            #[cfg(target_os = "linux")]
+            Backend::SplitSparse(sparse) => sparse.parent_reader().is_some(),
+        }
     }
 
     /// Create a fully allocated image while retaining its exclusive lock.
@@ -757,18 +732,8 @@ impl VmdkWriter {
     fn create_profile(path: impl AsRef<Path>, size: u64, sparse: bool) -> io::Result<Self> {
         Self::check_size(size)?;
         let path = path.as_ref();
-        struct Zero(u64);
-        impl ReadAt for Zero {
-            fn len(&self) -> u64 {
-                self.0
-            }
-            fn read_exact_at(&self, offset: u64, dst: &mut [u8]) -> io::Result<()> {
-                crate::check_range(offset, dst.len() as u64, self.0)?;
-                dst.fill(0);
-                Ok(())
-            }
-        }
-        let file = crate::vmdk_write::create_locked_vmdk(path, &Zero(size), !sparse)?;
+        let file =
+            crate::vmdk_write::create_locked_vmdk(path, &crate::source::ZeroSource(size), !sparse)?;
         Self::from_raw(RawWriter::from_locked_file(file)?, path.canonicalize()?)
     }
 
@@ -892,30 +857,24 @@ impl VmdkWriter {
         }
         let mut desc = vec![0; descriptor_length as usize];
         raw.read_exact_at(descriptor_offset, &mut desc)?;
-        let end = desc.iter().rposition(|b| *b != 0).map_or(0, |i| i + 1);
-        let text = std::str::from_utf8(&desc[..end]).map_err(|_| io::ErrorKind::InvalidData)?;
-        let mut cid_offset = None;
-        let mut cid_width = 0;
-        let mut cursor = 0usize;
+        let text = crate::vmdk_descriptor::text(&desc)?;
+        let mut cid = None;
+        let mut properties = crate::vmdk_descriptor::Properties::default();
+        let mut cursor = 0;
         for line in text.split_inclusive('\n') {
-            if let Some((key, value)) = line.split_once('=')
-                && key.trim() == "CID"
-            {
-                let value = value.trim();
-                if cid_offset.is_some()
-                    || (value.is_empty() || value.len() > 8)
-                    || u32::from_str_radix(value, 16).is_err()
-                {
+            if let Some(("CID", field)) = crate::vmdk_descriptor::property(line, cursor) {
+                if properties.duplicate("CID") {
                     return Err(io::ErrorKind::InvalidData.into());
                 }
-                cid_width = value.len();
-                let equals = line.find('=').unwrap();
-                let whitespace = line[equals + 1..].len() - line[equals + 1..].trim_start().len();
-                cid_offset = Some(descriptor_offset + (cursor + equals + 1 + whitespace) as u64);
+                crate::vmdk_descriptor::hexadecimal(field.text)?;
+                cid = Some((
+                    descriptor_offset + field.range.start as u64,
+                    field.range.len(),
+                ));
             }
             cursor += line.len();
         }
-        let cid_offset = cid_offset.ok_or_else(|| {
+        let (cid_offset, cid_width) = cid.ok_or_else(|| {
             io::Error::new(io::ErrorKind::Unsupported, "VMDK writer requires CID")
         })?;
         let mut primary = Vec::with_capacity(mappings.len());
@@ -952,20 +911,18 @@ impl VmdkWriter {
             raw,
             _identity: identity,
             path,
-            primary,
-            redundant,
-            cid_offset,
-            cid_width,
             size,
-            flat: None,
-            #[cfg(target_os = "linux")]
-            sparse: None,
-            parent,
-            operation: Mutex::new(State {
-                mappings,
-                zero_mask,
-                epoch: false,
-                failed: false,
+            backend: Backend::Hosted(Hosted {
+                primary,
+                redundant,
+                cid_offset,
+                cid_width,
+                parent,
+                operation: Mutex::new(State {
+                    mappings,
+                    zero_mask,
+                    mutation: Mutation::default(),
+                }),
             }),
         })
     }
@@ -981,10 +938,11 @@ impl VmdkWriter {
 
     fn operation(&self) -> io::Result<std::sync::MutexGuard<'_, State>> {
         let state = self
+            .hosted()?
             .operation
             .lock()
             .map_err(|_| io::Error::other("VMDK writer mutex poisoned"))?;
-        if state.failed {
+        if state.mutation.failed {
             return Err(io::Error::other(
                 "VMDK transaction failed; reopen for recovery",
             ));
@@ -992,14 +950,18 @@ impl VmdkWriter {
         Ok(state)
     }
 
-    fn begin_mutation(&self, state: &mut State) -> io::Result<()> {
+    fn begin_mutation(&self, state: &mut Mutation) -> io::Result<()> {
+        let (cid_offset, cid_width) = match &self.backend {
+            Backend::Hosted(hosted) => (hosted.cid_offset, hosted.cid_width),
+            Backend::Flat(flat) => (flat.cid_offset, flat.cid_width),
+            #[cfg(target_os = "linux")]
+            Backend::SplitSparse(_) => return Err(io::ErrorKind::Unsupported.into()),
+        };
         if !state.epoch {
             let mut old = [0; 8];
-            self.raw
-                .read_exact_at(self.cid_offset, &mut old[..self.cid_width])?;
+            self.raw.read_exact_at(cid_offset, &mut old[..cid_width])?;
             let old_cid = u32::from_str_radix(
-                std::str::from_utf8(&old[..self.cid_width])
-                    .map_err(|_| io::ErrorKind::InvalidData)?,
+                std::str::from_utf8(&old[..cid_width]).map_err(|_| io::ErrorKind::InvalidData)?,
                 16,
             )
             .map_err(|_| io::ErrorKind::InvalidData)?;
@@ -1007,17 +969,17 @@ impl VmdkWriter {
             for _ in 0..4 {
                 let mut bytes = [0; 4];
                 getrandom::fill(&mut bytes).map_err(|e| io::Error::other(e.to_string()))?;
-                let mask = if self.cid_width == 8 {
+                let mask = if cid_width == 8 {
                     u32::MAX
                 } else {
-                    (1u32 << (self.cid_width * 4)) - 1
+                    (1u32 << (cid_width * 4)) - 1
                 };
                 let cid = u32::from_le_bytes(bytes) & mask;
                 if cid == u32::MAX || cid == old_cid {
                     continue;
                 }
-                let value = format!("{cid:0width$x}", width = self.cid_width);
-                if value.as_bytes() != &old[..self.cid_width] {
+                let value = format!("{cid:0width$x}", width = cid_width);
+                if value.as_bytes() != &old[..cid_width] {
                     chosen = Some(value);
                     break;
                 }
@@ -1026,7 +988,7 @@ impl VmdkWriter {
                 chosen.ok_or_else(|| io::Error::other("could not generate fresh VMDK CID"))?;
             if let Err(error) = self
                 .raw
-                .write_all_at(self.cid_offset, value.as_bytes())
+                .write_all_at(cid_offset, value.as_bytes())
                 .and_then(|_| self.raw.flush())
             {
                 state.failed = true;
@@ -1060,7 +1022,7 @@ impl VmdkWriter {
         })?;
         let mut payload = vec![0; 65536];
         if !state.zero_mask[index]
-            && let Some(parent) = &self.parent
+            && let Some(parent) = &self.hosted()?.parent
         {
             let offset = index as u64 * 65536;
             let count = (self.size - offset).min(65536) as usize;
@@ -1069,18 +1031,19 @@ impl VmdkWriter {
         payload[within as usize..within as usize + bytes.len()].copy_from_slice(bytes);
         let mut patches = Vec::new();
         let mut old = vec![0; 4];
-        self.raw.read_exact_at(self.primary[index], &mut old)?;
+        self.raw
+            .read_exact_at(self.hosted()?.primary[index], &mut old)?;
         patches.push(Patch {
-            order: if self.redundant[index].is_some() {
+            order: if self.hosted()?.redundant[index].is_some() {
                 2
             } else {
                 1
             },
-            offset: self.primary[index],
+            offset: self.hosted()?.primary[index],
             old,
             new: entry.to_le_bytes().to_vec(),
         });
-        if let Some(offset) = self.redundant[index] {
+        if let Some(offset) = self.hosted()?.redundant[index] {
             let mut old = vec![0; 4];
             self.raw.read_exact_at(offset, &mut old)?;
             patches.push(Patch {
@@ -1105,10 +1068,10 @@ impl VmdkWriter {
         };
         if let Err(error) =
             transaction::commit(&self.path, self.raw.clone(), record, cut, &|source| {
-                Vmdk::open_parented(source, self.parent.clone()).map(drop)
+                Vmdk::open_parented(source, self.hosted()?.parent.clone()).map(drop)
             })
         {
-            state.failed = true;
+            state.mutation.failed = true;
             return Err(error);
         }
         state.mappings[index] = start;
@@ -1119,17 +1082,18 @@ impl VmdkWriter {
     /// Write a bounded range, allocating unallocated grains through the journal.
     pub fn write_all_at(&self, offset: u64, data: &[u8]) -> io::Result<()> {
         #[cfg(target_os = "linux")]
-        if let Some(sparse) = &self.sparse {
+        if let Backend::SplitSparse(sparse) = &self.backend {
             return sparse.write_all_at(offset, data);
         }
         crate::check_range(offset, data.len() as u64, self.size)?;
-        let mut state = self.operation()?;
-        if let Some(flat) = &self.flat {
+        if let Backend::Flat(flat) = &self.backend {
+            let mut state = flat.operation()?;
             if !data.is_empty() {
                 self.begin_mutation(&mut state)?;
             }
-            return flat.write_all_at(offset, data);
+            return flat.flat.write_all_at(offset, data);
         }
+        let mut state = self.operation()?;
         if !data.is_empty() {
             let first = offset / 65536;
             let last = (offset + data.len() as u64 - 1) / 65536;
@@ -1139,7 +1103,7 @@ impl VmdkWriter {
                     return Err(io::ErrorKind::Unsupported.into());
                 }
             }
-            self.begin_mutation(&mut state)?;
+            self.begin_mutation(&mut state.mutation)?;
         }
         let mut done = 0;
         while done < data.len() {
@@ -1167,14 +1131,15 @@ impl VmdkWriter {
     /// Read a bounded logical range from the currently written image.
     pub fn read_exact_at(&self, offset: u64, dst: &mut [u8]) -> io::Result<()> {
         #[cfg(target_os = "linux")]
-        if let Some(sparse) = &self.sparse {
+        if let Backend::SplitSparse(sparse) = &self.backend {
             return sparse.read_exact_at(offset, dst);
         }
         crate::check_range(offset, dst.len() as u64, self.size)?;
-        let state = self.operation()?;
-        if let Some(flat) = &self.flat {
-            return flat.read_exact_at(offset, dst);
+        if let Backend::Flat(flat) = &self.backend {
+            let _state = flat.operation()?;
+            return flat.flat.read_exact_at(offset, dst);
         }
+        let state = self.operation()?;
         let mut done = 0;
         while done < dst.len() {
             let position = offset + done as u64;
@@ -1182,7 +1147,7 @@ impl VmdkWriter {
             let mapping = state.mappings[(position / 65536) as usize];
             if mapping == 0
                 && !state.zero_mask[(position / 65536) as usize]
-                && let Some(parent) = &self.parent
+                && let Some(parent) = &self.hosted()?.parent
             {
                 parent.read_exact_at(position, &mut dst[done..done + count])?;
             } else if mapping == 0 {
@@ -1199,28 +1164,30 @@ impl VmdkWriter {
     /// Zero a bounded logical range while retaining its allocation.
     pub fn write_zeroes(&self, offset: u64, length: u64) -> io::Result<()> {
         #[cfg(target_os = "linux")]
-        if let Some(sparse) = &self.sparse {
+        if let Backend::SplitSparse(sparse) = &self.backend {
             return sparse.write_zeroes(offset, length);
         }
         crate::check_range(offset, length, self.size)?;
-        let mut state = self.operation()?;
-        if let Some(flat) = &self.flat {
+        if let Backend::Flat(flat) = &self.backend {
+            let mut state = flat.operation()?;
             if length != 0 {
                 self.begin_mutation(&mut state)?;
             }
-            return flat.write_zeroes(offset, length);
+            return flat.flat.write_zeroes(offset, length);
         }
+        let mut state = self.operation()?;
         if length != 0 {
             let first = offset / 65536;
             let last = (offset + length - 1) / 65536;
-            if self.parent.is_some() && state.mappings[first as usize..=last as usize].contains(&0)
+            if self.hosted()?.parent.is_some()
+                && state.mappings[first as usize..=last as usize].contains(&0)
             {
                 self.raw.require_single_link_for_journal()?;
                 if !self.raw.len().is_multiple_of(65536) {
                     return Err(io::ErrorKind::Unsupported.into());
                 }
             }
-            self.begin_mutation(&mut state)?;
+            self.begin_mutation(&mut state.mutation)?;
         }
         let mut done = 0;
         while done < length {
@@ -1228,7 +1195,7 @@ impl VmdkWriter {
             let count = (65536 - position % 65536).min(length - done);
             let index = (position / 65536) as usize;
             let mapping = state.mappings[index];
-            if mapping == 0 && self.parent.is_some() && !state.zero_mask[index] {
+            if mapping == 0 && self.hosted()?.parent.is_some() && !state.zero_mask[index] {
                 self.allocate(
                     index,
                     position % 65536,
@@ -1247,15 +1214,19 @@ impl VmdkWriter {
     /// Durably flush completed payload writes through the host filesystem.
     pub fn flush(&self) -> io::Result<()> {
         #[cfg(target_os = "linux")]
-        if let Some(sparse) = &self.sparse {
+        if let Backend::SplitSparse(sparse) = &self.backend {
             return sparse.flush();
         }
-        let mut state = self.operation()?;
-        if let Some(flat) = &self.flat {
-            flat.flush()?;
+        if let Backend::Flat(flat) = &self.backend {
+            let mut state = flat.operation()?;
+            flat.flat.flush()?;
+            self.raw.flush()?;
+            state.epoch = false;
+            return Ok(());
         }
+        let mut state = self.operation()?;
         self.raw.flush()?;
-        state.epoch = false;
+        state.mutation.epoch = false;
         Ok(())
     }
 }
@@ -1325,7 +1296,7 @@ mod recovery_tests {
                             let writer = open().unwrap();
                             {
                                 let mut state = writer.operation().unwrap();
-                                writer.begin_mutation(&mut state).unwrap();
+                                writer.begin_mutation(&mut state.mutation).unwrap();
                                 assert_eq!(
                                     writer
                                         .discard_grain(0, &mut state, Some(cut))
@@ -1412,7 +1383,7 @@ mod recovery_tests {
                 writer.write_all_at(0, &[19; 512]).unwrap();
                 {
                     let mut state = writer.operation().unwrap();
-                    writer.begin_mutation(&mut state).unwrap();
+                    writer.begin_mutation(&mut state.mutation).unwrap();
                     assert_eq!(
                         writer
                             .discard_grain(0, &mut state, Some(cut))
@@ -1599,7 +1570,7 @@ mod recovery_tests {
             let writer = VmdkWriter::open(&path).unwrap();
             {
                 let mut state = writer.operation().unwrap();
-                writer.begin_mutation(&mut state).unwrap();
+                writer.begin_mutation(&mut state.mutation).unwrap();
                 assert!(
                     writer
                         .allocate(1, 17, &[8; 19], &mut state, Some(cut))
@@ -1609,10 +1580,13 @@ mod recovery_tests {
             if cut == 7 {
                 let mut p = [0; 4];
                 let mut r = [0; 4];
-                writer.raw.read_exact_at(writer.primary[1], &mut p).unwrap();
                 writer
                     .raw
-                    .read_exact_at(writer.redundant[1].unwrap(), &mut r)
+                    .read_exact_at(writer.hosted().unwrap().primary[1], &mut p)
+                    .unwrap();
+                writer
+                    .raw
+                    .read_exact_at(writer.hosted().unwrap().redundant[1].unwrap(), &mut r)
                     .unwrap();
                 assert_eq!(p, [0; 4]);
                 assert_ne!(r, [0; 4]);
@@ -1657,7 +1631,7 @@ mod recovery_tests {
             let writer = VmdkWriter::open_chain(&child, std::slice::from_ref(&base)).unwrap();
             {
                 let mut state = writer.operation().unwrap();
-                writer.begin_mutation(&mut state).unwrap();
+                writer.begin_mutation(&mut state.mutation).unwrap();
                 assert!(
                     writer
                         .allocate(0, 17, &[0; 19], &mut state, Some(cut))
@@ -1676,5 +1650,20 @@ mod recovery_tests {
             VmdkWriter::open_chain(&child, std::slice::from_ref(&base)).unwrap();
             assert_eq!(std::fs::read(&base).unwrap(), original);
         }
+    }
+}
+
+impl FlatBackend {
+    fn operation(&self) -> io::Result<std::sync::MutexGuard<'_, Mutation>> {
+        let state = self
+            .operation
+            .lock()
+            .map_err(|_| io::Error::other("VMDK writer mutex poisoned"))?;
+        if state.failed {
+            return Err(io::Error::other(
+                "VMDK transaction failed; reopen for recovery",
+            ));
+        }
+        Ok(state)
     }
 }

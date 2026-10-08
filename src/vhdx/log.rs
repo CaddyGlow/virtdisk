@@ -134,19 +134,13 @@ impl ReadAt for Overlay {
     }
 }
 fn crc_ring(log: &[u8], start: usize, length: usize) -> u32 {
-    let mut c = !0u32;
-    for i in 0..length {
-        let b = if (4..8).contains(&i) {
+    crate::crc32c::checksum((0..length).map(|i| {
+        if (4..8).contains(&i) {
             0
         } else {
             log[(start + i) % log.len()]
-        };
-        c ^= b as u32;
-        for _ in 0..8 {
-            c = (c >> 1) ^ if c & 1 != 0 { 0x82f63b78 } else { 0 };
         }
-    }
-    !c
+    }))
 }
 fn descriptor<'a>(log: &'a [u8], entry: &Entry, index: usize) -> &'a [u8] {
     let start = (entry.start + 64 + index * 32) % log.len();

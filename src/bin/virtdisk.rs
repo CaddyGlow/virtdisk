@@ -5,6 +5,8 @@ mod capabilities_output;
 mod error_output;
 #[path = "virtdisk/graph_output.rs"]
 mod graph_output;
+#[path = "virtdisk/json_output.rs"]
+mod json_output;
 use std::sync::Arc;
 use std::{env, ffi::OsStr, io, path::PathBuf, process::ExitCode};
 use std::{io::Write as _, ops::ControlFlow};

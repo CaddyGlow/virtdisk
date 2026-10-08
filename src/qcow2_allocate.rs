@@ -20,21 +20,24 @@ impl Builder {
         if !offset.is_multiple_of(CLUSTER) {
             return Err(io::ErrorKind::InvalidData.into());
         }
-        if !self.patches.contains_key(&offset) {
-            if self.patches.len() >= 16 {
-                return Err(io::Error::new(
-                    io::ErrorKind::Unsupported,
-                    "QCOW2 transaction exceeds cluster budget",
-                ));
+        let full = self.patches.len() >= 16;
+        match self.patches.entry(offset) {
+            std::collections::btree_map::Entry::Occupied(entry) => Ok(entry.into_mut()),
+            std::collections::btree_map::Entry::Vacant(entry) => {
+                if full {
+                    return Err(io::Error::new(
+                        io::ErrorKind::Unsupported,
+                        "QCOW2 transaction exceeds cluster budget",
+                    ));
+                }
+                let mut data = vec![0; CLUSTER as usize];
+                if offset < self.original {
+                    let count = (self.original - offset).min(CLUSTER) as usize;
+                    self.raw.read_exact_at(offset, &mut data[..count])?;
+                }
+                Ok(entry.insert(data))
             }
-            let mut data = vec![0; CLUSTER as usize];
-            if offset < self.original {
-                let count = (self.original - offset).min(CLUSTER) as usize;
-                self.raw.read_exact_at(offset, &mut data[..count])?;
-            }
-            self.patches.insert(offset, data);
         }
-        Ok(self.patches.get_mut(&offset).unwrap())
     }
     pub(super) fn read64(&mut self, offset: u64) -> io::Result<u64> {
         let start = (offset % CLUSTER) as usize;

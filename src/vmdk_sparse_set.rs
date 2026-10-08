@@ -22,19 +22,7 @@ fn unsupported() -> io::Error {
         "split sparse request exceeds supported metadata, geometry or resource bounds",
     )
 }
-struct Source {
-    raw: Arc<RawWriter>,
-    size: u64,
-}
-impl ReadAt for Source {
-    fn len(&self) -> u64 {
-        self.size
-    }
-    fn read_exact_at(&self, offset: u64, bytes: &mut [u8]) -> io::Result<()> {
-        crate::check_range(offset, bytes.len() as u64, self.size)?;
-        self.raw.read_exact_at(offset, bytes)
-    }
-}
+use crate::source::LockedSource as Source;
 struct Spec {
     name: String,
     size: u64,
@@ -54,17 +42,10 @@ fn descriptor_mode(source: &dyn ReadAt, allow_parent: bool) -> io::Result<Descri
     }
     let mut bytes = vec![0; source.len() as usize];
     source.read_exact_at(0, &mut bytes)?;
-    let end = bytes
-        .iter()
-        .position(|byte| *byte == 0)
-        .unwrap_or(bytes.len());
-    if bytes[end..].iter().any(|byte| *byte != 0) {
-        return Err(invalid());
-    }
-    let text = std::str::from_utf8(&bytes[..end]).map_err(|_| invalid())?;
+    let text = crate::vmdk_descriptor::text(&bytes)?;
+    let mut properties = crate::vmdk_descriptor::Properties::default();
     let mut version = false;
     let mut parent = false;
-    let mut hint = false;
     let mut profile = false;
     let mut cid = None;
     let mut specs = Vec::new();
@@ -75,12 +56,14 @@ fn descriptor_mode(source: &dyn ReadAt, allow_parent: bool) -> io::Result<Descri
             cursor += original.len();
             continue;
         }
-        if let Some((key, value)) = original.split_once('=') {
-            let value = value.trim();
-            match key.trim() {
-                "version" if !version && value == "1" => version = true,
+        if let Some((key, value)) = crate::vmdk_descriptor::property(original, cursor) {
+            let duplicate = properties.duplicate(key);
+            let field_range = value.range;
+            let value = value.text;
+            match key {
+                "version" if !duplicate && value == "1" => version = true,
                 "parentCID"
-                    if !parent
+                    if !duplicate
                         && (value == "ffffffff"
                             || (allow_parent
                                 && value.len() == 8
@@ -89,43 +72,31 @@ fn descriptor_mode(source: &dyn ReadAt, allow_parent: bool) -> io::Result<Descri
                     parent = true
                 }
                 "parentFileNameHint"
-                    if allow_parent && !hint && value.starts_with('"') && value.ends_with('"') =>
+                    if allow_parent
+                        && !duplicate
+                        && value.starts_with('"')
+                        && value.ends_with('"') =>
                 {
-                    hint = true
+                    // Profile permits one quoted parent hint.
                 }
-                "createType" if !profile && value == "\"twoGbMaxExtentSparse\"" => profile = true,
-                "CID"
-                    if cid.is_none()
-                        && !value.is_empty()
-                        && value.len() <= 8
-                        && value.bytes().all(|b| b.is_ascii_hexdigit()) =>
-                {
-                    let equals = original.find('=').ok_or_else(invalid)?;
-                    let whitespace =
-                        original[equals + 1..].len() - original[equals + 1..].trim_start().len();
-                    cid = Some(((cursor + equals + 1 + whitespace) as u64, value.len()));
+                "createType" if !duplicate && value == "\"twoGbMaxExtentSparse\"" => profile = true,
+                "CID" if !duplicate && crate::vmdk_descriptor::hexadecimal(value).is_ok() => {
+                    cid = Some((field_range.start as u64, field_range.len()));
                 }
                 key if key.starts_with("ddb.") => {}
                 _ => return Err(unsupported()),
             }
         } else {
-            let quote = line.find('"').ok_or_else(invalid)?;
-            let close = line[quote + 1..].find('"').ok_or_else(invalid)? + quote + 1;
-            let fields = line[..quote].split_whitespace().collect::<Vec<_>>();
-            if fields.len() != 3
-                || fields[0] != "RW"
-                || fields[2] != "SPARSE"
-                || !line[close + 1..].trim().is_empty()
+            let extent = crate::vmdk_descriptor::extent(line, 0)?;
+            if extent.access != "RW"
+                || extent.kind != "SPARSE"
+                || !extent.tail.is_empty()
                 || specs.len() >= 256
             {
                 return Err(unsupported());
             }
-            let size = fields[1]
-                .parse::<u64>()
-                .ok()
-                .and_then(|n| n.checked_mul(512))
-                .ok_or_else(invalid)?;
-            let name = &line[quote + 1..close];
+            let size = crate::vmdk_descriptor::sectors(extent.count.text)?;
+            let name = extent.name;
             if size == 0
                 || size > 2 * 1024 * 1024 * 1024
                 || name.is_empty()

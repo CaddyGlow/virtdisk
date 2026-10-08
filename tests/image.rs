@@ -2,20 +2,10 @@ use std::{io, sync::Arc};
 use virtdisk::{
     ImageFormat, RawDisk, RawWriter, ReadAt, compare_images, copy_image, detect_format,
 };
-struct Bytes(Vec<u8>);
-impl ReadAt for Bytes {
-    fn len(&self) -> u64 {
-        self.0.len() as u64
-    }
-    fn read_exact_at(&self, offset: u64, out: &mut [u8]) -> io::Result<()> {
-        let start = usize::try_from(offset).map_err(|_| io::ErrorKind::UnexpectedEof)?;
-        let end = start
-            .checked_add(out.len())
-            .ok_or(io::ErrorKind::UnexpectedEof)?;
-        out.copy_from_slice(self.0.get(start..end).ok_or(io::ErrorKind::UnexpectedEof)?);
-        Ok(())
-    }
-}
+#[path = "support/bytes.rs"]
+mod bytes;
+use bytes::Bytes;
+
 #[test]
 fn detection_recognizes_signatures_and_keeps_raw_explicit() {
     assert_eq!(

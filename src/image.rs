@@ -151,7 +151,11 @@ impl Image {
         let path = path.as_ref();
         let source = RawDisk::open(path)?;
         let container_size = source.len();
-        let format = format.or(detect_format(&source)?).ok_or_else(|| {
+        let format = match format {
+            Some(format) => Some(format),
+            None => detect_format(&source)?,
+        }
+        .ok_or_else(|| {
             io::Error::new(
                 io::ErrorKind::InvalidInput,
                 "unrecognized image; select raw explicitly",

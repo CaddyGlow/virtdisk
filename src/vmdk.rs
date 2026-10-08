@@ -119,6 +119,7 @@ struct Link {
 }
 impl Link {
     fn parse(text: &str, budget: &ReadBudget) -> io::Result<Self> {
+        let mut properties = crate::vmdk_descriptor::Properties::default();
         let mut cid = None;
         let mut parent_cid = None;
         let mut hint = None;
@@ -133,39 +134,25 @@ impl Link {
             if line.is_empty() || line.starts_with('#') {
                 continue;
             }
-            let Some((key, value)) = line.split_once('=') else {
-                let mut fields = line.split_whitespace();
-                if fields.next() != Some("RW") {
+            let Some((key, field)) = crate::vmdk_descriptor::property(line, 0) else {
+                let extent = crate::vmdk_descriptor::extent(line, 0)?;
+                if extent.access != "RW" {
                     return Err(unsupported("unsupported VMDK descriptor syntax"));
                 }
-                let capacity = fields
-                    .next()
-                    .ok_or_else(|| invalid("missing VMDK extent capacity"))?
-                    .parse::<u64>()
-                    .map_err(|_| invalid("invalid VMDK extent capacity"))?;
+                let capacity = crate::vmdk_descriptor::number(extent.count.text)?;
                 if capacity == 0 {
                     return Err(invalid("empty VMDK extent"));
                 }
-                let kind = fields
-                    .next()
-                    .ok_or_else(|| invalid("missing VMDK extent type"))?;
+                let kind = extent.kind;
                 sparse_extents &= kind == "SPARSE";
-                let quote = line
-                    .find('"')
-                    .ok_or_else(|| invalid("missing VMDK extent name"))?;
-                let end = line[quote + 1..]
-                    .find('"')
-                    .ok_or_else(|| invalid("invalid VMDK extent name"))?
-                    + quote
-                    + 1;
-                let name = &line[quote + 1..end];
+                let name = extent.name;
                 if name.is_empty()
                     || name.contains([':', '\\'])
                     || name.chars().any(char::is_control)
                 {
                     return Err(unsupported("unsupported VMDK extent name"));
                 }
-                if kind == "SPARSE" && !line[end + 1..].trim().is_empty() {
+                if kind == "SPARSE" && !extent.tail.is_empty() {
                     return Err(invalid("unexpected sparse extent offset"));
                 }
                 sectors = sectors
@@ -174,27 +161,22 @@ impl Link {
                 extent_count += 1;
                 continue;
             };
-            let value = value.trim();
-            match key.trim() {
+            let duplicate = properties.duplicate(key);
+            let value = field.text;
+            match key {
                 "CID" | "parentCID" => {
                     let field = if key.trim() == "CID" {
                         &mut cid
                     } else {
                         &mut parent_cid
                     };
-                    if field.is_some()
-                        || value.is_empty()
-                        || value.len() > 8
-                        || !value.bytes().all(|b| b.is_ascii_hexdigit())
-                    {
+                    if duplicate || crate::vmdk_descriptor::hexadecimal(value).is_err() {
                         return Err(invalid("invalid or duplicate VMDK CID"));
                     }
-                    *field = Some(
-                        u32::from_str_radix(value, 16).map_err(|_| invalid("invalid VMDK CID"))?,
-                    );
+                    *field = Some(crate::vmdk_descriptor::hexadecimal(value)?);
                 }
                 "parentFileNameHint" => {
-                    if hint.is_some() {
+                    if duplicate {
                         return Err(invalid("duplicate VMDK parent hint"));
                     }
                     let name = value
@@ -210,13 +192,13 @@ impl Link {
                     hint = Some(name.to_owned());
                 }
                 "version" => {
-                    if version || value != "1" {
+                    if duplicate || value != "1" {
                         return Err(invalid("invalid VMDK descriptor version"));
                     }
                     version = true;
                 }
                 "createType" => {
-                    if profile.is_some() {
+                    if duplicate {
                         return Err(invalid("duplicate VMDK createType"));
                     }
                     profile = Some(value.to_owned());
@@ -326,15 +308,7 @@ impl Vmdk {
         let _scratch = budget.cache(size)?;
         let mut bytes = vec![0; size as usize];
         source.read_exact_at(sector(u64le(&header, 28))?, &mut bytes)?;
-        let end = bytes.iter().position(|b| *b == 0).unwrap_or(bytes.len());
-        if bytes[end..].iter().any(|b| *b != 0) {
-            return Err(invalid("nonzero VMDK descriptor padding"));
-        }
-        let link = Link::parse(
-            std::str::from_utf8(&bytes[..end])
-                .map_err(|_| invalid("invalid VMDK descriptor encoding"))?,
-            budget,
-        )?;
+        let link = Link::parse(crate::vmdk_descriptor::text(&bytes)?, budget)?;
         if link.sectors != u64le(&header, 12)
             || link.extent_count != 1
             || !link.sparse_extents
@@ -446,12 +420,7 @@ impl Vmdk {
         let mut bytes =
             vec![0; usize::try_from(size).map_err(|_| invalid("VMDK descriptor too large"))?];
         source.read_exact_at(offset, &mut bytes)?;
-        let end = bytes.iter().position(|b| *b == 0).unwrap_or(bytes.len());
-        if bytes[end..].iter().any(|b| *b != 0) {
-            return Err(invalid("nonzero VMDK descriptor padding"));
-        }
-        let text = std::str::from_utf8(&bytes[..end])
-            .map_err(|_| invalid("invalid VMDK descriptor encoding"))?;
+        let text = crate::vmdk_descriptor::text(&bytes)?;
         let link = Link::parse(text, budget)?;
         if hosted
             && (link.sectors != u64le(&header, 12)
@@ -611,14 +580,13 @@ impl Vmdk {
         let _descriptor_cache = budget.cache(source.len())?;
         let mut bytes = vec![0; source.len() as usize];
         source.read_exact_at(0, &mut bytes)?;
-        let content_end = bytes.iter().rposition(|b| *b != 0).map_or(0, |i| i + 1);
-        let text = std::str::from_utf8(&bytes[..content_end])
-            .map_err(|_| invalid("invalid VMDK descriptor encoding"))?;
+        let text = crate::vmdk_descriptor::text(&bytes)?;
         let mut used = BTreeSet::new();
         let mut extent_scratch = Vec::new();
         let mut extents = Vec::new();
         let mut length = 0u64;
         let mut container_set_size = source.len();
+        let mut properties = crate::vmdk_descriptor::Properties::default();
         let mut parent = false;
         let mut version = false;
         let mut cid = false;
@@ -631,27 +599,28 @@ impl Vmdk {
             if line.is_empty() || line.starts_with('#') {
                 continue;
             }
-            if let Some((key, value)) = line.split_once('=') {
-                let value = value.trim();
-                match key.trim() {
+            if let Some((key, field)) = crate::vmdk_descriptor::property(line, 0) {
+                let duplicate = properties.duplicate(key);
+                let value = field.text;
+                match key {
                     "version" => {
-                        if version || value != "1" {
+                        if duplicate || value != "1" {
                             return Err(unsupported("unsupported VMDK descriptor version"));
                         }
                         version = true;
                     }
                     "CID" => {
-                        if cid
+                        if duplicate
                             || value.is_empty()
                             || value.len() > 8
-                            || u32::from_str_radix(value, 16).is_err()
+                            || crate::vmdk_descriptor::hexadecimal(value).is_err()
                         {
                             return Err(invalid("invalid VMDK CID"));
                         }
                         cid = true;
                     }
                     "parentCID" => {
-                        if parent || (value != "ffffffff" && backing.is_none()) {
+                        if duplicate || (value != "ffffffff" && backing.is_none()) {
                             return Err(unsupported("VMDK parent requires authorization"));
                         }
                         parent = true;
@@ -662,7 +631,7 @@ impl Vmdk {
                         }
                     }
                     "createType" => {
-                        if create_type {
+                        if duplicate {
                             return Err(invalid("duplicate VMDK createType"));
                         }
                         create_type = true;
@@ -683,31 +652,20 @@ impl Vmdk {
                 }
                 continue;
             }
-            let quote = line
-                .find('"')
-                .ok_or_else(|| invalid("invalid VMDK extent syntax"))?;
-            let end = line[quote + 1..]
-                .find('"')
-                .ok_or_else(|| invalid("invalid VMDK extent name"))?
-                + quote
-                + 1;
-            let fields: Vec<_> = line[..quote].split_whitespace().collect();
-            if fields.len() != 3 || fields[0] != "RW" {
+            let extent = crate::vmdk_descriptor::extent(line, 0)?;
+            if extent.access != "RW" {
                 return Err(unsupported("unsupported VMDK extent access"));
             }
             if extent_kind.is_empty() {
-                extent_kind = fields[2];
-            } else if extent_kind != fields[2] {
+                extent_kind = extent.kind;
+            } else if extent_kind != extent.kind {
                 return Err(unsupported("mixed VMDK extent profiles"));
             }
-            let sectors = fields[1]
-                .parse::<u64>()
-                .map_err(|_| invalid("invalid VMDK extent capacity"))?;
-            let size = sector(sectors)?;
+            let size = crate::vmdk_descriptor::sectors(extent.count.text)?;
             if size == 0 {
                 return Err(invalid("empty VMDK extent"));
             }
-            let name = &line[quote + 1..end];
+            let name = extent.name;
             if name.is_empty()
                 || name.contains(':')
                 || name.contains('\\')
@@ -746,8 +704,8 @@ impl Vmdk {
             container_set_size = container_set_size
                 .checked_add(extent_source.len())
                 .ok_or_else(|| invalid("VMDK container set size overflow"))?;
-            let tail = line[end + 1..].trim();
-            let reader: Arc<dyn ReadAt> = match fields[2] {
+            let tail = extent.tail;
+            let reader: Arc<dyn ReadAt> = match extent.kind {
                 "FLAT" => {
                     let offset = sector(
                         tail.parse()
@@ -774,7 +732,7 @@ impl Vmdk {
                 }
                 _ => return Err(unsupported("unsupported VMDK extent type")),
             };
-            let physical_offset = if fields[2] == "FLAT" {
+            let physical_offset = if extent.kind == "FLAT" {
                 sector(
                     tail.parse()
                         .map_err(|_| invalid("invalid flat extent offset"))?,
@@ -785,7 +743,7 @@ impl Vmdk {
             factory.extent(
                 path,
                 &extent_path,
-                fields[2] == "SPARSE",
+                extent.kind == "SPARSE",
                 length,
                 size,
                 physical_offset,
@@ -915,18 +873,18 @@ impl Vmdk {
             let _descriptor_cache = budget.cache(desc_size)?;
             let mut desc = vec![0; desc_size as usize];
             source.read_exact_at(desc_offset, &mut desc)?;
-            let desc = std::str::from_utf8(&desc)
-                .map_err(|_| invalid("invalid VMDK descriptor encoding"))?;
+            let desc = crate::vmdk_descriptor::text(&desc)?;
             // QEMU split sparse extents reserve an entirely zero descriptor area.
             // Their external descriptor owns the linkage; this is an absent descriptor.
-            let mut parent = desc.bytes().all(|b| b == 0);
-            for line in desc.split(['\n', '\0']) {
+            let mut parent = desc.is_empty();
+            for line in desc.lines() {
                 let line = line.trim();
                 if line.starts_with('#') {
                     continue;
                 }
-                if let Some((key, value)) = line.split_once('=') {
-                    match key.trim() {
+                if let Some((key, field)) = crate::vmdk_descriptor::property(line, 0) {
+                    let value = field.text;
+                    match key {
                         "parentCID" => {
                             if value.trim() != "ffffffff" && !allow_parent {
                                 return Err(unsupported("VMDK parent requires authorization"));

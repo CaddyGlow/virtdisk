@@ -11,19 +11,7 @@ fn invalid(message: &'static str) -> io::Error {
 fn unsupported(message: &'static str) -> io::Error {
     io::Error::new(io::ErrorKind::Unsupported, message)
 }
-fn sectors(value: &str) -> io::Result<u64> {
-    value
-        .parse::<u64>()
-        .ok()
-        .and_then(|n| n.checked_mul(512))
-        .ok_or_else(|| invalid("invalid flat VMDK sector range"))
-}
-fn hexadecimal(value: &str) -> io::Result<u32> {
-    if value.is_empty() || value.len() > 8 || !value.bytes().all(|b| b.is_ascii_hexdigit()) {
-        return Err(invalid("invalid flat VMDK CID"));
-    }
-    u32::from_str_radix(value, 16).map_err(|_| invalid("invalid flat VMDK CID"))
-}
+use crate::vmdk_descriptor::{hexadecimal, sectors};
 struct Extent {
     writer: Arc<RawWriter>,
     start: u64,
@@ -124,12 +112,8 @@ pub(super) fn open_policy(
     }
     let mut bytes = vec![0; descriptor.len() as usize];
     descriptor.read_exact_at(0, &mut bytes)?;
-    let end = bytes.iter().position(|b| *b == 0).unwrap_or(bytes.len());
-    if bytes[end..].iter().any(|b| *b != 0) {
-        return Err(invalid("invalid flat VMDK descriptor padding"));
-    }
-    let text = std::str::from_utf8(&bytes[..end])
-        .map_err(|_| invalid("invalid flat VMDK descriptor encoding"))?;
+    let text = crate::vmdk_descriptor::text(&bytes)?;
+    let mut properties = crate::vmdk_descriptor::Properties::default();
     let mut version = false;
     let mut parent = false;
     let mut profile = None;
@@ -142,33 +126,32 @@ pub(super) fn open_policy(
             cursor += original.len();
             continue;
         }
-        if let Some((key, value)) = original.split_once('=') {
-            let value = value.trim();
-            match key.trim() {
+        if let Some((key, value)) = crate::vmdk_descriptor::property(original, cursor) {
+            let duplicate = properties.duplicate(key);
+            let field_range = value.range;
+            let value = value.text;
+            match key {
                 "version" => {
-                    if version || value != "1" {
+                    if duplicate || value != "1" {
                         return Err(unsupported("unsupported flat VMDK descriptor version"));
                     }
                     version = true;
                 }
                 "CID" => {
                     hexadecimal(value)?;
-                    if cid.is_some() {
+                    if duplicate {
                         return Err(invalid("duplicate flat VMDK CID"));
                     }
-                    let equals = original.find('=').unwrap();
-                    let whitespace =
-                        original[equals + 1..].len() - original[equals + 1..].trim_start().len();
-                    cid = Some(((cursor + equals + 1 + whitespace) as u64, value.len()));
+                    cid = Some((field_range.start as u64, field_range.len()));
                 }
                 "parentCID" => {
-                    if parent || hexadecimal(value)? != u32::MAX {
+                    if duplicate || hexadecimal(value)? != u32::MAX {
                         return Err(unsupported("flat VMDK parents are not writable"));
                     }
                     parent = true;
                 }
                 "createType" => {
-                    if profile.is_some()
+                    if duplicate
                         || !["\"monolithicFlat\"", "\"twoGbMaxExtentFlat\""].contains(&value)
                     {
                         return Err(unsupported(
@@ -184,31 +167,16 @@ pub(super) fn open_policy(
             if specs.len() >= 256 {
                 return Err(unsupported("flat VMDK extent count exceeds 256"));
             }
-            let quote = line
-                .find('"')
-                .ok_or_else(|| invalid("missing flat VMDK extent filename"))?;
-            let close = line[quote + 1..]
-                .find('"')
-                .ok_or_else(|| invalid("invalid flat VMDK extent filename"))?
-                + quote
-                + 1;
-            let mut fields = line[..quote].split_whitespace();
-            if fields.next() != Some("RW") {
-                return Err(unsupported("flat VMDK extent must be RW"));
+            let extent = crate::vmdk_descriptor::extent(line, 0)?;
+            if extent.access != "RW" || extent.kind != "FLAT" {
+                return Err(unsupported("flat VMDK writer requires RW FLAT extent"));
             }
-            let length = sectors(
-                fields
-                    .next()
-                    .ok_or_else(|| invalid("missing flat VMDK capacity"))?,
-            )?;
-            if fields.next() != Some("FLAT") || fields.next().is_some() {
-                return Err(unsupported("flat VMDK writer requires FLAT extent"));
-            }
-            let name = &line[quote + 1..close];
+            let length = sectors(extent.count.text)?;
+            let name = extent.name;
             if name.is_empty() || name.contains([':', '\\']) || name.chars().any(char::is_control) {
                 return Err(unsupported("unsupported flat VMDK extent filename"));
             }
-            let offset = sectors(line[close + 1..].trim())?;
+            let offset = sectors(extent.tail)?;
             if length == 0 {
                 return Err(invalid("empty flat VMDK extent"));
             }

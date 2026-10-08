@@ -12,12 +12,17 @@ use std::io;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
+mod crc32c;
+mod native_id;
 mod policy;
+mod sidecar;
+mod source;
 #[cfg(test)]
 mod test_sync;
 mod transaction;
 #[cfg(target_os = "linux")]
 mod transaction_set;
+mod vmdk_descriptor;
 pub use policy::{
     CacheReservation, ParserLimitExceeded, ParserLimits, ParserResource, ReadBudget,
     ReadBudgetUsage, ReadContext, ReadError, contextual_reader,

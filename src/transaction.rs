@@ -1,6 +1,7 @@
 //! Bounded hosted-image metadata transactions with old/proposed validation.
 
 use crate::ReadAt;
+use crate::source::LockedSource;
 use sha2::{Digest, Sha256};
 use std::io;
 
@@ -324,12 +325,12 @@ struct OwnedPatched {
 #[cfg(target_os = "linux")]
 pub(crate) fn shadow(
     source: std::sync::Arc<dyn ReadAt>,
-    record: Record,
+    record: std::sync::Arc<Record>,
     replacement: bool,
 ) -> std::sync::Arc<dyn ReadAt> {
     std::sync::Arc::new(OwnedPatched {
         source,
-        record: std::sync::Arc::new(record),
+        record,
         replacement,
     })
 }
@@ -458,26 +459,10 @@ pub(crate) fn recover(
     raw: std::sync::Arc<crate::RawWriter>,
     validator: &dyn Fn(std::sync::Arc<dyn ReadAt>) -> io::Result<()>,
 ) -> io::Result<()> {
-    use std::io::Read;
     raw.require_single_link_for_journal()?;
-    let journal = sidecar(path);
-    let mut options = std::fs::OpenOptions::new();
-    options.read(true);
-    #[cfg(target_os = "linux")]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        options.custom_flags(0x20000 | 0x800);
-    } // O_NOFOLLOW
-    let mut file = match options.open(journal) {
-        Ok(file) => file,
-        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
-        Err(error) => return Err(error),
+    let Some(bytes) = crate::sidecar::read_bounded(&sidecar(path), LIMIT, corrupt)? else {
+        return Ok(());
     };
-    if !file.metadata()?.is_file() || file.metadata()?.len() > LIMIT as u64 {
-        return Err(corrupt());
-    }
-    let mut bytes = Vec::new();
-    (&mut file).take(LIMIT as u64 + 1).read_to_end(&mut bytes)?;
     if bytes.starts_with(b"VDTXPAR1") {
         return Err(io::Error::new(
             io::ErrorKind::Unsupported,
@@ -489,22 +474,34 @@ pub(crate) fn recover(
     replay(path, raw, &record, None, validator)
 }
 
-struct LockedSource {
-    raw: std::sync::Arc<crate::RawWriter>,
-    size: u64,
-}
-impl ReadAt for LockedSource {
-    fn len(&self) -> u64 {
-        self.size
-    }
-    fn read_exact_at(&self, o: u64, b: &mut [u8]) -> io::Result<()> {
-        self.raw.read_exact_at(o, b)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn shadow_views_share_record_and_select_old_or_new_bytes() {
+        let record = std::sync::Arc::new(Record {
+            original_length: 4,
+            final_length: 4,
+            original_digest: [0; 32],
+            patches: vec![Patch {
+                order: 0,
+                offset: 0,
+                old: vec![1; 4],
+                new: vec![2; 4],
+            }],
+        });
+        let source: std::sync::Arc<dyn ReadAt> = std::sync::Arc::new(crate::source::ZeroSource(4));
+        let old = shadow(source.clone(), record.clone(), false);
+        let new = shadow(source, record.clone(), true);
+        assert_eq!(std::sync::Arc::strong_count(&record), 3);
+        let mut bytes = [0; 4];
+        old.read_exact_at(0, &mut bytes).unwrap();
+        assert_eq!(bytes, [1; 4]);
+        new.read_exact_at(0, &mut bytes).unwrap();
+        assert_eq!(bytes, [2; 4]);
+    }
+
     #[test]
     fn bounded_record_rejects_overlaps_bad_lengths_checksum_and_truncation() {
         let good = Record {

@@ -1,4 +1,5 @@
 //! Read-only graph diagnostics with lossless native path bytes.
+use super::json_output::JsonString;
 use std::{
     ffi::OsStr,
     io::{self, Write},
@@ -75,19 +76,7 @@ fn index(writer: &mut impl Write, value: Option<usize>) -> io::Result<()> {
 }
 
 fn json_string(writer: &mut impl Write, value: &str) -> io::Result<()> {
-    writer.write_all(b"\"")?;
-    for character in value.chars() {
-        match character {
-            '"' => writer.write_all(b"\\\"")?,
-            '\\' => writer.write_all(b"\\\\")?,
-            '\n' => writer.write_all(b"\\n")?,
-            '\r' => writer.write_all(b"\\r")?,
-            '\t' => writer.write_all(b"\\t")?,
-            value if value < ' ' => write!(writer, "\\u{:04x}", value as u32)?,
-            value => writer.write_all(value.encode_utf8(&mut [0; 4]).as_bytes())?,
-        }
-    }
-    writer.write_all(b"\"")
+    write!(writer, "{}", JsonString(value))
 }
 
 fn path_encoding() -> &'static str {

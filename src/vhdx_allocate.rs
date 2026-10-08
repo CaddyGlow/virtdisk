@@ -471,8 +471,8 @@ fn commit_partial_updates(
     state.file.set_len(final_length)?;
     state.file.sync_all()?;
     hook(Stage::PayloadSynced)?;
-    let source: std::sync::Arc<dyn ReadAt> = std::sync::Arc::new(super::FileReader(
-        std::sync::Mutex::new(state.file.try_clone()?),
+    let source: std::sync::Arc<dyn ReadAt> = std::sync::Arc::new(super::FileSource::new(
+        state.file.try_clone()?,
         final_length,
     ));
     crate::Vhdx::validate_writable_view(
@@ -708,10 +708,8 @@ pub(super) fn metadata_sector(
             .checked_add(if state.epoch { 4 } else { 6 })
             .ok_or_else(|| invalid("VHDX header sequence exhausted"))?;
         let old_length = state.file.metadata()?.len();
-        let source: std::sync::Arc<dyn ReadAt> = std::sync::Arc::new(super::FileReader(
-            std::sync::Mutex::new(state.file.try_clone()?),
-            old_length,
-        ));
+        let source: std::sync::Arc<dyn ReadAt> =
+            std::sync::Arc::new(super::FileSource::new(state.file.try_clone()?, old_length));
         crate::Vhdx::open_with_budget(source.clone(), writer.budget.clone())?;
         crate::Vhdx::open_with_budget(
             std::sync::Arc::new(SectorView {

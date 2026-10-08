@@ -15,23 +15,10 @@ fn put(b: &mut [u8], o: usize, n: u32) {
 fn put64(b: &mut [u8], o: usize, n: u64) {
     b[o..o + 8].copy_from_slice(&n.to_le_bytes());
 }
-pub(crate) fn identity() -> io::Result<[u8; 16]> {
-    let mut id = [0; 16];
-    getrandom::fill(&mut id).map_err(|e| io::Error::other(e.to_string()))?;
-    id[7] = (id[7] & 15) | 64;
-    id[8] = (id[8] & 63) | 128;
-    Ok(id)
-}
+pub(crate) use crate::native_id::identity;
 pub(crate) fn checksum(b: &mut [u8]) {
     put(b, 4, 0);
-    let mut crc = !0u32;
-    for &v in b.iter() {
-        crc ^= v as u32;
-        for _ in 0..8 {
-            crc = (crc >> 1) ^ if crc & 1 != 0 { 0x82f63b78 } else { 0 };
-        }
-    }
-    put(b, 4, !crc);
+    put(b, 4, crate::crc32c::checksum(b.iter().copied()));
 }
 /// Export an immutable reader to a new clean standalone dynamic VHDX v1 image.
 ///

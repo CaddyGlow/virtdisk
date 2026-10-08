@@ -122,3 +122,57 @@ fn cancelled_compaction_leaves_no_published_output_or_staging_files() {
     );
     assert!(!output.exists());
 }
+
+#[test]
+fn legacy_compaction_checks_before_reads_and_before_publication() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use virtdisk::ReadAt;
+    struct CountingSource {
+        reads: AtomicUsize,
+    }
+    impl ReadAt for CountingSource {
+        fn len(&self) -> u64 {
+            512
+        }
+        fn read_exact_at(&self, offset: u64, bytes: &mut [u8]) -> std::io::Result<()> {
+            assert!(offset + bytes.len() as u64 <= self.len());
+            self.reads.fetch_add(1, Ordering::Relaxed);
+            bytes.fill(7);
+            Ok(())
+        }
+    }
+    let directory = tempfile::tempdir().unwrap();
+    for format in [
+        ImageFormat::Raw,
+        ImageFormat::Qcow2,
+        ImageFormat::Vdi,
+        ImageFormat::Vmdk,
+        ImageFormat::Vhdx,
+    ] {
+        let source = CountingSource {
+            reads: AtomicUsize::new(0),
+        };
+        let calls = AtomicUsize::new(0);
+        let success = directory.path().join(format!("success-{format:?}"));
+        virtdisk::compact_image_with_cancel(&source, &success, format, &|| {
+            let call = calls.fetch_add(1, Ordering::Relaxed);
+            // The initial check and each pre-read check precede their source I/O.
+            assert_eq!(source.reads.load(Ordering::Relaxed), call.saturating_sub(1));
+            false
+        })
+        .unwrap();
+        let total_calls = calls.load(Ordering::Relaxed);
+        assert_eq!(total_calls, source.reads.load(Ordering::Relaxed) + 2);
+        let cancelled = directory
+            .path()
+            .join(format!("publication-cancel-{format:?}"));
+        calls.store(0, Ordering::Relaxed);
+        let error = virtdisk::compact_image_with_cancel(&source, &cancelled, format, &|| {
+            calls.fetch_add(1, Ordering::Relaxed) + 1 == total_calls
+        })
+        .unwrap_err();
+        assert_eq!(error.kind(), std::io::ErrorKind::Interrupted);
+        assert!(!cancelled.exists());
+    }
+    assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 5);
+}

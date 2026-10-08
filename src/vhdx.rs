@@ -41,14 +41,11 @@ fn u64le(b: &[u8], o: usize) -> u64 {
     u64::from_le_bytes(b[o..o + 8].try_into().unwrap())
 }
 pub(crate) fn checksum(b: &[u8]) -> bool {
-    let mut crc = !0u32;
-    for (i, &v) in b.iter().enumerate() {
-        crc ^= if (4..8).contains(&i) { 0 } else { v as u32 };
-        for _ in 0..8 {
-            crc = (crc >> 1) ^ if crc & 1 != 0 { 0x82f63b78 } else { 0 };
-        }
-    }
-    !crc == u32le(b, 4)
+    crate::crc32c::checksum(
+        b.iter()
+            .enumerate()
+            .map(|(i, &byte)| if (4..8).contains(&i) { 0 } else { byte }),
+    ) == u32le(b, 4)
 }
 fn read(source: &dyn ReadAt, budget: &ReadBudget, o: u64, n: usize) -> io::Result<Vec<u8>> {
     budget.metadata(n as u64)?;

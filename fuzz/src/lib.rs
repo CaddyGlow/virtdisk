@@ -230,14 +230,12 @@ fn qcow2_write_model(data: &[u8]) -> usize {
                 } else {
                     virtdisk::ShrinkPolicy::Reject
                 };
-                let allowed = !overlay
-                    && (new_size == model.len()
-                        || (cfg!(target_os = "linux")
-                            && saved.is_empty()
-                            && (new_size >= model.len()
-                                || policy == virtdisk::ShrinkPolicy::AllowDataLoss
-                                || (policy == virtdisk::ShrinkPolicy::RequireZero
-                                    && model[new_size..].iter().all(|b| *b == 0)))));
+                let allowed = new_size == model.len()
+                    || (cfg!(target_os = "linux")
+                        && (new_size >= model.len()
+                            || policy == virtdisk::ShrinkPolicy::AllowDataLoss
+                            || (policy == virtdisk::ShrinkPolicy::RequireZero
+                                && model[new_size..].iter().all(|b| *b == 0))));
                 let before = if allowed {
                     None
                 } else {
@@ -276,7 +274,7 @@ fn qcow2_write_model(data: &[u8]) -> usize {
                 let before = std::fs::read(&child).unwrap();
                 let duplicate = saved.iter().any(|(saved_id, _)| *saved_id == id);
                 let result = writer.create_snapshot(&id, &name);
-                if overlay || !cfg!(target_os = "linux") {
+                if !cfg!(target_os = "linux") {
                     assert_eq!(result.unwrap_err().kind(), io::ErrorKind::Unsupported);
                     assert_eq!(std::fs::read(&child).unwrap(), before);
                 } else if record[5] % 4 != 0 {
@@ -307,7 +305,7 @@ fn qcow2_write_model(data: &[u8]) -> usize {
                 } else {
                     writer.revert_snapshot(&id)
                 };
-                if overlay || !cfg!(target_os = "linux") {
+                if !cfg!(target_os = "linux") {
                     assert_eq!(result.unwrap_err().kind(), io::ErrorKind::Unsupported);
                     assert_eq!(std::fs::read(&child).unwrap(), before);
                 } else if let Some(index) = selected {
@@ -722,19 +720,61 @@ mod smoke {
     }
     #[test]
     fn corpus_and_truncations_exercise_owned_harnesses() {
-        for target in super::TARGETS {
-            for seed in super::seeds(target) {
-                super::run(target, &seed).unwrap();
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        #[derive(Clone, Copy, Debug)]
+        enum Variant {
+            Full,
+            Prefix(usize),
+            Mutation(usize),
+        }
+
+        let corpus: Vec<_> = super::TARGETS
+            .iter()
+            .map(|&target| (target, super::seeds(target)))
+            .collect();
+        let mut cases = Vec::new();
+        for (target, seeds) in &corpus {
+            for (index, seed) in seeds.iter().enumerate() {
+                cases.push((*target, index, seed, Variant::Full));
                 for end in [0, seed.len() / 2, seed.len().saturating_sub(1)] {
-                    super::run(target, &seed[..end]).unwrap();
+                    cases.push((*target, index, seed, Variant::Prefix(end)));
                 }
                 for offset in (0..seed.len()).step_by((seed.len() / 16).max(1)) {
-                    let mut mutation = seed.clone();
-                    mutation[offset] ^= 0xff;
-                    super::run(target, &mutation).unwrap();
+                    cases.push((*target, index, seed, Variant::Mutation(offset)));
                 }
             }
         }
+
+        // Each replay owns its files. Bound concurrent image buffers and durability
+        // work while balancing short parser cases against expensive writer cases.
+        let workers = std::thread::available_parallelism()
+            .map_or(1, usize::from)
+            .min(4);
+        let next = AtomicUsize::new(0);
+        std::thread::scope(|scope| {
+            for _ in 0..workers {
+                scope.spawn(|| {
+                    while let Some(&(target, index, seed, variant)) =
+                        cases.get(next.fetch_add(1, Ordering::Relaxed))
+                    {
+                        let result = std::panic::catch_unwind(|| match variant {
+                            Variant::Full => super::run(target, seed).unwrap(),
+                            Variant::Prefix(end) => super::run(target, &seed[..end]).unwrap(),
+                            Variant::Mutation(offset) => {
+                                let mut mutation = seed.clone();
+                                mutation[offset] ^= 0xff;
+                                super::run(target, &mutation).unwrap();
+                            }
+                        });
+                        if let Err(error) = result {
+                            eprintln!("failed replay: {target}, seed {index}, {variant:?}");
+                            std::panic::resume_unwind(error);
+                        }
+                    }
+                });
+            }
+        });
     }
 }
 
@@ -789,11 +829,29 @@ mod writable_qcow2_target {
 
     #[cfg(target_os = "linux")]
     #[test]
-    fn snapshot_seed_covers_duplicate_negative_metadata_and_backing_refusal() {
+    fn snapshot_seed_covers_duplicate_negative_metadata_and_authorized_backing() {
         let seeds = super::seeds("qcow2-write");
         assert_eq!(super::qcow2_write_model(&seeds[0]), 2);
-        assert_eq!(super::qcow2_write_model(&seeds[1]), 0);
+        assert_eq!(super::qcow2_write_model(&seeds[1]), 1);
     }
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn backed_snapshot_retains_parent_bytes_across_resize_reopen_and_revert() {
+        let mut data = vec![0];
+        for record in [
+            [5, 0, 0, 0, 0, 0],   // Save inherited parent bytes at the original capacity.
+            [8, 1, 0, 0, 0, 0],   // Shrink to 512 bytes.
+            [8, 128, 1, 0, 0, 0], // Grow to 196608 bytes with a zero suffix.
+            [2, 0, 0, 0, 0, 0],   // Reopen with explicit parent authority and verify saved bytes.
+            [11, 0, 0, 0, 0, 0],  // Restore the snapshot, including inherited parent bytes.
+            [2, 0, 0, 0, 0, 0],
+            [10, 0, 0, 0, 0, 0],
+        ] {
+            data.extend(record);
+        }
+        assert_eq!(super::qcow2_write_model(&data), 0);
+    }
+
     #[test]
     fn deterministic_qcow2_write_sequences_match_byte_model() {
         for mode in [0u8, 1] {

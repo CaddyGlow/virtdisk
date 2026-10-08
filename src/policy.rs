@@ -399,6 +399,12 @@ impl crate::ReadAt for BudgetReader {
     fn len(&self) -> u64 {
         self.source.len()
     }
+    fn visit_extents(
+        &self,
+        visitor: &mut dyn FnMut(crate::DiskExtent) -> io::Result<()>,
+    ) -> io::Result<()> {
+        self.source.visit_extents(visitor)
+    }
     fn sparse_holes(&self) -> std::io::Result<Vec<(u64, u64)>> {
         self.source.sparse_holes()
     }
@@ -430,6 +436,12 @@ impl crate::ReadAt for ContextReader {
     fn len(&self) -> u64 {
         self.source.len()
     }
+    fn visit_extents(
+        &self,
+        visitor: &mut dyn FnMut(crate::DiskExtent) -> io::Result<()>,
+    ) -> io::Result<()> {
+        self.source.visit_extents(visitor)
+    }
     fn sparse_holes(&self) -> std::io::Result<Vec<(u64, u64)>> {
         self.source.sparse_holes()
     }
@@ -451,6 +463,126 @@ impl crate::ReadAt for ContextReader {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{DiskExtent, ExtentKind, ReadAt};
+
+    struct ContractSource {
+        budget: ReadBudget,
+    }
+    impl ReadAt for ContractSource {
+        fn len(&self) -> u64 {
+            4
+        }
+        fn visit_extents(
+            &self,
+            visitor: &mut dyn FnMut(DiskExtent) -> io::Result<()>,
+        ) -> io::Result<()> {
+            visitor(DiskExtent {
+                offset: 0,
+                length: 2,
+                kind: ExtentKind::Zero,
+            })?;
+            visitor(DiskExtent {
+                offset: 2,
+                length: 2,
+                kind: ExtentKind::Allocated,
+            })
+        }
+        fn sparse_holes(&self) -> io::Result<Vec<(u64, u64)>> {
+            Ok(vec![(0, 2)])
+        }
+        fn context(&self) -> ReadContext {
+            ReadContext {
+                partition: Some(7),
+                ..Default::default()
+            }
+        }
+        fn budget(&self) -> Option<ReadBudget> {
+            Some(self.budget.clone())
+        }
+        fn read_exact_at(&self, offset: u64, bytes: &mut [u8]) -> io::Result<()> {
+            crate::check_range(offset, bytes.len() as u64, self.len())?;
+            bytes.copy_from_slice(&[0, 0, 5, 6][offset as usize..offset as usize + bytes.len()]);
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn reader_wrappers_preserve_read_and_allocation_contracts() {
+        let source_budget = ReadBudget::new(ParserLimits::default()).unwrap();
+        let outer_budget = ReadBudget::new(ParserLimits::default()).unwrap();
+        let source: Arc<dyn ReadAt> = Arc::new(ContractSource {
+            budget: source_budget.clone(),
+        });
+        let context = ReadContext {
+            record: Some(11),
+            ..Default::default()
+        };
+        let wrappers = [
+            outer_budget.reader(source.clone()),
+            contextual_reader(source, context.clone()),
+        ];
+        for wrapper in &wrappers {
+            assert_eq!(wrapper.len(), 4);
+            assert!(!wrapper.is_empty());
+            assert_eq!(wrapper.sparse_holes().unwrap(), vec![(0, 2)]);
+            let mut extents = Vec::new();
+            wrapper
+                .visit_extents(&mut |extent| {
+                    extents.push(extent);
+                    Ok(())
+                })
+                .unwrap();
+            assert_eq!(
+                extents,
+                vec![
+                    DiskExtent {
+                        offset: 0,
+                        length: 2,
+                        kind: ExtentKind::Zero
+                    },
+                    DiskExtent {
+                        offset: 2,
+                        length: 2,
+                        kind: ExtentKind::Allocated
+                    },
+                ]
+            );
+            let mut visits = 0;
+            let error = wrapper
+                .visit_extents(&mut |_| {
+                    visits += 1;
+                    Err(io::Error::new(io::ErrorKind::Interrupted, "stop"))
+                })
+                .unwrap_err();
+            assert_eq!(error.kind(), io::ErrorKind::Interrupted);
+            assert_eq!(visits, 1);
+            let mut bytes = [0; 3];
+            wrapper.read_exact_at(1, &mut bytes).unwrap();
+            assert_eq!(bytes, [0, 5, 6]);
+            assert_eq!(
+                wrapper.read_exact_at(5, &mut []).unwrap_err().kind(),
+                io::ErrorKind::UnexpectedEof
+            );
+        }
+        assert_eq!(wrappers[0].context().partition, Some(7));
+        assert_eq!(wrappers[1].context(), context);
+        // Only positional reads are charged by BudgetReader; metadata delegation
+        // does not invent payload work. ContextReader retains the source budget.
+        assert_eq!(outer_budget.usage().work_items, 2);
+        wrappers[0].budget().unwrap().metadata(3).unwrap();
+        wrappers[1].budget().unwrap().metadata(5).unwrap();
+        assert_eq!(outer_budget.usage().metadata_bytes, 3);
+        assert_eq!(source_budget.usage().metadata_bytes, 5);
+        let error = wrappers[1].read_exact_at(5, &mut []).unwrap_err();
+        let provenance = error
+            .get_ref()
+            .unwrap()
+            .downcast_ref::<ReadError>()
+            .unwrap();
+        assert_eq!(provenance.context.record, Some(11));
+        assert_eq!(provenance.context.offset, Some(5));
+    }
+
     #[test]
     fn cache_reservations_release_and_cumulative_limits_do_not_reset() {
         let budget = ReadBudget::new(ParserLimits {

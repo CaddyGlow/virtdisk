@@ -36,18 +36,7 @@ struct State {
     zero_masks: Vec<bool>,
     failed: bool,
 }
-struct LockedSource {
-    raw: Arc<RawWriter>,
-    size: u64,
-}
-impl ReadAt for LockedSource {
-    fn len(&self) -> u64 {
-        self.size
-    }
-    fn read_exact_at(&self, offset: u64, dst: &mut [u8]) -> io::Result<()> {
-        self.raw.read_exact_at(offset, dst)
-    }
-}
+use crate::{native_id::identity, source::LockedSource};
 
 impl VdiWriter {
     pub(crate) fn container_size(&self) -> u64 {
@@ -103,8 +92,8 @@ impl VdiWriter {
             header[at..at + 4].copy_from_slice(&value.to_le_bytes());
         }
         header[368..376].copy_from_slice(&size.to_le_bytes());
-        header[392..408].copy_from_slice(&Self::identity()?);
-        header[408..424].copy_from_slice(&Self::identity()?);
+        header[392..408].copy_from_slice(&identity()?);
+        header[408..424].copy_from_slice(&identity()?);
         let mut file = OpenOptions::new()
             .read(true)
             .write(true)
@@ -125,14 +114,6 @@ impl VdiWriter {
             path.canonicalize()?,
             &[],
         )
-    }
-
-    fn identity() -> io::Result<[u8; 16]> {
-        let mut id = [0; 16];
-        getrandom::fill(&mut id).map_err(|e| io::Error::other(e.to_string()))?;
-        id[7] = (id[7] & 15) | 64;
-        id[8] = (id[8] & 63) | 128;
-        Ok(id)
     }
 
     /// Lock, recover and validate an existing standalone private image.
@@ -312,7 +293,7 @@ impl VdiWriter {
 
     fn begin_mutation(&self, state: &mut State) -> io::Result<()> {
         if !state.epoch {
-            self.raw.write_all_at(408, &Self::identity()?)?;
+            self.raw.write_all_at(408, &identity()?)?;
             self.raw.flush()?;
             state.epoch = true;
         }

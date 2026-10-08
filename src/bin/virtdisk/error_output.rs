@@ -1,5 +1,6 @@
 //! Stable CLI error records, separate from the library's typed I/O errors.
-use std::{error::Error, fmt::Write as _, io};
+use super::json_output::JsonString;
+use std::{error::Error, io};
 use virtdisk::{
     ImageFormat, OperationError, OperationLimitExceeded, OperationResource, ParserLimitExceeded,
     ParserResource,
@@ -92,23 +93,7 @@ fn string_or_null(value: Option<&str>) -> String {
 }
 
 fn json_string(value: &str) -> String {
-    let mut output = String::with_capacity(value.len() + 2);
-    output.push('"');
-    for character in value.chars() {
-        match character {
-            '"' => output.push_str("\\\""),
-            '\\' => output.push_str("\\\\"),
-            '\n' => output.push_str("\\n"),
-            '\r' => output.push_str("\\r"),
-            '\t' => output.push_str("\\t"),
-            value if value < ' ' => {
-                write!(output, "\\u{:04x}", value as u32).expect("writing to String cannot fail")
-            }
-            value => output.push(value),
-        }
-    }
-    output.push('"');
-    output
+    JsonString(value).to_string()
 }
 
 fn kind_name(kind: io::ErrorKind) -> &'static str {

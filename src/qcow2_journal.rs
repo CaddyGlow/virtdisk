@@ -424,36 +424,18 @@ pub(super) fn recover_authorized(
     raw: std::sync::Arc<crate::RawWriter>,
     authorized: &[std::path::PathBuf],
 ) -> io::Result<()> {
-    use std::io::Read;
-    let journal = sidecar(path);
-    let mut options = std::fs::OpenOptions::new();
-    options.read(true);
-    #[cfg(target_os = "linux")]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        options.custom_flags(0x20000);
-    } // O_NOFOLLOW
-    let mut file = match options.open(journal) {
-        Ok(file) => file,
-        Err(error) if error.kind() == io::ErrorKind::NotFound => {
-            let mut dirty = [0];
-            raw.read_exact_at(79, &mut dirty)?;
-            return if dirty[0] & 1 != 0 {
-                Err(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    "dirty QCOW2 image requires its transaction journal",
-                ))
-            } else {
-                Ok(())
-            };
-        }
-        Err(error) => return Err(error),
+    let Some(bytes) = crate::sidecar::read_bounded(&sidecar(path), LIMIT, corrupt)? else {
+        let mut dirty = [0];
+        raw.read_exact_at(79, &mut dirty)?;
+        return if dirty[0] & 1 != 0 {
+            Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "dirty QCOW2 image requires its transaction journal",
+            ))
+        } else {
+            Ok(())
+        };
     };
-    if !file.metadata()?.is_file() || file.metadata()?.len() > LIMIT as u64 {
-        return Err(corrupt());
-    }
-    let mut bytes = Vec::new();
-    (&mut file).take(LIMIT as u64 + 1).read_to_end(&mut bytes)?;
     let record = Record::decode(&bytes)?;
     sync_parent(path)?;
     replay(path, raw, &record, None, authorized)
@@ -476,6 +458,27 @@ fn recover(path: &std::path::Path, raw: std::sync::Arc<crate::RawWriter>) -> io:
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn recovery_rejects_fifo_journal_without_a_writer() {
+        let _process_boundary = crate::test_sync::writer_test();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("disk.qcow2");
+        drop(super::super::Qcow2Writer::create(&path, 65536).unwrap());
+        let journal = sidecar(&path);
+        rustix::fs::mkfifoat(
+            rustix::fs::CWD,
+            &journal,
+            rustix::fs::Mode::RUSR | rustix::fs::Mode::WUSR,
+        )
+        .unwrap();
+        let raw = std::sync::Arc::new(crate::RawWriter::open(&path).unwrap());
+        assert_eq!(
+            recover(&path, raw).unwrap_err().kind(),
+            io::ErrorKind::InvalidData
+        );
+    }
 
     #[test]
     #[cfg(target_os = "linux")]

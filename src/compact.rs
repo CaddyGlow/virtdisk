@@ -1,6 +1,6 @@
 //! Logical-content-preserving sparse rewrites.
-use crate::{Image, ImageFormat, Qcow2, RawDisk, RawWriter, ReadAt};
-use std::{io, path::Path, sync::Arc};
+use crate::{ImageFormat, ReadAt};
+use std::{io, ops::ControlFlow, path::Path};
 
 /// Compact into a new independent image, omitting zero-filled payload units.
 ///
@@ -51,41 +51,17 @@ pub fn compact_image_with_cancel(
 ) -> io::Result<()> {
     let proxy = Cancellable { source, cancelled };
     proxy.check()?;
-    let source: &dyn ReadAt = &proxy;
-    crate::image::publish_image(output.as_ref(), |temporary| {
-        match format {
-            ImageFormat::Raw => {
-                let writer = RawWriter::create(temporary, source.len())?;
-                let mut buffer = vec![0; 65536];
-                let mut offset = 0;
-                while offset < source.len() {
-                    let count = (source.len() - offset).min(buffer.len() as u64) as usize;
-                    source.read_exact_at(offset, &mut buffer[..count])?;
-                    if buffer[..count].iter().any(|b| *b != 0) {
-                        writer.write_all_at(offset, &buffer[..count])?;
-                    }
-                    offset += count as u64;
-                }
-                writer.flush()?;
-            }
-            ImageFormat::Qcow2 => crate::create_sparse_qcow2(temporary, source)?,
-            ImageFormat::Vdi => crate::create_vdi(temporary, source)?,
-            ImageFormat::Vmdk => crate::create_vmdk(temporary, source)?,
-            ImageFormat::Vhdx => crate::create_vhdx(temporary, source)?,
+    // Retain the legacy checks before source reads, with only publication
+    // cancellation delegated to the operation observer.
+    let mut observer = |progress: crate::OperationProgress| {
+        if progress.phase == crate::OperationPhase::Publication && cancelled() {
+            ControlFlow::Break(())
+        } else {
+            ControlFlow::Continue(())
         }
-        let reopened = Image::open(temporary, Some(format))?;
-        if !crate::compare_images(source, &reopened)? {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "compacted image differs from source",
-            ));
-        }
-        if format == ImageFormat::Qcow2 {
-            Qcow2::open(Arc::new(RawDisk::open(temporary)?))?.validate_active_mapping()?;
-        }
-        proxy.check()?;
-        Ok(())
-    })
+    };
+    let mut context = crate::OperationContext::default().with_observer(&mut observer);
+    compact_image_with_context(&proxy, output, format, &mut context)
 }
 
 struct Cancellable<'a> {

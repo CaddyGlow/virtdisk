@@ -7,7 +7,7 @@ use crate::{
 use sha2::{Digest, Sha256};
 use std::os::unix::{
     ffi::{OsStrExt, OsStringExt},
-    fs::{MetadataExt, OpenOptionsExt},
+    fs::MetadataExt,
 };
 use std::{
     io,
@@ -51,27 +51,13 @@ impl File {
         Ok(identity)
     }
 }
-struct Source {
-    raw: Arc<RawWriter>,
-    length: u64,
-}
-impl ReadAt for Source {
-    fn len(&self) -> u64 {
-        self.length
-    }
-    fn read_exact_at(&self, offset: u64, bytes: &mut [u8]) -> io::Result<()> {
-        crate::check_range(offset, bytes.len() as u64, self.length)?;
-        self.raw.read_exact_at(offset, bytes)
-    }
-}
-
 #[derive(Clone)]
 struct Participant {
     path: PathBuf,
     identity: (u64, u64),
     length: u64,
     digest: [u8; 32],
-    record: Option<Record>,
+    record: Option<Arc<Record>>,
 }
 struct Set {
     id: [u8; 16],
@@ -473,7 +459,7 @@ impl Set {
             let record = if size == 0 {
                 None
             } else {
-                Some(Record::decode(cursor.take(size as usize)?)?)
+                Some(Arc::new(Record::decode(cursor.take(size as usize)?)?))
             };
             if participants
                 .iter()
@@ -553,9 +539,9 @@ fn validate(
         if file.path != participant.path || file.verify_path()? != participant.identity {
             return Err(invalid());
         }
-        let source: Arc<dyn ReadAt> = Arc::new(Source {
+        let source: Arc<dyn ReadAt> = Arc::new(crate::source::LockedSource {
             raw: file.raw.clone(),
-            length: file.raw.len(),
+            size: file.raw.len(),
         });
         // Digest reconstruction uses fixed 64 KiB chunks; charge scans to the
         // same cumulative budget used by both whole-set parser states.
@@ -579,25 +565,7 @@ fn validate(
 }
 
 fn read_sidecar(path: &Path) -> io::Result<Option<Vec<u8>>> {
-    use io::Read;
-    let mut file = match std::fs::OpenOptions::new()
-        .read(true)
-        .custom_flags(0x20000 | 0x800)
-        .open(path)
-    {
-        Ok(file) => file,
-        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
-        Err(error) => return Err(error),
-    };
-    if !file.metadata()?.is_file() || file.metadata()?.len() > LIMIT as u64 {
-        return Err(invalid());
-    }
-    let mut bytes = Vec::new();
-    (&mut file).take(LIMIT as u64 + 1).read_to_end(&mut bytes)?;
-    if bytes.len() > LIMIT {
-        return Err(invalid());
-    }
-    Ok(Some(bytes))
+    crate::sidecar::read_bounded(path, LIMIT, invalid)
 }
 fn publish(path: &Path, bytes: &[u8]) -> io::Result<()> {
     use io::Write;
@@ -752,9 +720,9 @@ pub(super) fn commit_bound(
             return Err(invalid());
         }
         sync_parent(&file.path)?;
-        let source = Source {
+        let source = crate::source::LockedSource {
             raw: file.raw.clone(),
-            length: file.raw.len(),
+            size: file.raw.len(),
         };
         file.budget.work(source.len().div_ceil(65536))?;
         let _digest_scratch = file.budget.cache(65536)?;
@@ -764,7 +732,7 @@ pub(super) fn commit_bound(
             identity,
             length: source.len(),
             digest,
-            record,
+            record: record.map(Arc::new),
         });
     }
     let set = Set {
@@ -1007,9 +975,9 @@ mod tests {
             let raw = Arc::new(RawWriter::open(&child).unwrap());
             let identities = [crate::RawDisk::open(&child).unwrap().identity().unwrap()];
             let authorized = [parent.clone(), extent.clone()];
-            let source: Arc<dyn ReadAt> = Arc::new(Source {
+            let source: Arc<dyn ReadAt> = Arc::new(crate::source::LockedSource {
                 raw: raw.clone(),
-                length: raw.len(),
+                size: raw.len(),
             });
             let graph = crate::Vmdk::resolve_pinned_parent(
                 source.clone(),
@@ -1160,7 +1128,7 @@ mod tests {
         assert!(set.encode().is_err());
         set.participants[1].length = 512;
         for item in &mut set.participants {
-            item.record = Some(Record {
+            item.record = Some(Arc::new(Record {
                 original_length: 512,
                 final_length: 512,
                 original_digest: [3; 32],
@@ -1172,7 +1140,7 @@ mod tests {
                         new: vec![1; 4],
                     })
                     .collect(),
-            });
+            }));
         }
         assert!(set.encode().is_err());
     }
@@ -1209,20 +1177,20 @@ mod tests {
                 }],
             };
             assert!(record.encode().is_ok());
-            item.record = Some(record);
+            item.record = Some(Arc::new(record));
         }
         assert!(set.encode().is_err());
     }
     #[test]
     fn fifo_sidecar_refuses_without_waiting_for_a_writer() {
-        unsafe extern "C" {
-            fn mkfifo(path: *const std::ffi::c_char, mode: u32) -> i32;
-        }
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("marker");
-        let name = std::ffi::CString::new(path.as_os_str().as_bytes()).unwrap();
-        // SAFETY: name is a live NUL-terminated path and Linux mode_t is u32.
-        assert_eq!(unsafe { mkfifo(name.as_ptr(), 0o600) }, 0);
+        rustix::fs::mkfifoat(
+            rustix::fs::CWD,
+            &path,
+            rustix::fs::Mode::RUSR | rustix::fs::Mode::WUSR,
+        )
+        .unwrap();
         assert!(read_sidecar(&path).is_err());
         assert!(
             std::fs::symlink_metadata(path)
