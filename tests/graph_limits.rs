@@ -288,6 +288,7 @@ fn authorized_inheritance_keeps_shared_accounting_after_graph_drop() {
 }
 
 #[test]
+#[cfg(target_os = "linux")]
 fn rebased_output_validation_uses_graph_quota_after_completed_difference_writes() {
     use std::{cell::Cell, ops::ControlFlow};
     use virtdisk::{OperationContext, OperationPhase, OperationProgress};
@@ -385,4 +386,44 @@ fn a_short_symlink_cannot_hide_canonical_path_metadata_from_graph_limits() {
     .err()
     .expect("canonical path must consume metadata quota");
     assert_eq!(refusal(&error).resource(), ParserResource::MetadataBytes);
+}
+
+#[test]
+#[cfg(not(target_os = "linux"))]
+fn unsupported_rebase_keeps_cumulative_graph_budget_and_releases_staging_storage() {
+    let directory = tempfile::tempdir().unwrap();
+    let source = directory.path().join("source.raw");
+    let parent = directory.path().join("parent.raw");
+    let output = directory.path().join("unpublished.qcow2");
+    std::fs::write(&source, [37; 512]).unwrap();
+    std::fs::write(&parent, [19; 512]).unwrap();
+    let mut graph = ImageGraph::open_with_limits(
+        &[
+            ImageSpec {
+                path: source.clone(),
+                format: ImageFormat::Raw,
+                parent: None,
+            },
+            ImageSpec {
+                path: parent.clone(),
+                format: ImageFormat::Raw,
+                parent: None,
+            },
+        ],
+        ParserLimits::default(),
+    )
+    .unwrap();
+    let budget = graph.budget().unwrap();
+    let before = budget.usage();
+    let error = graph.rebase_to(&source, &parent, &output).unwrap_err();
+    assert_eq!(error.kind(), virtdisk::io::ErrorKind::Unsupported);
+    let after = budget.usage();
+    assert!(after.work_items > before.work_items);
+    assert!(after.metadata_bytes >= before.metadata_bytes);
+    assert_eq!(after.cache_bytes, before.cache_bytes);
+    assert!(graph.children(&parent).unwrap().is_empty());
+    assert!(!output.exists());
+    assert_eq!(std::fs::read(&source).unwrap(), [37; 512]);
+    assert_eq!(std::fs::read(&parent).unwrap(), [19; 512]);
+    assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 2);
 }

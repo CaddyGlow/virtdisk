@@ -147,6 +147,7 @@ fn flatten_and_merge_use_the_same_context_and_refuse_invalid_ancestry_before_cal
 }
 
 #[test]
+#[cfg(target_os = "linux")]
 fn rebase_accounts_difference_copy_and_verification_and_preserves_original_branches() {
     let dir = tempfile::tempdir().unwrap();
     let source = dir.path().join("source.raw");
@@ -204,6 +205,7 @@ fn rebase_accounts_difference_copy_and_verification_and_preserves_original_branc
 }
 
 #[test]
+#[cfg(target_os = "linux")]
 fn rebase_adapts_scratch_and_skips_reads_beyond_short_parent() {
     let dir = tempfile::tempdir().unwrap();
     let source = dir.path().join("source");
@@ -265,6 +267,7 @@ fn rebase_adapts_scratch_and_skips_reads_beyond_short_parent() {
 }
 
 #[test]
+#[cfg(target_os = "linux")]
 fn rebase_cancellation_and_late_quota_refusal_remove_staging_and_preserve_graph() {
     for phase in [
         OperationPhase::ImageExport,
@@ -462,4 +465,48 @@ fn qemu_reads_controlled_snapshot_rebase_and_all_flattened_outputs() {
     }
     assert_eq!(std::fs::read(base).unwrap(), expected);
     assert_eq!(std::fs::read(parent).unwrap(), vec![19; 65536]);
+}
+
+#[test]
+#[cfg(not(target_os = "linux"))]
+fn unsupported_controlled_rebase_never_reports_publication_or_changes_branches() {
+    let directory = tempfile::tempdir().unwrap();
+    let source = directory.path().join("source.raw");
+    let parent = directory.path().join("parent.raw");
+    let output = directory.path().join("unpublished.qcow2");
+    std::fs::write(&source, [37; 512]).unwrap();
+    std::fs::write(&parent, [19; 512]).unwrap();
+    let mut graph = ImageGraph::open(&[
+        ImageSpec {
+            path: source.clone(),
+            format: ImageFormat::Raw,
+            parent: None,
+        },
+        ImageSpec {
+            path: parent.clone(),
+            format: ImageFormat::Raw,
+            parent: None,
+        },
+    ])
+    .unwrap();
+    let mut events = Vec::new();
+    let mut observer = |event: OperationProgress| {
+        events.push(event);
+        ControlFlow::Continue(())
+    };
+    let mut context = OperationContext::default().with_observer(&mut observer);
+    let error = graph
+        .rebase_to_with_context(&source, &parent, &output, &mut context)
+        .unwrap_err();
+    assert_eq!(error.kind(), virtdisk::io::ErrorKind::Unsupported);
+    assert!(
+        !events
+            .iter()
+            .any(|event| event.phase == OperationPhase::Publication)
+    );
+    assert!(graph.children(&parent).unwrap().is_empty());
+    assert!(!output.exists());
+    assert_eq!(std::fs::read(&source).unwrap(), [37; 512]);
+    assert_eq!(std::fs::read(&parent).unwrap(), [19; 512]);
+    assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 2);
 }

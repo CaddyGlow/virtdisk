@@ -58,7 +58,8 @@ fn saving_selection_revalidates_registration_and_can_clear_selection() {
     assert!(!output.exists());
     let selected = dir.path().join("selected.manifest");
     let result = graph.save_manifest(Some(&image), &selected).unwrap();
-    assert_eq!(result.selected(), Some(image.as_path()));
+    let canonical = image.canonicalize().unwrap();
+    assert_eq!(result.selected(), Some(canonical.as_path()));
     let clear = dir.path().join("clear.manifest");
     let result = graph.save_manifest(None, &clear).unwrap();
     assert!(result.selected().is_none());

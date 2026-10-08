@@ -230,6 +230,7 @@ fn writer_factory_reports_parent_and_applies_discard_policy() {
     let child = directory.path().join("child.qcow2");
     std::fs::write(&raw, vec![7; 65536]).unwrap();
     virtdisk::create_qcow2_overlay(&child, &raw, "raw", 65536).unwrap();
+    let child_before = std::fs::read(&child).unwrap();
     assert!(ImageWriter::open(&child, ImageFormat::Qcow2).is_err());
     let writer =
         ImageWriter::open_chain(&child, ImageFormat::Qcow2, std::slice::from_ref(&raw)).unwrap();
@@ -252,14 +253,23 @@ fn writer_factory_reports_parent_and_applies_discard_policy() {
         assert_eq!(
             writer
                 .discard(0, 65536, DiscardPolicy::AllowZeroFallback)
-                .unwrap(),
-            DiscardResult::Zeroed
+                .unwrap_err()
+                .kind(),
+            virtdisk::io::ErrorKind::Unsupported
         );
     }
     writer.flush().unwrap();
     let mut bytes = [1; 512];
     writer.read_exact_at(0, &mut bytes).unwrap();
-    assert_eq!(bytes, [0; 512]);
+    if cfg!(target_os = "linux") {
+        assert_eq!(bytes, [0; 512]);
+    } else {
+        assert_eq!(bytes, [7; 512]);
+    }
+    drop(writer);
+    if !cfg!(target_os = "linux") {
+        assert_eq!(std::fs::read(child).unwrap(), child_before);
+    }
     assert_eq!(std::fs::read(raw).unwrap(), vec![7; 65536]);
 }
 

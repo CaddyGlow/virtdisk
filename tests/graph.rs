@@ -118,6 +118,7 @@ fn graph_checks_declared_parent_identity_cycles_and_foreign_paths() {
 }
 
 #[test]
+#[cfg(target_os = "linux")]
 fn snapshot_writes_preserve_parent_and_sibling_and_flatten_selected_content() {
     use virtdisk::Qcow2Writer;
     let directory = tempfile::tempdir().unwrap();
@@ -178,6 +179,7 @@ fn replaced_registered_file_is_refused_before_management() {
 }
 
 #[test]
+#[cfg(target_os = "linux")]
 fn rebase_preserves_selected_bytes_when_new_parent_differs() {
     let directory = tempfile::tempdir().unwrap();
     let base = directory.path().join("base.raw");
@@ -268,4 +270,48 @@ fn snapshot_depth_limit_is_checked_before_publication() {
     let output = directory.path().join("too-deep.qcow2");
     assert!(graph.snapshot(&parent, &output).is_err());
     assert!(!output.exists());
+}
+
+#[test]
+#[cfg(not(target_os = "linux"))]
+fn unsupported_journaled_mutation_and_rebase_preserve_published_graph() {
+    let directory = tempfile::tempdir().unwrap();
+    let base = directory.path().join("base.raw");
+    let other = directory.path().join("other.raw");
+    let child = directory.path().join("child.qcow2");
+    let output = directory.path().join("unpublished.qcow2");
+    std::fs::write(&base, [3; 512]).unwrap();
+    std::fs::write(&other, [8; 512]).unwrap();
+    let mut graph = ImageGraph::open(&[
+        ImageSpec {
+            path: base.clone(),
+            format: ImageFormat::Raw,
+            parent: None,
+        },
+        ImageSpec {
+            path: other.clone(),
+            format: ImageFormat::Raw,
+            parent: None,
+        },
+    ])
+    .unwrap();
+    graph.snapshot(&base, &child).unwrap();
+    let original_child = std::fs::read(&child).unwrap();
+    let writer = virtdisk::Qcow2Writer::open_chain(&child, std::slice::from_ref(&base)).unwrap();
+    let error = writer.write_all_at(0, &[9]).unwrap_err();
+    assert_eq!(error.kind(), virtdisk::io::ErrorKind::Unsupported);
+    drop(writer);
+    assert_eq!(std::fs::read(&child).unwrap(), original_child);
+    let error = graph.rebase_to(&child, &other, &output).unwrap_err();
+    assert_eq!(error.kind(), virtdisk::io::ErrorKind::Unsupported);
+    assert!(!output.exists());
+    assert_eq!(
+        graph.children(&base).unwrap(),
+        [child.canonicalize().unwrap()]
+    );
+    assert!(graph.children(&other).unwrap().is_empty());
+    assert_eq!(std::fs::read(&base).unwrap(), [3; 512]);
+    assert_eq!(std::fs::read(&other).unwrap(), [8; 512]);
+    assert_eq!(std::fs::read(&child).unwrap(), original_child);
+    assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 3);
 }
