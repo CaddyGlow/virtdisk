@@ -1,5 +1,7 @@
 #![cfg(feature = "std")]
-use virtdisk::{DiscardPolicy, DiscardResult, ImageOperation, InspectImage, RawWriter, WriteAt};
+use virtdisk::{DiscardPolicy, DiscardResult, RawWriter, WriteAt};
+#[cfg(target_os = "linux")]
+use virtdisk::{ImageOperation, InspectImage};
 
 #[test]
 #[cfg(target_os = "linux")]
