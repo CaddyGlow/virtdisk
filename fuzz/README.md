@@ -9,6 +9,12 @@ parallelism. Every seed, truncation, and mutation is still replayed; independent
 temporary files permit concurrent durability work. Failures identify the target,
 seed index, and input variant.
 
+Native writer tests construct each immutable parent profile once and retain its
+bytes. Each replay writes and syncs its own parent copy before opening the child;
+all operation, reopen, and parent-immutability assertions still run. Instrumented
+campaigns and standalone replay binaries continue constructing their parents for
+every input.
+
 The weekly/manual workflow instruments code and retains seed/production-source/harness hashes, tool versions, raw logs, summary counts, and findings even on failure. Source changes during a campaign invalidate its result. Each case has a five-second timeout. Bounded smoke campaigns do not establish absence of bugs or replace sustained sanitizer campaigns. Fuzzing operates only on memory or temporary files created by the harness; no input-supplied host paths are opened.
 
 The `qcow2-write` target uses at most 385 input bytes, 64 operations and 192 KiB

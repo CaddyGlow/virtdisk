@@ -1,5 +1,8 @@
 //! Bounded native writer models over harness-owned files and parents.
-use std::path::{Path, PathBuf};
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 use virtdisk::{VdiWriter, VhdxWriter, VmdkWriter, WriteAt};
 const SIZE: usize = 2 * 1048576;
 enum Writer {
@@ -48,6 +51,37 @@ impl Writer {
         }
     }
 }
+
+// Only deterministic tests reuse fixture construction. Every replay still gets
+// a separate parent file, so accidental parent writes cannot affect another case.
+#[cfg(test)]
+fn parent_fixture(target: &str, model: &[u8]) -> Arc<[u8]> {
+    use std::sync::OnceLock;
+    static PARENTS: [OnceLock<Arc<[u8]>>; 6] = [const { OnceLock::new() }; 6];
+    let profile = match target {
+        "vdi-write" => 0,
+        "vmdk-write" => 2,
+        "vhdx-write" => 4,
+        _ => unreachable!("native writer target"),
+    };
+    let capacity = match model.len() {
+        SIZE => 0,
+        n if n == SIZE - 512 => 1,
+        _ => unreachable!("native parent capacity"),
+    };
+    PARENTS[profile + capacity]
+        .get_or_init(|| {
+            let directory = tempfile::tempdir().unwrap();
+            let path = directory.path().join("parent.img");
+            let base = Writer::create(target, &path, model.len() as u64);
+            base.writer().write_all_at(0, model).unwrap();
+            base.writer().flush().unwrap();
+            drop(base);
+            std::fs::read(path).unwrap().into()
+        })
+        .clone()
+}
+
 pub fn native(target: &str, data: &[u8]) {
     native_model(target, data);
 }
@@ -70,15 +104,25 @@ pub(crate) fn native_model(target: &str, data: &[u8]) -> usize {
     let mut parents = vec![];
     let original;
     let mut writer = if overlay {
-        let base = Writer::create(target, &parent, size as u64);
         model
             .iter_mut()
             .enumerate()
             .for_each(|(i, b)| *b = (i % 251) as u8);
-        base.writer().write_all_at(0, &model).unwrap();
-        base.writer().flush().unwrap();
-        drop(base);
-        original = Some(std::fs::read(&parent).unwrap());
+        #[cfg(test)]
+        {
+            let fixture = parent_fixture(target, &model);
+            std::fs::write(&parent, fixture.as_ref()).unwrap();
+            std::fs::File::open(&parent).unwrap().sync_all().unwrap();
+            original = Some(fixture);
+        }
+        #[cfg(not(test))]
+        {
+            let base = Writer::create(target, &parent, size as u64);
+            base.writer().write_all_at(0, &model).unwrap();
+            base.writer().flush().unwrap();
+            drop(base);
+            original = Some(Arc::<[u8]>::from(std::fs::read(&parent).unwrap()));
+        }
         parents.push(parent.clone());
         Writer::overlay(target, &path, &parent)
     } else {
@@ -208,7 +252,7 @@ pub(crate) fn native_model(target: &str, data: &[u8]) -> usize {
     writer.read(0, &mut actual).unwrap();
     assert_eq!(actual, model);
     if let Some(original) = original {
-        assert_eq!(std::fs::read(parent).unwrap(), original);
+        assert_eq!(std::fs::read(parent).unwrap(), original.as_ref());
     }
     size
 }
