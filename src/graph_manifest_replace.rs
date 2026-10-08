@@ -2,6 +2,7 @@
 use super::GraphManifest;
 use crate::OperationContext;
 use crate::io;
+#[cfg(target_os = "linux")]
 use crate::io::{Seek, Write};
 use std::path::Path;
 
