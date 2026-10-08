@@ -120,7 +120,7 @@ fn discard_checks_ranges_before_mutation_and_generic_zero_fallback_is_explicit()
 fn generic_writer_without_native_discard_never_silently_zeroes_strict_request() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("image.vdi");
-    let writer = virtdisk::VdiWriter::create_sparse(path, 1048576).unwrap();
+    let writer = virtdisk::VdiWriter::create(path, 1048576).unwrap();
     writer.write_all_at(0, &[6; 512]).unwrap();
     let generic: &dyn WriteAt = &writer;
     assert_eq!(
@@ -166,6 +166,7 @@ fn aligned_raw_hole_punch_releases_host_blocks_without_changing_capacity() {
 }
 
 #[test]
+#[cfg(target_os = "linux")]
 fn generic_qcow_discard_masks_parent_and_explicit_fallback_handles_partial_clusters() {
     let directory = tempfile::tempdir().unwrap();
     let base = directory.path().join("base.raw");

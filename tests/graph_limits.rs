@@ -194,6 +194,7 @@ fn staged_native_snapshot_parsing_shares_quota_and_failure_discards_output() {
         ImageFormat::Qcow2,
         ImageFormat::Vhdx,
         ImageFormat::Vdi,
+        #[cfg(target_os = "linux")]
         ImageFormat::Vmdk,
     ] {
         let dir = tempfile::tempdir().unwrap();
@@ -252,6 +253,7 @@ fn authorized_inheritance_keeps_shared_accounting_after_graph_drop() {
         ImageFormat::Qcow2,
         ImageFormat::Vhdx,
         ImageFormat::Vdi,
+        #[cfg(target_os = "linux")]
         ImageFormat::Vmdk,
     ] {
         let dir = tempfile::tempdir().unwrap();

@@ -523,14 +523,8 @@ impl Qcow2 {
         if let Some(name) = &disk.backing_name {
             // QCOW2 also allows URI protocols. Never pass these to a filesystem
             // resolver, including Windows alternate-data-stream syntax.
-            let drive_path = cfg!(windows)
-                && name.as_bytes().first().is_some_and(u8::is_ascii_alphabetic)
-                && name.as_bytes().get(1) == Some(&b':')
-                && !name[2..].contains(':')
-                && Path::new(name).is_absolute();
-            if name.contains(':') && !drive_path {
-                return Err(unsupported("QCOW2 backing protocol or alternate stream"));
-            }
+            crate::portable::validate_parent_locator(name)
+                .map_err(|_| unsupported("QCOW2 backing protocol or alternate stream"))?;
             let requested = path
                 .parent()
                 .ok_or_else(|| invalid("QCOW2 image has no parent"))?

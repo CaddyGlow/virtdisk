@@ -515,16 +515,52 @@ fn comparison_io_and_combined_scratch_are_budgeted_and_repetition_tightens() {
 #[test]
 fn snapshot_listing_and_export_honor_parser_limits() {
     let _process_boundary = subprocess_test();
-    use virtdisk::WriteAt;
     let directory = tempfile::tempdir().unwrap();
     let image = directory.path().join("disk.qcow2");
-    let mut writer =
-        virtdisk::ImageWriter::create(&image, virtdisk::ImageFormat::Qcow2, 65536).unwrap();
-    writer.write_all_at(0, &[37; 512]).unwrap();
-    writer.create_snapshot(b"id", b"name").unwrap();
-    writer.flush().unwrap();
-    drop(writer);
-    let original = std::fs::read(&image).unwrap();
+    // A valid saved-state fixture does not require host snapshot mutation support.
+    let mut original = vec![0; 4096];
+    original[..4].copy_from_slice(b"QFI\xfb");
+    for (at, value) in [
+        (4, 3u32),
+        (20, 9),
+        (36, 1),
+        (56, 1),
+        (60, 1),
+        (96, 4),
+        (100, 104),
+        (3592, 1),
+        (3620, 16),
+    ] {
+        original[at..at + 4].copy_from_slice(&value.to_be_bytes());
+    }
+    for (at, value) in [
+        (24, 512u64),
+        (40, 512),
+        (48, 1024),
+        (64, 3584),
+        (512, 1536),
+        (1024, 2560),
+        (1536, 2048),
+        (3072, 1536 | (1 << 63)),
+        (3584, 3072),
+        (3632, 512),
+    ] {
+        original[at..at + 8].copy_from_slice(&value.to_be_bytes());
+    }
+    original[3596..3598].copy_from_slice(&2u16.to_be_bytes());
+    original[3598..3600].copy_from_slice(&4u16.to_be_bytes());
+    original[3640..3646].copy_from_slice(b"idname");
+    original[2048..2560].fill(37);
+    for (index, count) in [1u16, 1, 1, 2, 2, 1, 1, 1].into_iter().enumerate() {
+        original[2560 + index * 2..2562 + index * 2].copy_from_slice(&count.to_be_bytes());
+    }
+    std::fs::write(&image, &original).unwrap();
+    virtdisk::Qcow2::open(std::sync::Arc::new(
+        virtdisk::RawDisk::open(&image).unwrap(),
+    ))
+    .unwrap()
+    .validate_active_mapping()
+    .unwrap();
     let listing = Command::new(env!("CARGO_BIN_EXE_virtdisk"))
         .args(["--parser-limit", "metadata=1", "snapshot", "list"])
         .arg(&image)
@@ -1425,16 +1461,28 @@ fn cli_trim_has_explicit_policy_and_zero_accepts_authorized_parent_paths() {
         .arg(&base)
         .output()
         .unwrap();
-    assert!(
-        result.status.success(),
-        "{}",
-        String::from_utf8_lossy(&result.stderr)
-    );
-    assert!(
-        String::from_utf8(result.stdout)
-            .unwrap()
-            .contains("deallocated")
-    );
+    #[cfg(target_os = "linux")]
+    {
+        assert!(
+            result.status.success(),
+            "{}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+        assert!(
+            String::from_utf8(result.stdout)
+                .unwrap()
+                .contains("deallocated")
+        );
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        assert_eq!(result.status.code(), Some(2));
+        assert!(String::from_utf8_lossy(&result.stderr).contains("requires Linux"));
+        let reader = virtdisk::Qcow2::open_chain(&child, std::slice::from_ref(&base)).unwrap();
+        let mut inherited = [0; 512];
+        virtdisk::ReadAt::read_exact_at(&reader, 0, &mut inherited).unwrap();
+        assert_eq!(inherited, [7; 512]);
+    }
     let raw = directory.path().join("raw.img");
     std::fs::write(&raw, vec![7; 512]).unwrap();
     assert!(
@@ -1480,6 +1528,7 @@ fn cli_rejects_invalid_mutation_requests_before_touching_bytes() {
 #[test]
 fn cli_zero_masks_an_authorized_parent_and_preserves_neighbors() {
     let _process_boundary = subprocess_test();
+    #[cfg(target_os = "linux")]
     use virtdisk::ReadAt;
     let directory = tempfile::tempdir().unwrap();
     let base = directory.path().join("base.raw");
@@ -1497,13 +1546,27 @@ fn cli_zero_masks_an_authorized_parent_and_preserves_neighbors() {
     let original = std::fs::read(&child).unwrap();
     assert_eq!(execute(false).status.code(), Some(2));
     assert_eq!(std::fs::read(&child).unwrap(), original);
-    assert!(execute(true).status.success());
-    let image = virtdisk::Qcow2::open_chain(&child, std::slice::from_ref(&base)).unwrap();
-    let mut actual = vec![0; 65536];
-    image.read_exact_at(0, &mut actual).unwrap();
-    let mut expected = vec![7; 65536];
-    expected[10..30].fill(0);
-    assert_eq!(actual, expected);
+    let authorized = execute(true);
+    #[cfg(target_os = "linux")]
+    {
+        assert!(
+            authorized.status.success(),
+            "{}",
+            String::from_utf8_lossy(&authorized.stderr)
+        );
+        let image = virtdisk::Qcow2::open_chain(&child, std::slice::from_ref(&base)).unwrap();
+        let mut actual = vec![0; 65536];
+        image.read_exact_at(0, &mut actual).unwrap();
+        let mut expected = vec![7; 65536];
+        expected[10..30].fill(0);
+        assert_eq!(actual, expected);
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        assert_eq!(authorized.status.code(), Some(2));
+        assert!(String::from_utf8_lossy(&authorized.stderr).contains("requires Linux"));
+        assert_eq!(std::fs::read(&child).unwrap(), original);
+    }
     assert_eq!(std::fs::read(base).unwrap(), vec![7; 65536]);
 }
 

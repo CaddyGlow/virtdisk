@@ -92,6 +92,48 @@ fn caller_metadata_limits_cover_every_container_and_authorized_parents() {
         let parent = directory.path().join(format!("parent-{format:?}"));
         let child = directory.path().join(format!("child-{format:?}"));
         virtdisk::convert_image(&source, &parent, format).unwrap();
+        if format == ImageFormat::Vmdk && !cfg!(target_os = "linux") {
+            let before = fs::read(&parent).unwrap();
+            assert_eq!(
+                virtdisk::VmdkWriter::create_overlay(
+                    &child,
+                    &parent,
+                    std::slice::from_ref(&parent)
+                )
+                .err()
+                .unwrap()
+                .kind(),
+                virtdisk::io::ErrorKind::Unsupported
+            );
+            assert!(!child.exists());
+            assert!(
+                check_image_with_limits(
+                    &parent,
+                    format,
+                    &[],
+                    CheckOptions::default(),
+                    ParserLimits {
+                        metadata_bytes: 1,
+                        ..Default::default()
+                    }
+                )
+                .is_err()
+            );
+            assert_eq!(
+                check_image_with_limits(
+                    &parent,
+                    format,
+                    &[],
+                    CheckOptions { payload: true },
+                    ParserLimits::default()
+                )
+                .unwrap()
+                .payload_bytes_read,
+                65536
+            );
+            assert_eq!(fs::read(&parent).unwrap(), before);
+            continue;
+        }
         match format {
             ImageFormat::Qcow2 => {
                 virtdisk::create_qcow2_overlay(&child, &parent, "qcow2", 65536).unwrap()

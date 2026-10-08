@@ -24,6 +24,7 @@ fn native_snapshots_share_verification_budgets_and_register_only_after_publicati
         ImageFormat::Qcow2,
         ImageFormat::Vhdx,
         ImageFormat::Vdi,
+        #[cfg(target_os = "linux")]
         ImageFormat::Vmdk,
     ] {
         let dir = tempfile::tempdir().unwrap();
@@ -75,6 +76,7 @@ fn cancellation_at_verification_and_publication_discards_child_without_graph_edg
         ImageFormat::Qcow2,
         ImageFormat::Vhdx,
         ImageFormat::Vdi,
+        #[cfg(target_os = "linux")]
         ImageFormat::Vmdk,
     ] {
         for phase in [
@@ -337,6 +339,7 @@ fn snapshot_verification_quota_refusal_preserves_parent_and_graph() {
         ImageFormat::Qcow2,
         ImageFormat::Vhdx,
         ImageFormat::Vdi,
+        #[cfg(target_os = "linux")]
         ImageFormat::Vmdk,
     ] {
         let dir = tempfile::tempdir().unwrap();

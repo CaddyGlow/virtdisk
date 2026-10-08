@@ -243,6 +243,7 @@ fn native_families_and_live_parent_edges_are_revalidated_after_reload() {
         ImageFormat::Qcow2,
         ImageFormat::Vhdx,
         ImageFormat::Vdi,
+        #[cfg(target_os = "linux")]
         ImageFormat::Vmdk,
     ] {
         let dir = tempfile::tempdir().unwrap();

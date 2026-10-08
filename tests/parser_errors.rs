@@ -105,7 +105,7 @@ fn deferred_read_refusal_keeps_container_provenance_and_typed_source() {
         .unwrap();
     assert_eq!(
         provenance.context.container.as_deref(),
-        Some(path.to_str().unwrap())
+        Some(path.canonicalize().unwrap().to_str().unwrap())
     );
     assert_eq!(quota(&error).resource(), ParserResource::WorkItems);
     assert_eq!(quota(&error).requested(), 2);

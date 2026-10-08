@@ -1,5 +1,31 @@
 #![cfg(feature = "std")]
 use virtdisk::{ImageFormat, ImageGraph, ImageSpec, VdiWriter};
+
+#[test]
+#[cfg(not(target_os = "linux"))]
+fn unsupported_vmdk_snapshot_preserves_registration_and_parent() {
+    let directory = tempfile::tempdir().unwrap();
+    let base = directory.path().join("base.vmdk");
+    let child = directory.path().join("child.vmdk");
+    drop(virtdisk::VmdkWriter::create(&base, 65536).unwrap());
+    let before = std::fs::read(&base).unwrap();
+    let mut graph = ImageGraph::open(&[ImageSpec {
+        path: base.clone(),
+        format: ImageFormat::Vmdk,
+        parent: None,
+    }])
+    .unwrap();
+    assert_eq!(
+        graph
+            .snapshot_as(&base, &child, ImageFormat::Vmdk)
+            .unwrap_err()
+            .kind(),
+        virtdisk::io::ErrorKind::Unsupported
+    );
+    assert!(!child.exists());
+    assert_eq!(graph.images().len(), 1);
+    assert_eq!(std::fs::read(&base).unwrap(), before);
+}
 #[test]
 fn native_snapshot_branches_flatten_and_preserve_immutable_base() {
     let dir = tempfile::tempdir().unwrap();
@@ -27,6 +53,22 @@ fn native_snapshot_branches_flatten_and_preserve_immutable_base() {
         .snapshot_as(&child, &nested, ImageFormat::Vdi)
         .unwrap();
     let writer = VdiWriter::open_chain(&nested, &[child.clone(), base.clone()]).unwrap();
+    if !cfg!(target_os = "linux") {
+        assert_eq!(
+            writer.write_all_at(5, &[9]).unwrap_err().kind(),
+            virtdisk::io::ErrorKind::Unsupported
+        );
+        drop(writer);
+        let mut bytes = [0; 8];
+        graph
+            .reader(&nested)
+            .unwrap()
+            .read_exact_at(4, &mut bytes)
+            .unwrap();
+        assert_eq!(bytes, [7; 8]);
+        assert_eq!(std::fs::read(&base).unwrap(), original);
+        return;
+    }
     writer.write_all_at(5, &[9]).unwrap();
     writer.flush().unwrap();
     assert!(graph.delete_snapshot(&nested).is_err());
@@ -53,7 +95,11 @@ fn native_snapshot_branches_flatten_and_preserve_immutable_base() {
 #[test]
 fn hosted_vmdk_and_vhdx_snapshot_branches_and_stale_parent_epochs() {
     use virtdisk::{VhdxWriter, VmdkWriter};
-    for format in [ImageFormat::Vmdk, ImageFormat::Vhdx] {
+    for format in [
+        #[cfg(target_os = "linux")]
+        ImageFormat::Vmdk,
+        ImageFormat::Vhdx,
+    ] {
         let dir = tempfile::tempdir().unwrap();
         let base = dir.path().join("base.img");
         let child = dir.path().join("child.img");

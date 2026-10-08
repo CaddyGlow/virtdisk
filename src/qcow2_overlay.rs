@@ -127,10 +127,5 @@ pub fn create_qcow2_overlay_with_chain(
 }
 
 fn forbidden_path(name: &str) -> bool {
-    let drive_path = cfg!(windows)
-        && name.as_bytes().first().is_some_and(u8::is_ascii_alphabetic)
-        && name.as_bytes().get(1) == Some(&b':')
-        && !name[2..].contains(':')
-        && Path::new(name).is_absolute();
-    name.contains('\0') || (name.contains(':') && !drive_path)
+    crate::portable::validate_parent_locator(name).is_err()
 }

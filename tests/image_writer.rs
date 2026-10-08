@@ -234,12 +234,28 @@ fn writer_factory_reports_parent_and_applies_discard_policy() {
     let writer =
         ImageWriter::open_chain(&child, ImageFormat::Qcow2, std::slice::from_ref(&raw)).unwrap();
     assert!(writer.inspection().has_parent);
-    assert_eq!(
-        writer
-            .discard(0, 65536, DiscardPolicy::RequireDeallocation)
-            .unwrap(),
-        DiscardResult::Deallocated
-    );
+    if cfg!(target_os = "linux") {
+        assert_eq!(
+            writer
+                .discard(0, 65536, DiscardPolicy::RequireDeallocation)
+                .unwrap(),
+            DiscardResult::Deallocated
+        );
+    } else {
+        assert_eq!(
+            writer
+                .discard(0, 65536, DiscardPolicy::RequireDeallocation)
+                .unwrap_err()
+                .kind(),
+            virtdisk::io::ErrorKind::Unsupported
+        );
+        assert_eq!(
+            writer
+                .discard(0, 65536, DiscardPolicy::AllowZeroFallback)
+                .unwrap(),
+            DiscardResult::Zeroed
+        );
+    }
     writer.flush().unwrap();
     let mut bytes = [1; 512];
     writer.read_exact_at(0, &mut bytes).unwrap();

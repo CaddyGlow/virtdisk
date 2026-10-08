@@ -362,3 +362,72 @@ mod tests {
         assert!(validate_parent_identity(&child, &repeated, &budget, 32).is_err());
     }
 }
+
+/// Validate a filesystem parent locator without granting authority to open it.
+///
+/// Ordinary and extended Windows drive-rooted names are accepted independently
+/// of the host feature or target. Relative paths and UNC names remain valid.
+/// Protocol schemes, drive-relative names, alternate data streams, and embedded
+/// NUL bytes are rejected. The host adapter still validates actual filesystem
+/// paths and explicitly authorized retained source identities.
+pub fn validate_parent_locator(name: &str) -> io::Result<()> {
+    let (tail, extended) = match name.strip_prefix("\\\\?\\") {
+        Some(tail) => (tail, true),
+        None => (name, false),
+    };
+    let bytes = tail.as_bytes();
+    let drive_rooted = bytes.first().is_some_and(u8::is_ascii_alphabetic)
+        && bytes.get(1) == Some(&b':')
+        && (bytes.get(2) == Some(&b'\\') || (!extended && bytes.get(2) == Some(&b'/')))
+        && !tail[2..].contains(':');
+    if name.contains('\0') || (name.contains(':') && !drive_rooted) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "protocol-like or NUL-containing parent path",
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod locator_tests {
+    use super::*;
+    #[test]
+    fn filesystem_locators_preserve_native_windows_absolute_forms() {
+        for path in [
+            "parent.qcow2",
+            "../parent.qcow2",
+            "/images/parent.qcow2",
+            r"C:\images\parent.qcow2",
+            "c:/images/parent.qcow2",
+            r"\\?\C:\images\parent.qcow2",
+            r"\\server\share\parent.qcow2",
+            r"\\?\UNC\server\share\parent.qcow2",
+        ] {
+            validate_parent_locator(path).unwrap();
+        }
+    }
+    #[test]
+    fn protocols_and_streams_cannot_disguise_themselves_as_native_drive_paths() {
+        for path in [
+            "file:parent",
+            "http://host/parent",
+            "nbd:host",
+            "C:relative",
+            "C:",
+            "1:/parent",
+            r"C:\parent:stream",
+            r"\\?\C:\parent:stream",
+            r"\\?\http://host/parent",
+            r"\\?\C:/parent",
+            "parent\0.qcow2",
+            r"\\?\UNC\server\share\parent:stream",
+        ] {
+            assert_eq!(
+                validate_parent_locator(path).unwrap_err().kind(),
+                io::ErrorKind::InvalidInput,
+                "{path}"
+            );
+        }
+    }
+}

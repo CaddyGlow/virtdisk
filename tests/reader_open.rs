@@ -96,6 +96,25 @@ fn authorized_chains_report_typed_recursion_limits() {
         let parent = directory.path().join(format!("parent-{format:?}"));
         let child = directory.path().join(format!("child-{format:?}"));
         virtdisk::convert_image(&source, &parent, format).unwrap();
+        #[cfg(not(target_os = "linux"))]
+        if format == ImageFormat::Vmdk {
+            let limits = ParserLimits {
+                recursion_depth: 1,
+                ..Default::default()
+            };
+            let options = ReaderOpenOptions::default()
+                .format(format)
+                .parser_limits(limits)
+                .unwrap();
+            let image = Image::open_with_options(&parent, &options).unwrap();
+            assert_eq!(image.budget().unwrap().limits(), limits);
+            let mut observed = vec![0; 65536];
+            image.read_exact_at(0, &mut observed).unwrap();
+            assert_eq!(observed, [37; 65536]);
+            drop(image);
+            assert_vmdk_overlay_refusal(&child, &parent);
+            continue;
+        }
         match format {
             ImageFormat::Qcow2 => {
                 virtdisk::create_qcow2_overlay(&child, &parent, "qcow2", 65536).unwrap()
@@ -177,6 +196,11 @@ fn recognized_containers_and_authorized_chains_retain_limits_and_source_bytes() 
         image.read_exact_at(0, &mut observed).unwrap();
         assert_eq!(observed, model);
         drop(image);
+        #[cfg(not(target_os = "linux"))]
+        if format == ImageFormat::Vmdk {
+            assert_vmdk_overlay_refusal(&child, &parent);
+            continue;
+        }
         match format {
             ImageFormat::Qcow2 => {
                 virtdisk::create_qcow2_overlay(&child, &parent, "qcow2", capacity as u64).unwrap()
@@ -358,4 +382,19 @@ fn recognition_never_falls_back_and_raw_requires_explicit_selection() {
     )
     .unwrap();
     assert_eq!(image.len(), 4);
+}
+
+#[cfg(not(target_os = "linux"))]
+fn assert_vmdk_overlay_refusal(child: &std::path::Path, parent: &std::path::Path) {
+    let original = fs::read(parent).unwrap();
+    let error = virtdisk::VmdkWriter::create_overlay(
+        child,
+        parent,
+        std::slice::from_ref(&parent.to_path_buf()),
+    )
+    .err()
+    .unwrap();
+    assert_eq!(error.kind(), io::ErrorKind::Unsupported);
+    assert!(!child.exists());
+    assert_eq!(fs::read(parent).unwrap(), original);
 }

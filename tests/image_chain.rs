@@ -31,6 +31,31 @@ fn dispatch_native_embedded_paths_require_explicit_authorization() {
         let child = dir.path().join("child.img");
         match format {
             ImageFormat::Vmdk => {
+                if !cfg!(target_os = "linux") {
+                    assert_eq!(
+                        VmdkWriter::create_sparse(&base, 2 * 1048576)
+                            .err()
+                            .unwrap()
+                            .kind(),
+                        virtdisk::io::ErrorKind::Unsupported,
+                    );
+                    assert!(!base.exists());
+                    let writer = VmdkWriter::create(&base, 2 * 1048576).unwrap();
+                    writer.write_all_at(0, &[3; 8]).unwrap();
+                    writer.flush().unwrap();
+                    drop(writer);
+                    let original = std::fs::read(&base).unwrap();
+                    assert_eq!(
+                        VmdkWriter::create_overlay(&child, &base, std::slice::from_ref(&base))
+                            .err()
+                            .unwrap()
+                            .kind(),
+                        virtdisk::io::ErrorKind::Unsupported,
+                    );
+                    assert!(!child.exists());
+                    assert_eq!(std::fs::read(&base).unwrap(), original);
+                    continue;
+                }
                 let w = VmdkWriter::create_sparse(&base, 2 * 1048576).unwrap();
                 w.write_all_at(0, &[3; 8]).unwrap();
                 w.flush().unwrap();
