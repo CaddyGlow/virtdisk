@@ -12,7 +12,7 @@ fn unsupported(message: &'static str) -> io::Error {
 }
 impl Qcow2Writer {
     /// Delete one native disk snapshot without changing surviving disk states.
-    /// Linux standalone bounded disk-only profiles are required. The complete
+    /// Linux bounded disk-only profiles with authorized immutable parents are required. The complete
     /// metadata update is journaled; interrupted publication requires reopening.
     pub fn delete_snapshot(&mut self, id: &[u8]) -> io::Result<Qcow2Snapshot> {
         self.lifecycle_inner(id, Lifecycle::Delete, None)
@@ -20,7 +20,7 @@ impl Qcow2Writer {
     /// Replace the active disk state with a retained native disk snapshot.
     /// The selected snapshot and every sibling remain available. Saved capacity
     /// replaces current capacity; later writes COW shared payload. Linux bounded
-    /// standalone disk-only profiles and recoverable metadata updates are required.
+    /// disk-only profiles with authorized immutable parents and recoverable metadata updates are required.
     pub fn revert_snapshot(&mut self, id: &[u8]) -> io::Result<Qcow2Snapshot> {
         self.lifecycle_inner(id, Lifecycle::Revert, None)
     }
@@ -37,9 +37,13 @@ impl Qcow2Writer {
         if plan.record.patches.is_empty() {
             return Ok(plan.snapshot);
         }
-        if let Err(error) =
-            journal::commit_authorized(&self.context.path, self.raw.clone(), plan.record, cut, &[])
-        {
+        if let Err(error) = journal::commit_authorized(
+            &self.context.path,
+            self.raw.clone(),
+            plan.record,
+            cut,
+            &self.context.authorized,
+        ) {
             if journal::sidecar(&self.context.path).exists() {
                 self.recovery_required
                     .store(true, std::sync::atomic::Ordering::Relaxed);
@@ -61,11 +65,13 @@ impl Qcow2Writer {
 
     /// Create a native internal disk-only snapshot with an explicit unique ID.
     ///
-    /// Linux, standalone v3/64 KiB/16-bit ownership and one-cluster L1/directory
+    /// Linux v3/64 KiB/16-bit ownership and one-cluster L1/directory
     /// profiles are required. IDs and names are limited to 256 bytes, with at
     /// most 64 snapshots. The bounded redo journal makes metadata recoverable;
     /// failed publication requires reopening. Creation does not capture VM state.
     /// Later active writes copy shared allocations and preserve saved disk bytes.
+    /// Backing paths require explicit authorization and parents must remain
+    /// immutable; the snapshot does not capture changes to a parent image.
     pub fn create_snapshot(&mut self, id: &[u8], name: &[u8]) -> io::Result<Qcow2Snapshot> {
         self.create_snapshot_inner(id, name, None)
     }
@@ -75,9 +81,9 @@ impl Qcow2Writer {
         name: &[u8],
         cut: Option<usize>,
     ) -> io::Result<Qcow2Snapshot> {
-        if !cfg!(target_os = "linux") || self.context.parent.is_some() {
+        if !cfg!(target_os = "linux") {
             return Err(unsupported(
-                "QCOW2 snapshot creation requires standalone Linux profile",
+                "QCOW2 snapshot creation requires Linux profile",
             ));
         }
         if self.raw.len() > 33 * 1024 * 1024 * 1024 {
@@ -97,7 +103,7 @@ impl Qcow2Writer {
         let disk = Qcow2::open_locked_chain(
             source.clone(),
             &self.context.path,
-            &[],
+            &self.context.authorized,
             self.raw.file_identity()?,
         )?;
         disk.validate_active_mapping()?;
@@ -225,9 +231,13 @@ impl Qcow2Writer {
             original_digest: digest,
             patches,
         };
-        if let Err(error) =
-            journal::commit_authorized(&self.context.path, self.raw.clone(), record, cut, &[])
-        {
+        if let Err(error) = journal::commit_authorized(
+            &self.context.path,
+            self.raw.clone(),
+            record,
+            cut,
+            &self.context.authorized,
+        ) {
             if journal::sidecar(&self.context.path).exists() {
                 self.recovery_required
                     .store(true, std::sync::atomic::Ordering::Relaxed);
@@ -387,12 +397,9 @@ fn map_deltas(
     Ok(())
 }
 fn lifecycle_plan(writer: &Qcow2Writer, id: &[u8], action: Lifecycle) -> io::Result<LifecyclePlan> {
-    if !cfg!(target_os = "linux")
-        || writer.context.parent.is_some()
-        || writer.raw.len() > 33 * 1024 * 1024 * 1024
-    {
+    if !cfg!(target_os = "linux") || writer.raw.len() > 33 * 1024 * 1024 * 1024 {
         return Err(unsupported(
-            "QCOW2 snapshot lifecycle requires bounded standalone Linux profile",
+            "QCOW2 snapshot lifecycle requires bounded Linux profile",
         ));
     }
     writer.raw.require_single_link_for_journal()?;
@@ -403,7 +410,7 @@ fn lifecycle_plan(writer: &Qcow2Writer, id: &[u8], action: Lifecycle) -> io::Res
     let disk = Qcow2::open_locked_chain(
         source.clone(),
         &writer.context.path,
-        &[],
+        &writer.context.authorized,
         writer.raw.file_identity()?,
     )?;
     disk.validate_active_mapping()?;
@@ -887,5 +894,108 @@ mod lifecycle_recovery_tests {
             }
         }
         eprintln!("verified {cuts} lifecycle persistence/metadata cuts");
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod backed_recovery_tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    fn fixture(
+        saved: bool,
+        format: crate::ImageFormat,
+    ) -> (tempfile::TempDir, PathBuf, PathBuf, Qcow2Writer) {
+        let dir = tempfile::tempdir().unwrap();
+        let parent = dir.path().join("parent.raw");
+        let child = dir.path().join("child.qcow2");
+        let writer = crate::ImageWriter::create(&parent, format, 131072).unwrap();
+        crate::WriteAt::write_all_at(&writer, 0, &vec![37; 131072]).unwrap();
+        crate::WriteAt::flush(&writer).unwrap();
+        drop(writer);
+        crate::create_qcow2_overlay(
+            &child,
+            &parent,
+            if format == crate::ImageFormat::Raw {
+                "raw"
+            } else {
+                "qcow2"
+            },
+            131072,
+        )
+        .unwrap();
+        let mut writer = Qcow2Writer::open_chain(&child, std::slice::from_ref(&parent)).unwrap();
+        writer.write_all_at(500, b"before").unwrap();
+        writer.flush().unwrap();
+        if saved {
+            writer.create_snapshot(b"saved", b"backed").unwrap();
+            writer.write_all_at(500, b"after!").unwrap();
+            writer.flush().unwrap();
+        }
+        (dir, parent, child, writer)
+    }
+
+    #[test]
+    fn backed_lifecycle_recovers_persistence_and_patch_cuts_with_authority() {
+        let _test_guard = crate::test_sync::writer_test();
+        for format in [crate::ImageFormat::Raw, crate::ImageFormat::Qcow2] {
+            for action in [None, Some(Lifecycle::Delete), Some(Lifecycle::Revert)] {
+                let patch_count = if let Some(action) = action {
+                    let (_dir, _parent, _child, writer) = fixture(true, format);
+                    lifecycle_plan(&writer, b"saved", action)
+                        .unwrap()
+                        .record
+                        .patches
+                        .len()
+                } else {
+                    6
+                };
+                for cut in (0..=7).chain(100..100 + patch_count) {
+                    let (_dir, parent, child, mut writer) = fixture(action.is_some(), format);
+                    let parent_bytes = std::fs::read(&parent).unwrap();
+                    let result = match action {
+                        None => writer.create_snapshot_inner(b"saved", b"backed", Some(cut)),
+                        Some(action) => writer.lifecycle_inner(b"saved", action, Some(cut)),
+                    };
+                    assert!(result.is_err(), "cut {cut}");
+                    drop(writer);
+                    let before = std::fs::read(&child).unwrap();
+                    let sidecar = journal::sidecar(&child);
+                    let evidence = std::fs::read(&sidecar).unwrap();
+                    assert!(Qcow2Writer::open(&child).is_err());
+                    assert_eq!(std::fs::read(&child).unwrap(), before);
+                    assert_eq!(std::fs::read(&sidecar).unwrap(), evidence);
+                    drop(Qcow2Writer::open_chain(&child, std::slice::from_ref(&parent)).unwrap());
+                    assert!(!sidecar.exists());
+                    let disk =
+                        Arc::new(Qcow2::open_chain(&child, std::slice::from_ref(&parent)).unwrap());
+                    disk.validate_active_mapping().unwrap();
+                    let mut bytes = vec![0; 131072];
+                    disk.read_exact_at(0, &mut bytes).unwrap();
+                    let mut expected = vec![37; 131072];
+                    expected[500..506].copy_from_slice(
+                        if matches!(action, Some(Lifecycle::Delete)) {
+                            b"after!"
+                        } else {
+                            b"before"
+                        },
+                    );
+                    assert_eq!(bytes, expected, "cut {cut}");
+                    assert_eq!(
+                        disk.list_snapshots().unwrap().len(),
+                        usize::from(!matches!(action, Some(Lifecycle::Delete)))
+                    );
+                    if !matches!(action, Some(Lifecycle::Delete)) {
+                        disk.open_snapshot(b"saved")
+                            .unwrap()
+                            .read_exact_at(0, &mut bytes)
+                            .unwrap();
+                        expected[500..506].copy_from_slice(b"before");
+                        assert_eq!(bytes, expected);
+                    }
+                    assert_eq!(std::fs::read(parent).unwrap(), parent_bytes);
+                }
+            }
+        }
     }
 }

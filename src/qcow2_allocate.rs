@@ -309,8 +309,17 @@ pub(super) fn resize(
                 let within = offset % CLUSTER;
                 let count = (CLUSTER - within).min(old_size - offset) as usize;
                 let descriptor = mappings[(offset / CLUSTER) as usize];
-                if descriptor & MASK != 0 && descriptor & 1 == 0 {
-                    raw.read_exact_at((descriptor & MASK) + within, &mut bytes[..count])?;
+                bytes[..count].fill(0);
+                if descriptor & 1 == 0 {
+                    if descriptor & MASK != 0 {
+                        raw.read_exact_at((descriptor & MASK) + within, &mut bytes[..count])?;
+                    } else if let Some(parent) = &context.parent {
+                        let covered =
+                            parent.len().saturating_sub(offset).min(count as u64) as usize;
+                        if covered != 0 {
+                            parent.read_exact_at(offset, &mut bytes[..covered])?;
+                        }
+                    }
                     if bytes[..count].iter().any(|b| *b != 0) {
                         return Err(io::Error::new(
                             io::ErrorKind::InvalidInput,
@@ -389,17 +398,34 @@ pub(super) fn resize(
     if boundary != 0 && !boundary.is_multiple_of(CLUSTER) {
         let index = (boundary / CLUSTER) as usize;
         let descriptor = mappings[index];
-        if descriptor & MASK != 0 && descriptor & 1 == 0 {
+        if descriptor & 1 == 0 && (descriptor & MASK != 0 || context.parent.is_some()) {
             let payload = b.append()?;
             let mut bytes = vec![0; CLUSTER as usize];
-            raw.read_exact_at(descriptor & MASK, &mut bytes)?;
+            if descriptor & MASK != 0 {
+                raw.read_exact_at(descriptor & MASK, &mut bytes)?;
+            } else if let Some(parent) = &context.parent {
+                let offset = index as u64 * CLUSTER;
+                let covered = parent.len().saturating_sub(offset).min(boundary % CLUSTER) as usize;
+                if covered != 0 {
+                    parent.read_exact_at(offset, &mut bytes[..covered])?;
+                }
+            }
             bytes[(boundary % CLUSTER) as usize..].fill(0);
             *b.cluster(payload)? = bytes;
             b.reference(payload, 1)?;
-            b.reference(descriptor & MASK, -1)?;
+            if descriptor & MASK != 0 {
+                b.reference(descriptor & MASK, -1)?;
+            }
             let table = private_l2(&mut b, l1_offset + (index as u64 / 8192) * 8)?;
             b.set64(table + (index as u64 % 8192) * 8, payload | COPIED)?;
             next[index] = payload | COPIED;
+        }
+    }
+    if new_size > old_size && context.parent.is_some() {
+        for (index, descriptor) in next.iter_mut().enumerate().skip(old_count) {
+            let table = private_l2(&mut b, l1_offset + (index as u64 / 8192) * 8)?;
+            b.set64(table + (index as u64 % 8192) * 8, 1)?;
+            *descriptor = 1;
         }
     }
     let header = b.cluster(0)?;
@@ -733,6 +759,187 @@ mod tests {
             w.read_exact_at(0, &mut bytes).unwrap();
             assert_eq!(&bytes[..512], &[9; 512]);
             assert!(bytes[512..].iter().all(|b| *b == 0));
+        }
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod snapshot_resize_recovery_tests {
+    use super::*;
+    use crate::{Qcow2, Qcow2Writer, ReadAt, ShrinkPolicy};
+    use std::path::Path;
+
+    fn fixture(path: &Path, size: u64) -> Vec<u64> {
+        let mut writer = Qcow2Writer::create_sparse(path, size).unwrap();
+        writer.write_all_at(0, &vec![37; size as usize]).unwrap();
+        writer.create_snapshot(b"saved", b"saved").unwrap();
+        writer.flush().unwrap();
+        let mappings = writer.mappings.lock().unwrap().clone();
+        drop(writer);
+        mappings
+    }
+
+    #[test]
+    fn snapshot_resize_recovers_every_fixture_patch_and_persistence_cut() {
+        let _guard = crate::test_sync::writer_test();
+        for (old_size, new_size, policy) in [
+            (CLUSTER + 512, 3 * CLUSTER, ShrinkPolicy::Reject),
+            (3 * CLUSTER, CLUSTER + 512, ShrinkPolicy::AllowDataLoss),
+        ] {
+            let patch_count = {
+                let dir = tempfile::tempdir().unwrap();
+                let path = dir.path().join("probe");
+                let mappings = fixture(&path, old_size);
+                let before = std::fs::read(&path).unwrap();
+                let context = super::super::WriteContext {
+                    path: path.clone(),
+                    authorized: vec![],
+                    parent: None,
+                };
+                resize(
+                    &context,
+                    Arc::new(RawWriter::open(&path).unwrap()),
+                    &mappings,
+                    old_size,
+                    new_size,
+                    policy,
+                    None,
+                )
+                .unwrap();
+                let after = std::fs::read(&path).unwrap();
+                let old: Vec<_> = before.chunks(CLUSTER as usize).collect();
+                after
+                    .chunks(CLUSTER as usize)
+                    .enumerate()
+                    .filter(|(index, bytes)| old.get(*index).copied().unwrap_or(&[]) != *bytes)
+                    .count()
+            };
+            for cut in (0..=7).chain(100..100 + patch_count) {
+                let dir = tempfile::tempdir().unwrap();
+                let path = dir.path().join("image");
+                let mappings = fixture(&path, old_size);
+                let context = super::super::WriteContext {
+                    path: path.clone(),
+                    authorized: vec![],
+                    parent: None,
+                };
+                assert!(
+                    resize(
+                        &context,
+                        Arc::new(RawWriter::open(&path).unwrap()),
+                        &mappings,
+                        old_size,
+                        new_size,
+                        policy,
+                        Some(cut)
+                    )
+                    .is_err(),
+                    "cut {cut}"
+                );
+                assert!(Qcow2::open_chain(&path, &[]).is_err());
+                drop(Qcow2Writer::open(&path).unwrap());
+                let disk = Arc::new(Qcow2::open_chain(&path, &[]).unwrap());
+                disk.validate_active_mapping().unwrap();
+                assert_eq!(disk.len(), new_size);
+                let mut expected = vec![37; old_size as usize];
+                expected.resize(new_size as usize, 0);
+                let mut bytes = vec![0; new_size as usize];
+                disk.read_exact_at(0, &mut bytes).unwrap();
+                assert_eq!(bytes, expected, "cut {cut}");
+                let saved = disk.open_snapshot(b"saved").unwrap();
+                assert_eq!(saved.len(), old_size);
+                bytes.resize(old_size as usize, 0);
+                saved.read_exact_at(0, &mut bytes).unwrap();
+                assert!(bytes.iter().all(|byte| *byte == 37), "cut {cut}");
+            }
+        }
+    }
+    fn backed_fixture(dir: &Path, format: crate::ImageFormat, old_size: u64) -> Qcow2Writer {
+        let parent = dir.join("parent");
+        let child = dir.join("child");
+        let writer = crate::ImageWriter::create(&parent, format, 3 * CLUSTER).unwrap();
+        crate::WriteAt::write_all_at(&writer, 0, &vec![37; (3 * CLUSTER) as usize]).unwrap();
+        crate::WriteAt::flush(&writer).unwrap();
+        drop(writer);
+        crate::create_qcow2_overlay(
+            &child,
+            &parent,
+            if format == crate::ImageFormat::Raw {
+                "raw"
+            } else {
+                "qcow2"
+            },
+            old_size,
+        )
+        .unwrap();
+        let mut writer = Qcow2Writer::open_chain(&child, &[parent]).unwrap();
+        writer.create_snapshot(b"saved", b"saved").unwrap();
+        writer
+    }
+
+    #[test]
+    fn backed_resize_recovers_growth_masks_and_inherited_boundary_at_every_cut() {
+        let _guard = crate::test_sync::writer_test();
+        for format in [crate::ImageFormat::Raw, crate::ImageFormat::Qcow2] {
+            for (old_size, new_size, policy) in [
+                (CLUSTER + 512, 3 * CLUSTER + 512, ShrinkPolicy::Reject),
+                (3 * CLUSTER, 512, ShrinkPolicy::AllowDataLoss),
+            ] {
+                let patch_count = {
+                    let dir = tempfile::tempdir().unwrap();
+                    let mut writer = backed_fixture(dir.path(), format, old_size);
+                    let before = std::fs::read(dir.path().join("child")).unwrap();
+                    writer.resize(new_size, policy).unwrap();
+                    let after = std::fs::read(dir.path().join("child")).unwrap();
+                    let old: Vec<_> = before.chunks(CLUSTER as usize).collect();
+                    after
+                        .chunks(CLUSTER as usize)
+                        .enumerate()
+                        .filter(|(index, bytes)| old.get(*index).copied().unwrap_or(&[]) != *bytes)
+                        .count()
+                };
+                for cut in (0..=7).chain(100..100 + patch_count) {
+                    let dir = tempfile::tempdir().unwrap();
+                    let writer = backed_fixture(dir.path(), format, old_size);
+                    let child = dir.path().join("child");
+                    let parent = dir.path().join("parent");
+                    let parent_bytes = std::fs::read(&parent).unwrap();
+                    let mappings = writer.mappings.lock().unwrap().clone();
+                    assert!(
+                        resize(
+                            &writer.context,
+                            writer.raw.clone(),
+                            &mappings,
+                            old_size,
+                            new_size,
+                            policy,
+                            Some(cut)
+                        )
+                        .is_err(),
+                        "cut {cut}"
+                    );
+                    drop(writer);
+                    let interrupted = std::fs::read(&child).unwrap();
+                    assert!(Qcow2Writer::open(&child).is_err());
+                    assert_eq!(std::fs::read(&child).unwrap(), interrupted);
+                    drop(Qcow2Writer::open_chain(&child, std::slice::from_ref(&parent)).unwrap());
+                    let disk =
+                        Arc::new(Qcow2::open_chain(&child, std::slice::from_ref(&parent)).unwrap());
+                    disk.validate_active_mapping().unwrap();
+                    assert_eq!(disk.len(), new_size);
+                    let mut expected = vec![37; old_size as usize];
+                    expected.resize(new_size as usize, 0);
+                    let mut bytes = vec![0; new_size as usize];
+                    disk.read_exact_at(0, &mut bytes).unwrap();
+                    assert_eq!(bytes, expected, "cut {cut}");
+                    let saved = disk.open_snapshot(b"saved").unwrap();
+                    assert_eq!(saved.len(), old_size);
+                    bytes.resize(old_size as usize, 0);
+                    saved.read_exact_at(0, &mut bytes).unwrap();
+                    assert!(bytes.iter().all(|byte| *byte == 37), "cut {cut}");
+                    assert_eq!(std::fs::read(&parent).unwrap(), parent_bytes);
+                }
+            }
         }
     }
 }

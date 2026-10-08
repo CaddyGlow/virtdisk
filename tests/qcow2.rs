@@ -789,7 +789,8 @@ fn validator_rejects_caller_tightened_metadata_and_cache_allocations() {
         (
             "metadata",
             virtdisk::ParserLimits {
-                metadata_bytes: 1,
+                // Permit the fixed header, but no validator metadata.
+                metadata_bytes: 104,
                 ..Default::default()
             },
         ),

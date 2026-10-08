@@ -41,8 +41,15 @@ pub(crate) fn create_locked_sparse_qcow2(path: &Path, source: &dyn ReadAt) -> io
     create_locked(path, source, true)
 }
 
-fn create_locked(path: &Path, source: &dyn ReadAt, sparse: bool) -> io::Result<File> {
-    let size = source.len();
+fn create_locked(path: &Path, mut source: &dyn ReadAt, sparse: bool) -> io::Result<File> {
+    export_qcow2(path, &mut source, sparse)
+}
+pub(crate) fn export_qcow2(
+    path: &Path,
+    source: &mut dyn crate::export_source::ExportSource,
+    sparse: bool,
+) -> io::Result<File> {
+    let size = source.size();
     if size > 1 << 40 || !size.is_multiple_of(512) {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
@@ -52,16 +59,18 @@ fn create_locked(path: &Path, source: &dyn ReadAt, sparse: bool) -> io::Result<F
     let guest_clusters = size.div_ceil(CLUSTER);
     let mut data_clusters = guest_clusters;
     if sparse {
+        source.begin(crate::OperationPhase::AllocationScan, size)?;
         data_clusters = 0;
         let mut buffer = [0; CLUSTER as usize];
         for index in 0..guest_clusters {
             let count = (size - index * CLUSTER).min(CLUSTER) as usize;
-            source.read_exact_at(index * CLUSTER, &mut buffer[..count])?;
+            source.read(index * CLUSTER, &mut buffer[..count])?;
             if buffer[..count].iter().any(|b| *b != 0) {
                 data_clusters += 1;
             }
         }
     }
+    source.begin(crate::OperationPhase::ImageExport, size)?;
     let l2_clusters = guest_clusters.div_ceil(ENTRIES);
     let l1_clusters = l2_clusters.div_ceil(ENTRIES);
     let base = 1 + l1_clusters + l2_clusters + data_clusters;
@@ -149,7 +158,7 @@ fn create_locked(path: &Path, source: &dyn ReadAt, sparse: bool) -> io::Result<F
             }
             payload.fill(0);
             let count = (size - index * CLUSTER).min(CLUSTER) as usize;
-            source.read_exact_at(index * CLUSTER, &mut payload[..count])?;
+            source.read(index * CLUSTER, &mut payload[..count])?;
             if sparse && payload[..count].iter().all(|b| *b == 0) {
                 continue;
             }

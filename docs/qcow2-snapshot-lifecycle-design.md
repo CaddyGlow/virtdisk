@@ -7,7 +7,7 @@ transaction profiles, not a replacement for broader lifecycle support.
 
 `delete_snapshot` and `revert_snapshot` operate on an exclusively mutable
 writer, then dispatch through the common writer and CLI. Begin with the same
-Linux standalone v3/64 KiB/16-bit profile, private active L1 clusters, zero VM
+Linux v3/64 KiB/16-bit profile with authorized immutable parents, private active L1 clusters, zero VM
 state and bounded directory/L1/journal resources. Validate the original complete
 ownership graph before planning. Missing IDs and unsupported requests must leave
 the whole container unchanged. No guest memory state or hypervisor registration
@@ -70,7 +70,7 @@ host file. Final deletion clears both the native snapshot count and pointer.
 Revert retains every saved state, installs a freshly allocated private active L1,
 and changes active capacity and the mapping cache only after a successful commit.
 
-Initial mutation support requires Linux, standalone v3, 64 KiB clusters, 16-bit
+Initial mutation support requires Linux v3 with authorized immutable raw/QCOW2 parents, 64 KiB clusters, 16-bit
 refcounts, private active L1 ownership, zero VM state, at most 64 saved states,
 one cluster each for the active/selected L1 and directory, and a physical image
 no larger than 33 GiB. Revert applies the 32 GiB sector-aligned virtual-capacity
@@ -83,7 +83,7 @@ Ordinary descriptors in mixed tables retain exact per-state ownership. Decoding
 uses the bounded snapshot reader; the 16-cluster transaction limit additionally
 bounds materialized output. Plans beyond these limits fail before mutation.
 Active compressed writable profiles, larger
-metadata transactions, backing-chain mutations, renaming and VM capture remain
+metadata transactions, in-place backing-chain rewrites, renaming and VM capture remain
 unfinished work in the complete plan.
 
 Regression coverage includes repeated L2/payload references, preallocated zero,

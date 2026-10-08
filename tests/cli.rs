@@ -1,6 +1,876 @@
 #![cfg(feature = "cli")]
 use std::process::Command;
 
+#[test]
+fn json_errors_report_chain_and_descriptor_bounds_as_parser_limits() {
+    let directory = tempfile::tempdir().unwrap();
+    let raw = directory.path().join("raw");
+    let parent = directory.path().join("parent.qcow2");
+    let child = directory.path().join("child.qcow2");
+    let vmdk = directory.path().join("image.vmdk");
+    std::fs::write(&raw, [37; 65536]).unwrap();
+    let source = virtdisk::RawDisk::open(&raw).unwrap();
+    virtdisk::convert_image(&source, &parent, virtdisk::ImageFormat::Qcow2).unwrap();
+    virtdisk::create_qcow2_overlay(&child, &parent, "qcow2", 65536).unwrap();
+    virtdisk::convert_image(&source, &vmdk, virtdisk::ImageFormat::Vmdk).unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_virtdisk"))
+        .args(["--json-errors", "--parser-limit", "recursion=1", "info"])
+        .arg(&child)
+        .arg("qcow2")
+        .arg(&parent)
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(2));
+    let record = String::from_utf8(output.stderr).unwrap();
+    assert!(record.contains("\"code\":\"parser-limit\",\"kind\":\"invalid-data\""));
+    assert!(
+        record.contains("\"resource\":\"recursion-depth\",\"limit\":\"1\",\"requested\":\"2\"")
+    );
+    let output = Command::new(env!("CARGO_BIN_EXE_virtdisk"))
+        .args(["--json-errors", "--parser-limit", "attribute=1", "info"])
+        .arg(&vmdk)
+        .arg("vmdk")
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(2));
+    assert!(
+        String::from_utf8_lossy(&output.stderr)
+            .contains("\"resource\":\"attribute-bytes\",\"limit\":\"1\"")
+    );
+}
+
+#[test]
+fn json_errors_identify_parser_quota_through_read_provenance() {
+    let directory = tempfile::tempdir().unwrap();
+    let raw = directory.path().join("raw");
+    std::fs::write(&raw, [37; 65537]).unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_virtdisk"))
+        .args(["--json-errors", "--parser-limit", "work=1", "hash"])
+        .arg(&raw)
+        .arg("raw")
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(2));
+    let record = String::from_utf8(output.stderr).unwrap();
+    assert!(record.contains("\"code\":\"parser-limit\""));
+    assert!(record.contains("\"resource\":\"work-items\",\"limit\":\"1\",\"requested\":\"2\""));
+    assert!(record.contains("\"kind\":\"unsupported\""));
+    assert!(output.stdout.is_empty());
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn json_errors_report_recovery_and_coexist_with_progress() {
+    let directory = tempfile::tempdir().unwrap();
+    let raw = directory.path().join("raw");
+    let qcow2 = directory.path().join("disk.qcow2");
+    std::fs::write(&raw, [37; 512]).unwrap();
+    virtdisk::convert_image(
+        &virtdisk::RawDisk::open(&raw).unwrap(),
+        &qcow2,
+        virtdisk::ImageFormat::Qcow2,
+    )
+    .unwrap();
+    let original = std::fs::read(&qcow2).unwrap();
+    let mut journal = qcow2.as_os_str().to_os_string();
+    journal.push(".virtdisk-qcow2-journal");
+    let journal = std::path::PathBuf::from(journal);
+    std::fs::write(&journal, b"pending evidence").unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_virtdisk"))
+        .args(["--json-errors", "zero"])
+        .arg(&qcow2)
+        .args(["qcow2", "0", "512"])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("\"code\":\"recovery-required\""));
+    assert_eq!(std::fs::read(&qcow2).unwrap(), original);
+    assert_eq!(std::fs::read(&journal).unwrap(), b"pending evidence");
+    let output = Command::new(env!("CARGO_BIN_EXE_virtdisk"))
+        .args([
+            "--json-errors",
+            "--progress",
+            "--operation-limit",
+            "bytes=511",
+            "check",
+        ])
+        .arg(&raw)
+        .args(["raw", "payload"])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(2));
+    assert!(output.stdout.is_empty());
+    let records = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        records
+            .lines()
+            .next()
+            .unwrap()
+            .starts_with("{\"type\":\"progress\"")
+    );
+    assert!(
+        records
+            .lines()
+            .last()
+            .unwrap()
+            .contains("\"code\":\"resource-limit\"")
+    );
+    assert!(
+        records
+            .lines()
+            .all(|line| line.starts_with('{') && line.ends_with('}'))
+    );
+    let plain = Command::new(env!("CARGO_BIN_EXE_virtdisk"))
+        .arg("hash")
+        .arg(&raw)
+        .arg("raw")
+        .output()
+        .unwrap();
+    let json = Command::new(env!("CARGO_BIN_EXE_virtdisk"))
+        .args(["--json-errors", "hash"])
+        .arg(&raw)
+        .arg("raw")
+        .output()
+        .unwrap();
+    assert!(json.status.success());
+    assert_eq!(plain.stdout, json.stdout);
+    assert!(json.stderr.is_empty());
+}
+
+#[test]
+fn json_errors_preserve_mutation_ranges_and_escape_messages() {
+    let directory = tempfile::tempdir().unwrap();
+    let raw = directory.path().join("raw");
+    std::fs::write(&raw, [37; 512]).unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_virtdisk"))
+        .args(["--json-errors", "zero"])
+        .arg(&raw)
+        .args(["raw", "512", "1"])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(2));
+    let record = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        record.contains(
+            "\"operation\":\"write-zeroes\",\"format\":\"raw\",\"offset\":512,\"length\":1"
+        )
+    );
+    assert_eq!(std::fs::read(&raw).unwrap(), [37; 512]);
+    #[cfg(unix)]
+    {
+        let corrupt = directory.path().join("bad\"\\\n猫.qcow2");
+        std::fs::write(&corrupt, b"QFI\xfb").unwrap();
+        let output = Command::new(env!("CARGO_BIN_EXE_virtdisk"))
+            .args(["--json-errors", "info"])
+            .arg(&corrupt)
+            .arg("qcow2")
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(2));
+        let record = String::from_utf8(output.stderr).unwrap();
+        assert_eq!(record.lines().count(), 1);
+        assert!(record.contains("bad\\\"\\\\\\n猫.qcow2"), "{record}");
+    }
+}
+
+#[test]
+fn json_errors_report_quota_and_input_kinds_without_success_output() {
+    let directory = tempfile::tempdir().unwrap();
+    let raw = directory.path().join("raw");
+    std::fs::write(&raw, [37; 512]).unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_virtdisk"))
+        .args(["--json-errors", "--operation-limit", "bytes=511", "hash"])
+        .arg(&raw)
+        .arg("raw")
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(2));
+    assert!(output.stdout.is_empty());
+    let record = String::from_utf8(output.stderr).unwrap();
+    assert_eq!(record.lines().count(), 1);
+    assert!(record.starts_with("{\"type\":\"error\",\"code\":\"resource-limit\""));
+    assert!(record.contains("\"resource\":\"logical-bytes\""));
+    assert!(record.contains("\"limit\":\"511\",\"requested\":\"512\""));
+    let output = Command::new(env!("CARGO_BIN_EXE_virtdisk"))
+        .args([
+            "--json-errors",
+            "--operation-limit",
+            "scratch=0",
+            "hash",
+            "absent",
+            "raw",
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("\"kind\":\"invalid-input\""));
+}
+
+#[test]
+fn progress_handles_comparison_empty_work_and_rejects_unsupported_commands() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("raw");
+    std::fs::write(&path, [37; 512]).unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_virtdisk"))
+        .args(["--progress", "compare"])
+        .arg(&path)
+        .arg("raw")
+        .arg(&path)
+        .arg("raw")
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    assert!(output.stdout.is_empty());
+    let events = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        events
+            .lines()
+            .last()
+            .unwrap()
+            .contains("\"io_operations\":2")
+    );
+    std::fs::write(&path, []).unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_virtdisk"))
+        .args(["--progress", "hash"])
+        .arg(&path)
+        .arg("raw")
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("\"completed_bytes\":0,\"total_bytes\":0")
+    );
+    let output = Command::new(env!("CARGO_BIN_EXE_virtdisk"))
+        .args(["--progress", "info", "absent", "raw"])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("controls require"));
+}
+
+#[cfg(unix)]
+#[test]
+fn closed_progress_pipe_fails_without_a_success_result_or_panic() {
+    use std::{
+        os::{fd::OwnedFd, unix::net::UnixStream},
+        process::Stdio,
+    };
+    let directory = tempfile::tempdir().unwrap();
+    let raw = directory.path().join("raw");
+    let original = vec![37; 1048576];
+    std::fs::write(&raw, &original).unwrap();
+    // Close the receiver before spawning, avoiding a race with progress writes.
+    let (sender, receiver) = UnixStream::pair().unwrap();
+    drop(receiver);
+    let sender: OwnedFd = sender.into();
+    let output = Command::new(env!("CARGO_BIN_EXE_virtdisk"))
+        .args(["--progress", "--operation-limit", "scratch=1", "hash"])
+        .arg(&raw)
+        .arg("raw")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::from(sender))
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(2));
+    assert!(output.stdout.is_empty());
+    assert_eq!(std::fs::read(&raw).unwrap(), original);
+}
+
+#[test]
+fn progress_reports_final_partial_chunks_on_stderr_without_changing_results() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("raw");
+    std::fs::write(&path, [37; 513]).unwrap();
+    let plain = Command::new(env!("CARGO_BIN_EXE_virtdisk"))
+        .arg("hash")
+        .arg(&path)
+        .arg("raw")
+        .output()
+        .unwrap();
+    let progress = Command::new(env!("CARGO_BIN_EXE_virtdisk"))
+        .args(["--operation-limit", "scratch=256", "--progress", "hash"])
+        .arg(&path)
+        .arg("raw")
+        .output()
+        .unwrap();
+    assert!(
+        progress.status.success(),
+        "{}",
+        String::from_utf8_lossy(&progress.stderr)
+    );
+    assert_eq!(progress.stdout, plain.stdout);
+    let events = String::from_utf8(progress.stderr).unwrap();
+    assert_eq!(events.lines().count(), 4);
+    assert!(
+        events
+            .lines()
+            .all(|line| line.starts_with("{\"type\":\"progress\",\"phase\":\"processing\""))
+    );
+    let final_event = events.lines().last().unwrap();
+    assert!(final_event.contains("\"completed_bytes\":513,\"total_bytes\":513"));
+    assert!(final_event.contains("\"io_operations\":3"));
+}
+
+#[test]
+fn check_progress_separates_metadata_and_payload_and_quota_refusal_is_not_success() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("raw");
+    std::fs::write(&path, [37; 512]).unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_virtdisk"))
+        .args(["--progress", "check"])
+        .arg(&path)
+        .args(["raw", "payload"])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let events = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        events
+            .contains("\"phase\":\"metadata-validation\",\"completed_bytes\":0,\"total_bytes\":0")
+    );
+    assert!(
+        events.contains(
+            "\"phase\":\"payload-validation\",\"completed_bytes\":512,\"total_bytes\":512"
+        )
+    );
+    let output = Command::new(env!("CARGO_BIN_EXE_virtdisk"))
+        .args(["--progress", "--operation-limit", "bytes=511", "hash"])
+        .arg(&path)
+        .arg("raw")
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(2));
+    assert!(output.stdout.is_empty());
+    assert!(!String::from_utf8_lossy(&output.stderr).contains("\"type\":\"progress\""));
+}
+
+#[test]
+fn operation_quotas_bound_hash_compare_and_payload_check() {
+    let directory = tempfile::tempdir().unwrap();
+    let raw = directory.path().join("raw");
+    std::fs::write(&raw, [37; 1024]).unwrap();
+    for command in ["hash", "compare", "check"] {
+        let mut process = Command::new(env!("CARGO_BIN_EXE_virtdisk"));
+        process
+            .args(["--operation-limit", "bytes=1023", command])
+            .arg(&raw)
+            .arg("raw");
+        if command == "compare" {
+            process.arg(&raw).arg("raw");
+        }
+        if command == "check" {
+            process.arg("payload");
+        }
+        let output = process.output().unwrap();
+        assert_eq!(output.status.code(), Some(2));
+        assert!(
+            String::from_utf8_lossy(&output.stderr)
+                .contains("LogicalBytes requires 1024, limit 1023")
+        );
+        assert!(output.stdout.is_empty());
+    }
+    let output = Command::new(env!("CARGO_BIN_EXE_virtdisk"))
+        .args([
+            "--operation-limit",
+            "bytes=1024",
+            "--operation-limit",
+            "scratch=256",
+            "--operation-limit",
+            "io=4",
+            "hash",
+        ])
+        .arg(&raw)
+        .arg("raw")
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(output.stdout.len(), 65);
+}
+
+#[test]
+fn operation_controls_validate_before_file_access_and_allow_empty_work() {
+    for arguments in [
+        vec!["--operation-limit", "scratch=0", "hash", "absent", "raw"],
+        vec![
+            "--operation-limit",
+            "scratch=131073",
+            "hash",
+            "absent",
+            "raw",
+        ],
+        vec!["--operation-limit", "unknown=1", "hash", "absent", "raw"],
+        vec!["--operation-limit", "io=-1", "hash", "absent", "raw"],
+        vec![
+            "--operation-limit",
+            "bytes=0",
+            "resize-native",
+            "absent",
+            "raw",
+            "output",
+            "raw",
+        ],
+    ] {
+        let output = Command::new(env!("CARGO_BIN_EXE_virtdisk"))
+            .args(arguments)
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(2));
+        assert!(!String::from_utf8_lossy(&output.stderr).contains("No such file"));
+    }
+    let directory = tempfile::tempdir().unwrap();
+    let empty = directory.path().join("empty");
+    std::fs::write(&empty, []).unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_virtdisk"))
+        .args([
+            "--operation-limit",
+            "bytes=0",
+            "--parser-limit",
+            "work=1",
+            "--operation-limit",
+            "io=0",
+            "hash",
+        ])
+        .arg(&empty)
+        .arg("raw")
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    assert_eq!(output.stdout.len(), 65);
+}
+
+#[test]
+fn comparison_io_and_combined_scratch_are_budgeted_and_repetition_tightens() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("raw");
+    std::fs::write(&path, [37; 512]).unwrap();
+    for limit in ["io=1", "scratch=1"] {
+        let output = Command::new(env!("CARGO_BIN_EXE_virtdisk"))
+            .args(["--operation-limit", limit, "compare"])
+            .arg(&path)
+            .arg("raw")
+            .arg(&path)
+            .arg("raw")
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(2));
+        assert!(output.stdout.is_empty());
+    }
+    let output = Command::new(env!("CARGO_BIN_EXE_virtdisk"))
+        .args([
+            "--operation-limit",
+            "bytes=511",
+            "--operation-limit",
+            "bytes=512",
+            "hash",
+        ])
+        .arg(&path)
+        .arg("raw")
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("limit 511"));
+    let output = Command::new(env!("CARGO_BIN_EXE_virtdisk"))
+        .args([
+            "--operation-limit",
+            "bytes=0",
+            "--operation-limit",
+            "io=0",
+            "check",
+        ])
+        .arg(&path)
+        .args(["raw", "structure"])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    assert!(String::from_utf8_lossy(&output.stdout).contains("\"payload_bytes_read\":0"));
+}
+
+#[test]
+fn snapshot_listing_and_export_honor_parser_limits() {
+    use virtdisk::WriteAt;
+    let directory = tempfile::tempdir().unwrap();
+    let image = directory.path().join("disk.qcow2");
+    let mut writer =
+        virtdisk::ImageWriter::create(&image, virtdisk::ImageFormat::Qcow2, 65536).unwrap();
+    writer.write_all_at(0, &[37; 512]).unwrap();
+    writer.create_snapshot(b"id", b"name").unwrap();
+    writer.flush().unwrap();
+    drop(writer);
+    let original = std::fs::read(&image).unwrap();
+    let listing = Command::new(env!("CARGO_BIN_EXE_virtdisk"))
+        .args(["--parser-limit", "metadata=1", "snapshot", "list"])
+        .arg(&image)
+        .output()
+        .unwrap();
+    assert!(!listing.status.success());
+    assert!(
+        String::from_utf8_lossy(&listing.stderr)
+            .contains("metadata exceeds configured parser limit")
+    );
+    let listing = Command::new(env!("CARGO_BIN_EXE_virtdisk"))
+        .args(["--parser-limit", "work=100000", "snapshot", "list"])
+        .arg(&image)
+        .output()
+        .unwrap();
+    assert!(listing.status.success());
+    assert!(String::from_utf8_lossy(&listing.stdout).contains("\"id_hex\":\"6964\""));
+    let output = directory.path().join("export.raw");
+    let refused = Command::new(env!("CARGO_BIN_EXE_virtdisk"))
+        .args(["--parser-limit", "metadata=1", "snapshot", "export"])
+        .arg(&image)
+        .arg("id")
+        .arg(&output)
+        .arg("raw")
+        .output()
+        .unwrap();
+    assert!(!refused.status.success());
+    assert!(
+        String::from_utf8_lossy(&refused.stderr)
+            .contains("metadata exceeds configured parser limit")
+    );
+    assert!(!output.exists());
+    assert_eq!(std::fs::read(&image).unwrap(), original);
+}
+
+#[test]
+fn check_enforces_caller_metadata_and_payload_work_limits() {
+    let directory = tempfile::tempdir().unwrap();
+    let raw = directory.path().join("raw");
+    let qcow2 = directory.path().join("disk.qcow2");
+    std::fs::write(&raw, [37; 131072]).unwrap();
+    virtdisk::convert_image(
+        &virtdisk::RawDisk::open(&raw).unwrap(),
+        &qcow2,
+        virtdisk::ImageFormat::Qcow2,
+    )
+    .unwrap();
+    for (limit, path, format, mode, diagnostic) in [
+        (
+            "metadata=1",
+            &qcow2,
+            "qcow2",
+            "structure",
+            "metadata exceeds configured parser limit",
+        ),
+        (
+            "work=1",
+            &raw,
+            "raw",
+            "payload",
+            "work exceeds configured parser limit",
+        ),
+    ] {
+        let output = Command::new(env!("CARGO_BIN_EXE_virtdisk"))
+            .args(["--parser-limit", limit, "check"])
+            .arg(path)
+            .args([format, mode])
+            .output()
+            .unwrap();
+        assert!(!output.status.success());
+        assert!(String::from_utf8_lossy(&output.stderr).contains(diagnostic));
+        assert!(output.stdout.is_empty());
+    }
+    let output = Command::new(env!("CARGO_BIN_EXE_virtdisk"))
+        .args(["--parser-limit", "work=1000", "check"])
+        .arg(&raw)
+        .args(["raw", "payload"])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    assert!(String::from_utf8_lossy(&output.stdout).contains("\"payload_bytes_read\":131072"));
+}
+
+#[test]
+fn reader_parser_limits_reach_opening_and_deferred_reads() {
+    let directory = tempfile::tempdir().unwrap();
+    let raw = directory.path().join("source.raw");
+    let qcow2 = directory.path().join("source.qcow2");
+    std::fs::write(&raw, [37; 131072]).unwrap();
+    virtdisk::convert_image(
+        &virtdisk::RawDisk::open(&raw).unwrap(),
+        &qcow2,
+        virtdisk::ImageFormat::Qcow2,
+    )
+    .unwrap();
+    let original = std::fs::read(&qcow2).unwrap();
+    let run = |limit: &str, command: &str, path: &std::path::Path, format: &str| {
+        Command::new(env!("CARGO_BIN_EXE_virtdisk"))
+            .args(["--parser-limit", limit, command])
+            .arg(path)
+            .arg(format)
+            .output()
+            .unwrap()
+    };
+    let refused = run("metadata=1", "info", &qcow2, "qcow2");
+    assert!(!refused.status.success());
+    assert!(
+        String::from_utf8_lossy(&refused.stderr)
+            .contains("metadata exceeds configured parser limit")
+    );
+    let refused = run("work=1", "hash", &raw, "raw");
+    assert!(!refused.status.success());
+    assert!(
+        String::from_utf8_lossy(&refused.stderr).contains("work exceeds configured parser limit")
+    );
+    assert!(run("work=1000", "hash", &raw, "raw").status.success());
+    let replay = Command::new(env!("CARGO_BIN_EXE_virtdisk"))
+        .args(["--replay-vhdx-log", "info"])
+        .arg(&raw)
+        .arg("raw")
+        .output()
+        .unwrap();
+    assert!(!replay.status.success());
+    assert!(String::from_utf8_lossy(&replay.stderr).contains("immutable log replay requires VHDX"));
+    assert_eq!(std::fs::read(&qcow2).unwrap(), original);
+}
+
+#[test]
+fn invalid_reader_controls_are_refused_before_opening() {
+    for arguments in [
+        vec!["--parser-limit", "work=0", "info", "absent", "raw"],
+        vec!["--parser-limit", "unknown=1", "info", "absent", "raw"],
+        vec![
+            "--parser-limit",
+            "metadata=18446744073709551615",
+            "info",
+            "absent",
+            "raw",
+        ],
+        vec![
+            "--parser-limit",
+            "work=1",
+            "zero",
+            "absent",
+            "raw",
+            "0",
+            "512",
+        ],
+        vec!["--replay-vhdx-log", "zero", "absent", "vhdx", "0", "512"],
+        vec!["--replay-vhdx-log", "check", "absent", "vhdx", "structure"],
+        vec!["--replay-vhdx-log", "snapshot", "list", "absent"],
+    ] {
+        let output = Command::new(env!("CARGO_BIN_EXE_virtdisk"))
+            .args(arguments)
+            .output()
+            .unwrap();
+        assert!(!output.status.success());
+        assert!(!String::from_utf8_lossy(&output.stderr).contains("No such file"));
+        assert!(String::from_utf8_lossy(&output.stderr).contains("parser"));
+    }
+}
+
+#[test]
+fn all_parser_fields_are_accepted_and_repetition_only_tightens() {
+    let directory = tempfile::tempdir().unwrap();
+    let raw = directory.path().join("source.raw");
+    std::fs::write(&raw, [37; 131072]).unwrap();
+    for name in [
+        "metadata",
+        "cache",
+        "recursion",
+        "work",
+        "decompressed",
+        "decompression-buffer",
+        "attribute",
+        "attribute-list-records",
+    ] {
+        let output = Command::new(env!("CARGO_BIN_EXE_virtdisk"))
+            .args(["--parser-limit", &format!("{name}=1"), "info"])
+            .arg(&raw)
+            .arg("raw")
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{name}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+    let output = Command::new(env!("CARGO_BIN_EXE_virtdisk"))
+        .args([
+            "--parser-limit",
+            "work=1",
+            "--parser-limit",
+            "work=1000",
+            "hash",
+        ])
+        .arg(&raw)
+        .arg("raw")
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("work exceeds configured parser limit")
+    );
+}
+
+#[test]
+fn source_parser_refusal_prevents_conversion_compaction_and_resize_outputs() {
+    let directory = tempfile::tempdir().unwrap();
+    let source = directory.path().join("source.qcow2");
+    drop(virtdisk::ImageWriter::create(&source, virtdisk::ImageFormat::Qcow2, 65536).unwrap());
+    let original = std::fs::read(&source).unwrap();
+    for command in ["convert", "compact", "resize"] {
+        let output = directory.path().join(command);
+        let mut process = Command::new(env!("CARGO_BIN_EXE_virtdisk"));
+        process
+            .args(["--parser-limit", "metadata=1", command])
+            .arg(&source)
+            .arg("qcow2")
+            .arg(&output)
+            .arg("raw");
+        if command == "resize" {
+            process.args(["131072", "reject"]);
+        }
+        let result = process.output().unwrap();
+        assert!(!result.status.success());
+        assert!(
+            String::from_utf8_lossy(&result.stderr)
+                .contains("metadata exceeds configured parser limit")
+        );
+        assert!(!output.exists());
+        assert_eq!(std::fs::read(&source).unwrap(), original);
+        assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 1);
+    }
+}
+
+#[test]
+fn deferred_reader_budget_failure_removes_unpublished_outputs() {
+    let directory = tempfile::tempdir().unwrap();
+    let source = directory.path().join("source.raw");
+    let original = [37; 131072];
+    std::fs::write(&source, original).unwrap();
+    for command in ["convert", "compact", "resize"] {
+        let output = directory.path().join(command);
+        let mut process = Command::new(env!("CARGO_BIN_EXE_virtdisk"));
+        process
+            .args(["--parser-limit", "work=1", command])
+            .arg(&source)
+            .arg("raw")
+            .arg(&output)
+            .arg("raw");
+        if command == "resize" {
+            process.args(["131072", "reject"]);
+        }
+        let result = process.output().unwrap();
+        assert!(!result.status.success());
+        assert!(
+            String::from_utf8_lossy(&result.stderr)
+                .contains("work exceeds configured parser limit")
+        );
+        assert!(!output.exists());
+        assert_eq!(std::fs::read(&source).unwrap(), original);
+        assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 1);
+    }
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn mutation_commands_preserve_pending_evidence_until_recovery_is_authorized() {
+    use std::{ffi::OsString, fs};
+    use virtdisk::{ImageFormat, ImageWriter, WriteAt};
+    let directory = tempfile::tempdir().unwrap();
+    for (format, name, suffix) in [
+        (ImageFormat::Qcow2, "qcow2", ".virtdisk-qcow2-journal"),
+        (ImageFormat::Vdi, "vdi", ".virtdisk-transaction"),
+        (ImageFormat::Vmdk, "vmdk", ".virtdisk-transaction"),
+    ] {
+        let path = directory.path().join(name);
+        let writer = ImageWriter::create_sparse(&path, format, 65536).unwrap();
+        writer.flush().unwrap();
+        drop(writer);
+        let original = fs::read(&path).unwrap();
+        let mut sidecar = path.as_os_str().to_os_string();
+        sidecar.push(suffix);
+        let sidecar = std::path::PathBuf::from(sidecar);
+        fs::write(&sidecar, b"pending evidence").unwrap();
+        let mut cases: Vec<Vec<OsString>> = vec![
+            vec![
+                "zero".into(),
+                path.clone().into(),
+                name.into(),
+                "0".into(),
+                "512".into(),
+            ],
+            vec![
+                "trim".into(),
+                path.clone().into(),
+                name.into(),
+                "0".into(),
+                "512".into(),
+                "zero-fallback".into(),
+            ],
+            vec![
+                "preallocate".into(),
+                path.clone().into(),
+                name.into(),
+                "0".into(),
+                "512".into(),
+            ],
+            vec![
+                "resize-native".into(),
+                path.clone().into(),
+                name.into(),
+                "131072".into(),
+                "reject".into(),
+            ],
+        ];
+        if format == ImageFormat::Qcow2 {
+            cases.push(vec![
+                "snapshot".into(),
+                "create".into(),
+                path.clone().into(),
+                "id".into(),
+                "name".into(),
+            ]);
+            for action in ["delete", "revert"] {
+                cases.push(vec![
+                    "snapshot".into(),
+                    action.into(),
+                    path.clone().into(),
+                    "id".into(),
+                ]);
+            }
+        }
+        for arguments in cases {
+            let output = Command::new(env!("CARGO_BIN_EXE_virtdisk"))
+                .args(arguments)
+                .output()
+                .unwrap();
+            assert!(!output.status.success());
+            assert!(
+                String::from_utf8_lossy(&output.stderr)
+                    .contains("image requires explicitly authorized recovery")
+            );
+            assert_eq!(fs::read(&path).unwrap(), original);
+            assert_eq!(fs::read(&sidecar).unwrap(), b"pending evidence");
+        }
+    }
+}
+
+#[test]
+fn recovery_flag_is_rejected_for_readers_and_new_outputs() {
+    for arguments in [
+        vec!["--recover", "info", "absent", "raw"],
+        vec!["--recover", "create", "absent", "raw", "512"],
+        vec!["--recover", "snapshot", "list", "absent"],
+    ] {
+        let output = Command::new(env!("CARGO_BIN_EXE_virtdisk"))
+            .args(arguments)
+            .output()
+            .unwrap();
+        assert!(!output.status.success());
+        assert!(
+            String::from_utf8_lossy(&output.stderr)
+                .contains("--recover requires an existing-image mutation command")
+        );
+    }
+}
+
 #[cfg(target_os = "linux")]
 #[test]
 fn cli_vhdx_zero_uses_partial_sector_mapping_without_changing_parent() {
@@ -367,6 +1237,8 @@ fn cli_inspects_converts_and_compares_without_overwriting() {
     assert!(info.status.success());
     let info = String::from_utf8(info.stdout).unwrap();
     assert!(info.contains("\"virtual_size\":512"));
+    assert!(info.contains("\"container_size\":512"));
+    assert!(info.contains("\"container_set_size\":512"));
     assert!(info.contains("\"write_supported\":false"));
     let convert = || {
         Command::new(executable)
@@ -816,4 +1688,445 @@ fn cli_sparse_vdi_creation_enables_native_capacity_changes() {
     );
     let image = virtdisk::Image::open(path, Some(virtdisk::ImageFormat::Vdi)).unwrap();
     assert_eq!(image.len(), 2097152);
+}
+
+#[test]
+fn cli_descriptor_sizes_preserve_primary_and_add_full_extent_aggregate() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("disk.vmdk");
+    let extent = dir.path().join("flat.vmdk");
+    std::fs::write(&extent, vec![31; 2048]).unwrap();
+    std::fs::write(&path, "version=1\nCID=12345678\nparentCID=ffffffff\ncreateType=\"monolithicFlat\"\nRW 2 FLAT \"flat.vmdk\" 1\n").unwrap();
+    let primary = std::fs::metadata(&path).unwrap().len();
+    let output = Command::new(env!("CARGO_BIN_EXE_virtdisk"))
+        .arg("info")
+        .arg(&path)
+        .arg("vmdk")
+        .arg(&extent)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let json = String::from_utf8(output.stdout).unwrap();
+    assert!(json.contains(&format!("\"container_size\":{primary},")));
+    assert!(json.contains(&format!("\"container_set_size\":{},", primary + 2048)));
+    assert!(json.contains("\"virtual_size\":1024,"));
+}
+
+#[test]
+fn conversion_and_compaction_progress_and_quotas_preserve_publication_contract() {
+    let directory = tempfile::tempdir().unwrap();
+    let input = directory.path().join("source");
+    std::fs::write(&input, [37; 512]).unwrap();
+    for command in ["convert", "compact"] {
+        for format in ["raw", "qcow2", "vhdx", "vdi", "vmdk"] {
+            let output = directory.path().join(format!("{command}-{format}"));
+            let result = Command::new(env!("CARGO_BIN_EXE_virtdisk"))
+                .args(["--progress", command])
+                .arg(&input)
+                .arg("raw")
+                .arg(&output)
+                .arg(format)
+                .output()
+                .unwrap();
+            assert!(
+                result.status.success(),
+                "{}",
+                String::from_utf8_lossy(&result.stderr)
+            );
+            assert!(result.stdout.is_empty());
+            let progress = String::from_utf8(result.stderr).unwrap();
+            assert!(progress.contains("\"phase\":\"output-verification\""));
+            assert!(
+                progress
+                    .lines()
+                    .last()
+                    .unwrap()
+                    .contains("\"phase\":\"publication\"")
+            );
+            let refused = directory.path().join(format!("refused-{command}-{format}"));
+            let result = Command::new(env!("CARGO_BIN_EXE_virtdisk"))
+                .args(["--json-errors", "--operation-limit", "bytes=512", command])
+                .arg(&input)
+                .arg("raw")
+                .arg(&refused)
+                .arg(format)
+                .output()
+                .unwrap();
+            assert_eq!(result.status.code(), Some(2));
+            assert!(
+                String::from_utf8_lossy(&result.stderr).contains("\"code\":\"resource-limit\"")
+            );
+            assert!(!refused.exists());
+        }
+    }
+    assert_eq!(std::fs::read(input).unwrap(), [37; 512]);
+    assert_eq!(directory.path().read_dir().unwrap().count(), 11);
+}
+
+#[cfg(unix)]
+#[test]
+fn closed_materialization_progress_pipe_removes_unpublished_staging() {
+    use std::{
+        os::{fd::OwnedFd, unix::net::UnixStream},
+        process::Stdio,
+    };
+    let directory = tempfile::tempdir().unwrap();
+    let input = directory.path().join("source");
+    std::fs::write(&input, [7; 512]).unwrap();
+    for command in ["convert", "compact"] {
+        let output = directory.path().join(command);
+        let (sender, receiver) = UnixStream::pair().unwrap();
+        drop(receiver);
+        let sender: OwnedFd = sender.into();
+        let result = Command::new(env!("CARGO_BIN_EXE_virtdisk"))
+            .args(["--progress", command])
+            .arg(&input)
+            .arg("raw")
+            .arg(&output)
+            .arg("qcow2")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::from(sender))
+            .output()
+            .unwrap();
+        assert_eq!(result.status.code(), Some(2));
+        assert!(result.stdout.is_empty());
+        assert!(!output.exists());
+        assert_eq!(directory.path().read_dir().unwrap().count(), 1);
+    }
+    assert_eq!(std::fs::read(input).unwrap(), [7; 512]);
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn capabilities_report_current_read_and_write_handles_without_mutation() {
+    use virtdisk::{ImageFormat, ImageWriter};
+    let directory = tempfile::tempdir().unwrap();
+    for (format, name) in [
+        (ImageFormat::Raw, "raw"),
+        (ImageFormat::Qcow2, "qcow2"),
+        (ImageFormat::Vhdx, "vhdx"),
+        (ImageFormat::Vdi, "vdi"),
+        (ImageFormat::Vmdk, "vmdk"),
+    ] {
+        let path = directory.path().join(name);
+        drop(ImageWriter::create_sparse(&path, format, 65536).unwrap());
+        let original = std::fs::read(&path).unwrap();
+        for access in ["read", "write"] {
+            let output = Command::new(env!("CARGO_BIN_EXE_virtdisk"))
+                .args(["capabilities", access])
+                .arg(&path)
+                .arg(name)
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            assert!(output.stderr.is_empty());
+            let report = String::from_utf8(output.stdout).unwrap();
+            assert!(report.starts_with("{\"type\":\"capabilities\",\"scope\":\"opened-handle\","));
+            assert_eq!(report.matches("\"operation\":").count(), 16);
+            if access == "read" {
+                assert!(report.contains("\"access\":\"read-only\""));
+                assert!(report.contains(
+                    "{\"operation\":\"write\",\"supported\":false,\"reason\":\"read-only-handle\"}"
+                ));
+            } else {
+                assert!(report.contains("\"access\":\"read-write\""));
+                assert!(
+                    report.contains("{\"operation\":\"write\",\"supported\":true,\"reason\":null}")
+                );
+            }
+            assert_eq!(std::fs::read(&path).unwrap(), original);
+        }
+    }
+    assert_eq!(directory.path().read_dir().unwrap().count(), 5);
+}
+
+#[test]
+fn capability_controls_are_validated_before_file_access() {
+    for arguments in [
+        vec!["capabilities", "invalid", "absent", "raw"],
+        vec![
+            "--parser-limit",
+            "metadata=1",
+            "capabilities",
+            "write",
+            "absent",
+            "raw",
+        ],
+        vec![
+            "--replay-vhdx-log",
+            "capabilities",
+            "write",
+            "absent",
+            "vhdx",
+        ],
+        vec!["--recover", "capabilities", "write", "absent", "raw"],
+        vec!["--progress", "capabilities", "read", "absent", "raw"],
+    ] {
+        let output = Command::new(env!("CARGO_BIN_EXE_virtdisk"))
+            .args(arguments)
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(2));
+        assert!(output.stdout.is_empty());
+        assert!(!String::from_utf8_lossy(&output.stderr).contains("No such file"));
+    }
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("raw");
+    std::fs::write(&path, [37; 512]).unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_virtdisk"))
+        .args(["--parser-limit", "work=1", "capabilities", "read"])
+        .arg(&path)
+        .arg("raw")
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    assert_eq!(std::fs::read(path).unwrap(), [37; 512]);
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn write_capabilities_reject_pending_recovery_and_held_locks() {
+    use virtdisk::{ImageFormat, ImageWriter};
+    let directory = tempfile::tempdir().unwrap();
+    for (format, name, suffix) in [
+        (ImageFormat::Qcow2, "qcow2", ".virtdisk-qcow2-journal"),
+        (ImageFormat::Vdi, "vdi", ".virtdisk-transaction"),
+        (ImageFormat::Vmdk, "vmdk", ".virtdisk-transaction"),
+    ] {
+        let path = directory.path().join(name);
+        let writer = ImageWriter::create(&path, format, 65536).unwrap();
+        let before = std::fs::read(&path).unwrap();
+        let locked = Command::new(env!("CARGO_BIN_EXE_virtdisk"))
+            .args(["capabilities", "write"])
+            .arg(&path)
+            .arg(name)
+            .output()
+            .unwrap();
+        assert_eq!(locked.status.code(), Some(2));
+        assert!(locked.stdout.is_empty());
+        drop(writer);
+        let mut sidecar = path.as_os_str().to_os_string();
+        sidecar.push(suffix);
+        let sidecar = std::path::PathBuf::from(sidecar);
+        std::fs::write(&sidecar, b"pending evidence").unwrap();
+        let output = Command::new(env!("CARGO_BIN_EXE_virtdisk"))
+            .args(["--json-errors", "capabilities", "write"])
+            .arg(&path)
+            .arg(name)
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(2));
+        assert!(output.stdout.is_empty());
+        assert!(String::from_utf8_lossy(&output.stderr).contains("\"code\":\"recovery-required\""));
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+        assert_eq!(std::fs::read(sidecar).unwrap(), b"pending evidence");
+    }
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn capabilities_keep_parent_authorization_and_backed_resize_restrictions() {
+    use virtdisk::{ImageFormat, ImageWriter, VmdkWriter};
+    let directory = tempfile::tempdir().unwrap();
+    for (format, name) in [
+        (ImageFormat::Qcow2, "qcow2"),
+        (ImageFormat::Vhdx, "vhdx"),
+        (ImageFormat::Vdi, "vdi"),
+        (ImageFormat::Vmdk, "vmdk"),
+    ] {
+        let base = directory.path().join(format!("base-{name}"));
+        let child = directory.path().join(format!("child-{name}"));
+        drop(ImageWriter::create_sparse(&base, format, 65536).unwrap());
+        match format {
+            ImageFormat::Qcow2 => {
+                virtdisk::create_qcow2_overlay(&child, &base, "qcow2", 65536).unwrap()
+            }
+            ImageFormat::Vhdx => virtdisk::create_vhdx_overlay(&child, &base, &[]).unwrap(),
+            ImageFormat::Vdi => virtdisk::create_vdi_overlay(&child, &base, &[]).unwrap(),
+            ImageFormat::Vmdk => drop(
+                VmdkWriter::create_overlay(&child, &base, std::slice::from_ref(&base)).unwrap(),
+            ),
+            ImageFormat::Raw => unreachable!(),
+        }
+        let original_base = std::fs::read(&base).unwrap();
+        let original_child = std::fs::read(&child).unwrap();
+        for access in ["read", "write"] {
+            let denied = Command::new(env!("CARGO_BIN_EXE_virtdisk"))
+                .args(["capabilities", access])
+                .arg(&child)
+                .arg(name)
+                .output()
+                .unwrap();
+            assert_eq!(denied.status.code(), Some(2));
+            assert!(denied.stdout.is_empty());
+            let allowed = Command::new(env!("CARGO_BIN_EXE_virtdisk"))
+                .args(["capabilities", access])
+                .arg(&child)
+                .arg(name)
+                .arg(&base)
+                .output()
+                .unwrap();
+            assert!(
+                allowed.status.success(),
+                "{}",
+                String::from_utf8_lossy(&allowed.stderr)
+            );
+            let report = String::from_utf8(allowed.stdout).unwrap();
+            assert!(report.contains("\"has_parent\":true"));
+            let resize_supported =
+                access == "write" && format == ImageFormat::Qcow2 && cfg!(target_os = "linux");
+            assert!(report.contains(&format!(
+                "{{\"operation\":\"resize\",\"supported\":{resize_supported},"
+            )));
+        }
+        assert_eq!(std::fs::read(base).unwrap(), original_base);
+        assert_eq!(std::fs::read(child).unwrap(), original_child);
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn closed_capability_output_pipe_returns_an_error_without_mutation() {
+    use std::{
+        os::{fd::OwnedFd, unix::net::UnixStream},
+        process::Stdio,
+    };
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("raw");
+    std::fs::write(&path, [37; 512]).unwrap();
+    for access in ["read", "write"] {
+        let (sender, receiver) = UnixStream::pair().unwrap();
+        drop(receiver);
+        let sender: OwnedFd = sender.into();
+        let result = Command::new(env!("CARGO_BIN_EXE_virtdisk"))
+            .args(["--json-errors", "capabilities", access])
+            .arg(&path)
+            .arg("raw")
+            .stdout(Stdio::from(sender))
+            .stderr(Stdio::piped())
+            .output()
+            .unwrap();
+        assert_eq!(result.status.code(), Some(2));
+        let error = String::from_utf8(result.stderr).unwrap();
+        assert!(error.contains("\"kind\":\"broken-pipe\""));
+        assert!(!error.contains("panicked"));
+        assert_eq!(std::fs::read(&path).unwrap(), [37; 512]);
+        let writer = virtdisk::RawWriter::open(&path).unwrap();
+        drop(writer);
+    }
+}
+
+#[test]
+fn resize_progress_and_shared_quotas_cover_zero_tail_and_materialization() {
+    let directory = tempfile::tempdir().unwrap();
+    let input = directory.path().join("source");
+    let mut bytes = vec![0; 1024];
+    bytes[..512].fill(37);
+    std::fs::write(&input, &bytes).unwrap();
+    for format in ["raw", "qcow2", "vhdx", "vdi", "vmdk"] {
+        let output = directory.path().join(format!("output-{format}"));
+        let result = Command::new(env!("CARGO_BIN_EXE_virtdisk"))
+            .args(["--progress", "resize"])
+            .arg(&input)
+            .arg("raw")
+            .arg(&output)
+            .args([format, "512", "zero-tail"])
+            .output()
+            .unwrap();
+        assert!(
+            result.status.success(),
+            "{}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+        let progress = String::from_utf8(result.stderr).unwrap();
+        assert!(progress.contains("\"phase\":\"tail-validation\""));
+        assert!(
+            progress
+                .lines()
+                .last()
+                .unwrap()
+                .contains("\"phase\":\"publication\"")
+        );
+        let refused = directory.path().join(format!("refused-{format}"));
+        let result = Command::new(env!("CARGO_BIN_EXE_virtdisk"))
+            .args(["--json-errors", "--operation-limit", "bytes=512", "resize"])
+            .arg(&input)
+            .arg("raw")
+            .arg(&refused)
+            .args([format, "512", "zero-tail"])
+            .output()
+            .unwrap();
+        assert_eq!(result.status.code(), Some(2));
+        assert!(String::from_utf8_lossy(&result.stderr).contains("\"code\":\"resource-limit\""));
+        assert!(!refused.exists());
+    }
+    assert_eq!(std::fs::read(input).unwrap(), bytes);
+    assert_eq!(directory.path().read_dir().unwrap().count(), 6);
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn controlled_zeroing_reports_native_chunks_and_refuses_quota_before_mutation() {
+    use virtdisk::{ImageFormat, ImageWriter, WriteAt};
+    let directory = tempfile::tempdir().unwrap();
+    for (format, name) in [
+        (ImageFormat::Raw, "raw"),
+        (ImageFormat::Qcow2, "qcow2"),
+        (ImageFormat::Vhdx, "vhdx"),
+        (ImageFormat::Vdi, "vdi"),
+        (ImageFormat::Vmdk, "vmdk"),
+    ] {
+        let path = directory.path().join(name);
+        let writer = ImageWriter::create(&path, format, 131584).unwrap();
+        writer.write_all_at(0, &vec![37; 131584]).unwrap();
+        writer.flush().unwrap();
+        drop(writer);
+        let original = std::fs::read(&path).unwrap();
+        let refused = Command::new(env!("CARGO_BIN_EXE_virtdisk"))
+            .args(["--json-errors", "--operation-limit", "io=1", "zero"])
+            .arg(&path)
+            .args([name, "7", "131073"])
+            .output()
+            .unwrap();
+        assert_eq!(refused.status.code(), Some(2));
+        assert!(String::from_utf8_lossy(&refused.stderr).contains("\"code\":\"resource-limit\""));
+        assert_eq!(std::fs::read(&path).unwrap(), original);
+        let result = Command::new(env!("CARGO_BIN_EXE_virtdisk"))
+            .args(["--progress", "--operation-limit", "scratch=1", "zero"])
+            .arg(&path)
+            .args([name, "7", "131073"])
+            .output()
+            .unwrap();
+        assert!(
+            result.status.success(),
+            "{}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+        assert!(String::from_utf8_lossy(&result.stderr).contains("\"phase\":\"zeroing\""));
+        assert!(
+            String::from_utf8_lossy(&result.stderr)
+                .lines()
+                .last()
+                .unwrap()
+                .contains("\"io_operations\":3")
+        );
+        let writer = ImageWriter::open(&path, format).unwrap();
+        let mut bytes = vec![0; 131584];
+        writer.read_exact_at(0, &mut bytes).unwrap();
+        assert!(
+            bytes[..7]
+                .iter()
+                .chain(bytes[131080..].iter())
+                .all(|&b| b == 37)
+        );
+        assert!(bytes[7..131080].iter().all(|&b| b == 0));
+    }
 }

@@ -50,6 +50,10 @@ impl ReadAt for LockedSource {
 }
 
 impl VdiWriter {
+    pub(crate) fn container_size(&self) -> u64 {
+        self.raw.len()
+    }
+
     pub(crate) fn info_profile(&self) -> (u64, bool) {
         (self.block, self.dynamic)
     }
@@ -198,11 +202,34 @@ impl VdiWriter {
         path: std::path::PathBuf,
         parent_paths: &[PathBuf],
     ) -> io::Result<Self> {
+        Self::from_raw_policy(raw, path, parent_paths, crate::RecoveryPolicy::Recover)
+    }
+
+    pub(crate) fn open_policy(
+        path: &std::path::Path,
+        authorized: &[std::path::PathBuf],
+        policy: crate::RecoveryPolicy,
+    ) -> io::Result<Self> {
+        Self::from_raw_policy(
+            RawWriter::open(path)?,
+            path.canonicalize()?,
+            authorized,
+            policy,
+        )
+    }
+
+    fn from_raw_policy(
+        raw: RawWriter,
+        path: std::path::PathBuf,
+        parent_paths: &[PathBuf],
+        policy: crate::RecoveryPolicy,
+    ) -> io::Result<Self> {
         let raw = Arc::new(raw);
         let identity = raw.opened_identity()?;
         #[cfg(target_os = "linux")]
         raw.require_single_link_for_journal()?;
-        if crate::transaction::pending(&path)? {
+        policy.check(crate::transaction::pending(&path)?)?;
+        if policy == crate::RecoveryPolicy::Recover && crate::transaction::pending(&path)? {
             crate::transaction::recover(&path, raw.clone(), &|source| {
                 Vdi::open_locked_chain(source, parent_paths, &identity).map(drop)
             })?;
@@ -1239,7 +1266,12 @@ mod recovery_tests {
             assert!(writer.read_exact_at(0, &mut [0; 1]).is_err());
             assert!(Vdi::open(Arc::new(crate::RawDisk::open(&path).unwrap())).is_err());
             drop(writer);
-            let writer = VdiWriter::open(&path).unwrap();
+            crate::writer_open::refuse_pending_open(&path, crate::ImageFormat::Vdi, None);
+            let options =
+                crate::WriterOpenOptions::default().recovery_policy(crate::RecoveryPolicy::Recover);
+            let writer =
+                crate::ImageWriter::open_with_options(&path, crate::ImageFormat::Vdi, &options)
+                    .unwrap();
             let mut actual = [1; 64];
             writer.read_exact_at(1048576, &mut actual).unwrap();
             assert_eq!(&actual[..17], &[0; 17]);

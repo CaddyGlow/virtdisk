@@ -36,7 +36,7 @@ pub(crate) fn checksum(b: &mut [u8]) {
 /// Export an immutable reader to a new clean standalone dynamic VHDX v1 image.
 ///
 /// Requires positive 512-byte aligned capacity. Uses 1 MiB payload blocks,
-/// a BAT bounded to 64 MiB and one 1 MiB streaming buffer. Performs two source
+/// a BAT bounded to 64 MiB and one 64 KiB streaming buffer. Performs two source
 /// passes; callers must keep the source immutable throughout. Logical sectors
 /// are 512 bytes and physical sectors 4096 bytes. File, data and disk identities
 /// are freshly generated; zero blocks are unallocated. Headers and tables are
@@ -44,8 +44,14 @@ pub(crate) fn checksum(b: &mut [u8]) {
 /// are never replaced. Failure may leave an incomplete destination; the parent
 /// directory is not synced and publication is not atomic. This does not perform
 /// logged in-place updates of an existing VHDX.
-pub fn create_vhdx(path: impl AsRef<Path>, source: &dyn ReadAt) -> io::Result<()> {
-    create_impl(path, source.len(), Some(source), None).map(drop)
+pub fn create_vhdx(path: impl AsRef<Path>, mut source: &dyn ReadAt) -> io::Result<()> {
+    export_vhdx(path.as_ref(), &mut source)
+}
+pub(crate) fn export_vhdx(
+    path: &Path,
+    source: &mut dyn crate::export_source::ExportSource,
+) -> io::Result<()> {
+    create_impl(path, source.size(), Some(source), None).map(drop)
 }
 pub(crate) fn create_blank(path: impl AsRef<Path>, size: u64) -> io::Result<File> {
     create_impl(path, size, None, None)
@@ -53,7 +59,7 @@ pub(crate) fn create_blank(path: impl AsRef<Path>, size: u64) -> io::Result<File
 fn create_impl(
     path: impl AsRef<Path>,
     size: u64,
-    source: Option<&dyn ReadAt>,
+    mut source: Option<&mut dyn crate::export_source::ExportSource>,
     child: Option<ChildMetadata>,
 ) -> io::Result<File> {
     if size == 0 || !size.is_multiple_of(512) || size > 64 * (1 << 40) {
@@ -83,14 +89,22 @@ fn create_impl(
     let meta = 2 * M + bat_length;
     let data = meta + M;
     let mut map = vec![0u64; entries as usize];
-    let mut buffer = vec![0; M as usize];
+    let mut buffer = crate::operation_context::scratch_buffer(65536)?;
     let mut allocated = 0u64;
-    if let Some(source) = source {
+    if let Some(source) = source.as_mut() {
+        source.begin(crate::OperationPhase::AllocationScan, size)?;
         for index in 0..count {
             let offset = index * M;
-            let n = (size - offset).min(M) as usize;
-            source.read_exact_at(offset, &mut buffer[..n])?;
-            if buffer[..n].iter().any(|&v| v != 0) {
+            let end = size.min(offset + M);
+            let mut position = offset;
+            let mut nonzero = false;
+            while position < end {
+                let n = (end - position).min(buffer.len() as u64) as usize;
+                source.read(position, &mut buffer[..n])?;
+                nonzero |= buffer[..n].iter().any(|&v| v != 0);
+                position += n as u64;
+            }
+            if nonzero {
                 map[(index + index / ratio) as usize] = (data + allocated * M) | 6;
                 allocated += 1;
             }
@@ -112,6 +126,13 @@ fn create_impl(
             ));
         }
     }
+    if let Some(source) = source.as_mut() {
+        let payload_bytes: u64 = (0..count)
+            .filter(|&index| map[(index + index / ratio) as usize] != 0)
+            .map(|index| (size - index * M).min(M))
+            .sum();
+        source.begin(crate::OperationPhase::ImageExport, payload_bytes)?;
+    }
     let file_id = identity()?;
     let data_id = identity()?;
     let disk_id = identity()?;
@@ -122,17 +143,24 @@ fn create_impl(
         .open(path)?;
     file.try_lock().map_err(io::Error::from)?;
     file.set_len(data + allocated * M)?;
-    for index in 0..count {
-        let entry = map[(index + index / ratio) as usize];
-        if entry == 0 {
-            continue;
+    if let Some(source) = source.as_mut() {
+        for index in 0..count {
+            let entry = map[(index + index / ratio) as usize];
+            if entry == 0 {
+                continue;
+            }
+            let offset = index * M;
+            let end = size.min(offset + M);
+            let mut position = offset;
+            file.seek(SeekFrom::Start(entry & !0xfffff))?;
+            while position < end {
+                let n = (end - position).min(buffer.len() as u64) as usize;
+                source.read(position, &mut buffer[..n])?;
+                file.write_all(&buffer[..n])?;
+                position += n as u64;
+            }
+            // create_new plus set_len leaves final-block padding zeroed.
         }
-        let offset = index * M;
-        let n = (size - offset).min(M) as usize;
-        buffer.fill(0);
-        source.unwrap().read_exact_at(offset, &mut buffer[..n])?;
-        file.seek(SeekFrom::Start(entry & !0xfffff))?;
-        file.write_all(&buffer)?;
     }
     file.sync_all()?;
     file.seek(SeekFrom::Start(2 * M))?;
@@ -143,8 +171,7 @@ fn create_impl(
         file.write_all(&buffer[..chunk.len() * 8])?;
     }
     buffer.fill(0);
-    if let Some(child) = child {
-        buffer[..8].copy_from_slice(b"metadata");
+    let items = if let Some(child) = child {
         let mut items = vec![(
             PARAM,
             4,
@@ -152,58 +179,51 @@ fn create_impl(
         )];
         items.extend(child.virtual_items);
         items.push((crate::vhdx::parent::ITEM, 4, child.locator));
-        if items.len() > 2047 {
-            return Err(io::Error::new(
-                io::ErrorKind::Unsupported,
-                "VHDX child metadata table exceeds native limit",
-            ));
-        }
-        buffer[10..12].copy_from_slice(&(items.len() as u16).to_le_bytes());
-        let mut offset = 65536usize;
-        for (index, (guid, flags, bytes)) in items.iter().enumerate() {
-            let at = 32 + index * 32;
-            buffer[at..at + 16].copy_from_slice(guid);
-            put(&mut buffer, at + 24, *flags);
-            if !bytes.is_empty() {
-                if offset
-                    .checked_add(bytes.len())
-                    .is_none_or(|end| end > M as usize)
-                {
-                    return Err(io::Error::new(
-                        io::ErrorKind::Unsupported,
-                        "VHDX child metadata exceeds one MiB",
-                    ));
-                }
-                put(&mut buffer, at + 16, offset as u32);
-                put(&mut buffer, at + 20, bytes.len() as u32);
-                buffer[offset..offset + bytes.len()].copy_from_slice(bytes);
-                offset += (bytes.len().max(16)).div_ceil(8) * 8;
-            }
-        }
+        items
     } else {
-        buffer[..8].copy_from_slice(b"metadata");
-        buffer[10] = 5;
-        for (index, (guid, len, flags)) in [
-            (PARAM, 8, 4),
-            (SIZE, 8, 6),
-            (ID, 16, 6),
-            (LOGICAL, 4, 6),
-            (PHYSICAL, 4, 6),
+        vec![
+            (
+                PARAM,
+                4,
+                [(M as u32).to_le_bytes(), 0u32.to_le_bytes()].concat(),
+            ),
+            (SIZE, 6, size.to_le_bytes().to_vec()),
+            (ID, 6, disk_id.to_vec()),
+            (LOGICAL, 6, 512u32.to_le_bytes().to_vec()),
+            (PHYSICAL, 6, 4096u32.to_le_bytes().to_vec()),
         ]
-        .iter()
-        .enumerate()
-        {
-            let at = 32 + index * 32;
-            buffer[at..at + 16].copy_from_slice(guid);
-            put(&mut buffer, at + 16, 65536 + index as u32 * 16);
-            put(&mut buffer, at + 20, *len);
-            put(&mut buffer, at + 24, *flags);
+    };
+    if items.len() > 2047 {
+        return Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "VHDX child metadata table exceeds native limit",
+        ));
+    }
+    buffer[..8].copy_from_slice(b"metadata");
+    buffer[10..12].copy_from_slice(&(items.len() as u16).to_le_bytes());
+    let mut offset = 65536usize;
+    for (index, (guid, flags, bytes)) in items.iter().enumerate() {
+        let at = 32 + index * 32;
+        buffer[at..at + 16].copy_from_slice(guid);
+        put(&mut buffer, at + 24, *flags);
+        if !bytes.is_empty() {
+            if offset
+                .checked_add(bytes.len())
+                .is_none_or(|end| end > M as usize)
+            {
+                return Err(io::Error::new(
+                    io::ErrorKind::Unsupported,
+                    "VHDX child metadata exceeds one MiB",
+                ));
+            }
+            put(&mut buffer, at + 16, offset as u32);
+            put(&mut buffer, at + 20, bytes.len() as u32);
+            file.seek(SeekFrom::Start(meta + offset as u64))?;
+            for chunk in bytes.chunks(buffer.len()) {
+                file.write_all(chunk)?;
+            }
+            offset += bytes.len().max(16).div_ceil(8) * 8;
         }
-        put(&mut buffer, 65536, M as u32);
-        put64(&mut buffer, 65552, size);
-        buffer[65568..65584].copy_from_slice(&disk_id);
-        put(&mut buffer, 65584, 512);
-        put(&mut buffer, 65600, 4096);
     }
     file.seek(SeekFrom::Start(meta))?;
     file.write_all(&buffer)?;

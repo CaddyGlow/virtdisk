@@ -35,6 +35,12 @@ pub(super) struct Flat {
     extents: Vec<Extent>,
 }
 impl Flat {
+    pub(super) fn container_extents_size(&self) -> Option<u64> {
+        self.extents
+            .iter()
+            .try_fold(0u64, |sum, extent| sum.checked_add(extent.writer.len()))
+    }
+
     fn locate(&self, offset: u64) -> &Extent {
         &self.extents[self
             .extents
@@ -94,17 +100,22 @@ pub(super) struct Opened {
     pub(super) cid_offset: u64,
     pub(super) cid_width: usize,
 }
-pub(super) fn open(path: &Path, authorized: &[PathBuf]) -> io::Result<Opened> {
+pub(super) fn open_policy(
+    path: &Path,
+    authorized: &[PathBuf],
+    policy: crate::RecoveryPolicy,
+) -> io::Result<Opened> {
     if authorized.len() > 256 {
         return Err(unsupported(
             "flat VMDK authorization list exceeds 256 paths",
         ));
     }
     let path = path.canonicalize()?;
+    let descriptor = Arc::new(RawWriter::open(&path)?);
+    policy.check(crate::transaction::pending(&path)?)?;
     if crate::transaction::pending(&path)? {
         return Err(invalid("flat VMDK descriptor has pending transaction"));
     }
-    let descriptor = Arc::new(RawWriter::open(&path)?);
     let identity = descriptor.opened_identity()?;
     #[cfg(target_os = "linux")]
     descriptor.require_single_link_for_journal()?;
@@ -241,10 +252,11 @@ pub(super) fn open(path: &Path, authorized: &[PathBuf]) -> io::Result<Opened> {
                 "flat VMDK extent requires explicit authorization",
             ));
         }
+        let writer = Arc::new(RawWriter::open(&extent_path)?);
+        policy.check(crate::transaction::pending(&extent_path)?)?;
         if crate::transaction::pending(&extent_path)? {
             return Err(invalid("flat VMDK extent has pending transaction"));
         }
-        let writer = Arc::new(RawWriter::open(extent_path)?);
         let extent_identity = writer.opened_identity()?;
         if extent_identity == identity
             || extents

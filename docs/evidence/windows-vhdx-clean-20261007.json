@@ -1,0 +1,155 @@
+{
+  "schema_version": 1,
+  "recorded_utc": "2026-10-07T17:14:45Z",
+  "scope": "clean native VHDX standalone and library-produced partial differencing children; not native replay or power-loss evidence",
+  "os": "{\"Caption\":\"Microsoft Windows 11 Pro\",\"Version\":\"10.0.26200\",\"BuildNumber\":\"26200\"}\r\n",
+  "executable": {
+    "source": "/data/cache/rust/x86_64-pc-windows-msvc/debug/virtdisk-windows-acceptance.exe",
+    "length": 1121792,
+    "sha256": "04dae3f5e6edc2900749b60365511d7ac07c327380c19ee9b49eb3f7f659ef68"
+  },
+  "vm": "virtdisk-vhdx-20261007",
+  "cases": {
+    "512-base": {
+      "after": [
+        {
+          "path": "base.vhdx",
+          "sha256": "c13fd2cdf8879bae350c5d67efff19a6dd97ee09ca4f516a4ca50cee2291ce45"
+        }
+      ],
+      "before": [
+        {
+          "path": "base.vhdx",
+          "sha256": "c13fd2cdf8879bae350c5d67efff19a6dd97ee09ca4f516a4ca50cee2291ce45"
+        }
+      ],
+      "gate": "passed",
+      "manifest_sha256": "716dfeb244728c6f1ac88976be966427086ee43c18ce6c59322af64f4a519b08",
+      "mode": "clean",
+      "native": {
+        "attach": 0,
+        "block_size": 1048576,
+        "capacity": 4194304,
+        "detach": 0,
+        "logical_sector": 512,
+        "logical_sha256": "c756100d738b97b9535069044e02c5a92cb0f62c4aecd7a92016feb1192d2f6f",
+        "open": 0,
+        "physical_sector": 4096
+      },
+      "os_build": "Microsoft Windows [Version 10.0.26200.8037]"
+    },
+    "512-child": {
+      "after": [
+        {
+          "path": "child.vhdx",
+          "sha256": "548ff2cbc305ca66b927a431ad86a373f202d950b571050a1bf7c3161a5b2b5c"
+        },
+        {
+          "path": "base.vhdx",
+          "sha256": "c13fd2cdf8879bae350c5d67efff19a6dd97ee09ca4f516a4ca50cee2291ce45"
+        }
+      ],
+      "before": [
+        {
+          "path": "child.vhdx",
+          "sha256": "548ff2cbc305ca66b927a431ad86a373f202d950b571050a1bf7c3161a5b2b5c"
+        },
+        {
+          "path": "base.vhdx",
+          "sha256": "c13fd2cdf8879bae350c5d67efff19a6dd97ee09ca4f516a4ca50cee2291ce45"
+        }
+      ],
+      "gate": "passed",
+      "manifest_sha256": "aa4f02a75350814f430291404a5acd10e9cd0efa1496c073feb8eb4812de2251",
+      "mode": "clean",
+      "native": {
+        "attach": 0,
+        "block_size": 1048576,
+        "capacity": 4194304,
+        "detach": 0,
+        "logical_sector": 512,
+        "logical_sha256": "f7b483ed95987953230d27b1c38c66ec5d51974271631213e8bae6bdac1254ed",
+        "open": 0,
+        "physical_sector": 4096
+      },
+      "os_build": "Microsoft Windows [Version 10.0.26200.8037]"
+    },
+    "4096-base": {
+      "after": [
+        {
+          "path": "base.vhdx",
+          "sha256": "f5ee06685efac804f58431c2ab1d6918dda6e42ca27c97ffcc80b8efbd2c2f35"
+        }
+      ],
+      "before": [
+        {
+          "path": "base.vhdx",
+          "sha256": "f5ee06685efac804f58431c2ab1d6918dda6e42ca27c97ffcc80b8efbd2c2f35"
+        }
+      ],
+      "gate": "passed",
+      "manifest_sha256": "0cbdf44c1716af93d89ccc98b2678e2e2acff36d8406f5db2efa7e329f062da4",
+      "mode": "clean",
+      "native": {
+        "attach": 0,
+        "block_size": 1048576,
+        "capacity": 4194304,
+        "detach": 0,
+        "logical_sector": 4096,
+        "logical_sha256": "c756100d738b97b9535069044e02c5a92cb0f62c4aecd7a92016feb1192d2f6f",
+        "open": 0,
+        "physical_sector": 4096
+      },
+      "os_build": "Microsoft Windows [Version 10.0.26200.8037]"
+    },
+    "4096-child": {
+      "after": [
+        {
+          "path": "child.vhdx",
+          "sha256": "dcd27e74301c5a5a4c33f8ddd4c31ceea23c080df2a5e8e6c35298fc1e9d65a4"
+        },
+        {
+          "path": "base.vhdx",
+          "sha256": "f5ee06685efac804f58431c2ab1d6918dda6e42ca27c97ffcc80b8efbd2c2f35"
+        }
+      ],
+      "before": [
+        {
+          "path": "child.vhdx",
+          "sha256": "dcd27e74301c5a5a4c33f8ddd4c31ceea23c080df2a5e8e6c35298fc1e9d65a4"
+        },
+        {
+          "path": "base.vhdx",
+          "sha256": "f5ee06685efac804f58431c2ab1d6918dda6e42ca27c97ffcc80b8efbd2c2f35"
+        }
+      ],
+      "gate": "passed",
+      "manifest_sha256": "6203710e88418840afe9a1bbff55d8f2cf8f0cd9c7c83978a958ac2a39d90db9",
+      "mode": "clean",
+      "native": {
+        "attach": 0,
+        "block_size": 1048576,
+        "capacity": 4194304,
+        "detach": 0,
+        "logical_sector": 4096,
+        "logical_sha256": "d5cf5a9607fa2d0deb4a171b8884f38071f3fcf87cdd6854eb4825383449bd28",
+        "open": 0,
+        "physical_sector": 4096
+      },
+      "os_build": "Microsoft Windows [Version 10.0.26200.8037]"
+    }
+  },
+  "passed": true,
+  "full_receipt": "/data/cache/virtdisk-native-windows/receipts/20261007T171445Z.json",
+  "production_fuzz_receipt": "target/fuzz-runs/20261007T151013Z-2/summary.json",
+  "independent_byte_model": {
+    "origin": "4MiB parent filled with7; child patchessector-3 length8 with9,1MiB+17 length3 with8,2MiB length1MiB zero,2MiB+3 byte6,3MiB+1 length5 zero",
+    "sha256": {
+      "512-base": "c756100d738b97b9535069044e02c5a92cb0f62c4aecd7a92016feb1192d2f6f",
+      "512-child": "f7b483ed95987953230d27b1c38c66ec5d51974271631213e8bae6bdac1254ed",
+      "4096-base": "c756100d738b97b9535069044e02c5a92cb0f62c4aecd7a92016feb1192d2f6f",
+      "4096-child": "d5cf5a9607fa2d0deb4a171b8884f38071f3fcf87cdd6854eb4825383449bd28"
+    },
+    "all_native_hashes_match": true
+  }
+}

@@ -73,10 +73,10 @@ fn recover_with_hook(
 fn recover_impl(
     path: impl AsRef<Path>,
     authorized: Option<&[std::path::PathBuf]>,
-    mut hook: impl FnMut(Stage) -> io::Result<()>,
+    hook: impl FnMut(Stage) -> io::Result<()>,
 ) -> io::Result<()> {
     let path = path.as_ref();
-    let mut file = OpenOptions::new().read(true).write(true).open(path)?;
+    let file = OpenOptions::new().read(true).write(true).open(path)?;
     let meta = file.metadata()?;
     if !meta.is_file() {
         return Err(io::Error::new(
@@ -85,6 +85,30 @@ fn recover_impl(
         ));
     }
     file.try_lock().map_err(io::Error::from)?;
+    recover_locked_with_hook(file, path, authorized, crate::RecoveryPolicy::Recover, hook).map(drop)
+}
+pub(crate) fn recover_locked(
+    file: File,
+    path: &Path,
+    authorized: Option<&[std::path::PathBuf]>,
+    policy: crate::RecoveryPolicy,
+) -> io::Result<File> {
+    recover_locked_with_hook(file, path, authorized, policy, |_| Ok(()))
+}
+fn recover_locked_with_hook(
+    mut file: File,
+    path: &Path,
+    authorized: Option<&[std::path::PathBuf]>,
+    policy: crate::RecoveryPolicy,
+    mut hook: impl FnMut(Stage) -> io::Result<()>,
+) -> io::Result<File> {
+    let meta = file.metadata()?;
+    if !meta.is_file() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "VHDX recovery requires a regular file",
+        ));
+    }
     let source = Arc::new(Source {
         file: Mutex::new(file.try_clone()?),
         length: meta.len(),
@@ -103,8 +127,9 @@ fn recover_impl(
     overlay.reserve_replay_work()?;
     hook(Stage::Validated)?;
     let Some((active, mut header)) = overlay.native_header() else {
-        return Ok(());
+        return Ok(file);
     };
+    policy.check(true)?;
     let sequence = u64::from_le_bytes(header[8..16].try_into().unwrap());
     let final_sequence = sequence.checked_add(4).ok_or_else(|| {
         io::Error::new(
@@ -126,7 +151,8 @@ fn recover_impl(
     install(&mut file, &mut header, inactive, sequence + 3)?;
     hook(Stage::ClearFirstSynced)?;
     install(&mut file, &mut header, active, final_sequence)?;
-    hook(Stage::ClearSecondSynced)
+    hook(Stage::ClearSecondSynced)?;
+    Ok(file)
 }
 
 #[cfg(test)]

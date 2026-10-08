@@ -44,3 +44,25 @@ Regression tests cover every container family, immutable bytes, QCOW2 top-level
 and parent refcount corruption, reference authorization, payload read failure
 and cancellation between chunks. These host tests do not establish native
 Windows servicing or capture correctness.
+
+## Caller limits (development API)
+
+`check_image_with_limits` accepts validated caller-tightened `ParserLimits`.
+`check_image_with_limits_and_context` also accepts an `OperationContext` for
+payload budgets, progress and cancellation. Limits are validated before opening
+files or invoking the observer. A single parser budget covers opening,
+authorized dependencies, QCOW2 ownership/compressed-descriptor validation and
+deferred payload reads. Payload context accounting remains independent:
+completed bytes count successful chunks, while I/O usage includes failed calls.
+An error returns no success report, and inputs remain immutable.
+
+```sh
+virtdisk --parser-limit metadata=1048576 --parser-limit work=100000 check disk.qcow2 qcow2 payload
+```
+
+CLI `check` now accepts the same leading parser-limit controls as other readers.
+Read-only QCOW2 snapshot `list` and `export` also accept parser limits, including
+through saved views and authorized parents. These commands reject
+`--replay-vhdx-log` before file access; neither checking nor snapshot inspection
+authorizes recovery. Exporters and reopened output validation retain their
+separate defaults. These additions are unpublished changes after 0.2.0.

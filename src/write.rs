@@ -204,3 +204,33 @@ impl WriteAt for VhdxWriter {
         VhdxWriter::discard(self, offset, length, policy)
     }
 }
+
+/// Zero a validated range in native calls of at most 64 KiB, without flushing.
+///
+/// Range and logical-byte/I/O quotas are checked before callbacks or mutation.
+/// This wrapper owns no scratch buffer; backend allocations are outside the
+/// context's scratch accounting. Observers run after each backend call returns.
+/// Cancellation and errors retain completed prefixes. A failed call may have
+/// partial effects beyond the completed counter; native profile validation is
+/// performed per call. Exclude concurrent resize and management operations.
+pub fn zero_image_with_context(
+    output: &dyn WriteAt,
+    offset: u64,
+    length: u64,
+    context: &mut crate::OperationContext<'_>,
+) -> io::Result<()> {
+    const CHUNK: u64 = 65536;
+    crate::check_range(offset, length, output.len())?;
+    context.preflight_chunks(length, CHUNK, 1)?;
+    context.observe_phase(crate::OperationPhase::Zeroing, 0, length)?;
+    let mut completed = 0;
+    while completed < length {
+        let count = (length - completed).min(CHUNK);
+        context.attempted_io();
+        output.write_zeroes(offset + completed, count)?;
+        completed += count;
+        context.completed(count);
+        context.observe_phase(crate::OperationPhase::Zeroing, completed, length)?;
+    }
+    Ok(())
+}

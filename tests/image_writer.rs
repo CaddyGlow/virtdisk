@@ -5,6 +5,142 @@ use virtdisk::{
 
 #[cfg(target_os = "linux")]
 #[test]
+fn common_split_sparse_writer_allocates_zero_padded_cross_extent_payload() {
+    use std::fs;
+    use virtdisk::VmdkWriter;
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("disk.vmdk");
+    let mut extents = Vec::new();
+    for (name, initialized) in [("first.vmdk", true), ("second.vmdk", false)] {
+        let extent = directory.path().join(name);
+        let writer = VmdkWriter::create(&extent, 65536).unwrap();
+        if initialized {
+            writer.write_all_at(0, &vec![41; 65536]).unwrap();
+        }
+        writer.flush().unwrap();
+        drop(writer);
+        let mut bytes = fs::read(&extent).unwrap();
+        let offset = u64::from_le_bytes(bytes[28..36].try_into().unwrap()) as usize * 512;
+        let length = u64::from_le_bytes(bytes[36..44].try_into().unwrap()) as usize * 512;
+        bytes[offset..offset + length].fill(0);
+        if !initialized {
+            for field in [48, 56] {
+                let gd =
+                    u64::from_le_bytes(bytes[field..field + 8].try_into().unwrap()) as usize * 512;
+                if gd != 0 {
+                    let gt =
+                        u32::from_le_bytes(bytes[gd..gd + 4].try_into().unwrap()) as usize * 512;
+                    bytes[gt..gt + 4].fill(0);
+                }
+            }
+        }
+        fs::write(&extent, bytes).unwrap();
+        extents.push(extent);
+    }
+    fs::write(&path, "version=1\nCID=12345678\nparentCID=ffffffff\ncreateType=\"twoGbMaxExtentSparse\"\nRW 128 SPARSE \"first.vmdk\"\nRW 128 SPARSE \"second.vmdk\"\n").unwrap();
+    let old_length = fs::metadata(&extents[1]).unwrap().len();
+    let writer = ImageWriter::open_chain(&path, ImageFormat::Vmdk, &extents).unwrap();
+    let mut expected = vec![41; 65536];
+    expected.extend(vec![0; 65536]);
+    let mut actual = vec![0; expected.len()];
+    writer.read_exact_at(0, &mut actual).unwrap();
+    assert_eq!(actual, expected);
+    writer.write_all_at(65529, &[9; 23]).unwrap();
+    expected[65529..65552].fill(9);
+    assert_eq!(
+        writer
+            .discard(65531, 11, DiscardPolicy::AllowZeroFallback)
+            .unwrap(),
+        DiscardResult::Zeroed
+    );
+    expected[65531..65542].fill(0);
+    writer.flush().unwrap();
+    drop(writer);
+    assert_eq!(fs::metadata(&extents[1]).unwrap().len(), old_length + 65536);
+    let writer = ImageWriter::open_chain(&path, ImageFormat::Vmdk, &extents).unwrap();
+    writer.read_exact_at(0, &mut actual).unwrap();
+    assert_eq!(actual, expected);
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn common_split_sparse_writer_preserves_cross_extent_bytes_and_reports_management_limits() {
+    use std::fs;
+    use virtdisk::{ImageProfile, ShrinkPolicy, UnsupportedReason, VmdkWriter};
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("disk.vmdk");
+    let mut extents = Vec::new();
+    for (name, byte) in [("first.vmdk", 41), ("second.vmdk", 42)] {
+        let extent = directory.path().join(name);
+        let writer = VmdkWriter::create(&extent, 65536).unwrap();
+        writer.write_all_at(0, &vec![byte; 65536]).unwrap();
+        writer.flush().unwrap();
+        drop(writer);
+        let mut bytes = fs::read(&extent).unwrap();
+        let offset = u64::from_le_bytes(bytes[28..36].try_into().unwrap()) as usize * 512;
+        let length = u64::from_le_bytes(bytes[36..44].try_into().unwrap()) as usize * 512;
+        bytes[offset..offset + length].fill(0);
+        fs::write(&extent, bytes).unwrap();
+        extents.push(extent);
+    }
+    fs::write(&path, "version=1\nCID=12345678\nparentCID=ffffffff\ncreateType=\"twoGbMaxExtentSparse\"\nRW 128 SPARSE \"first.vmdk\"\nRW 128 SPARSE \"second.vmdk\"\n").unwrap();
+    assert!(ImageWriter::open_chain(&path, ImageFormat::Vmdk, &[]).is_err());
+    let mut writer = ImageWriter::open_chain(&path, ImageFormat::Vmdk, &extents).unwrap();
+    let info = writer.inspection();
+    assert_eq!(info.profile, ImageProfile::Vmdk { descriptor: true });
+    assert_eq!(info.geometry.virtual_size, 131072);
+    assert_eq!(
+        info.capabilities.get(ImageOperation::Write),
+        Capability::Supported
+    );
+    for operation in [ImageOperation::Resize, ImageOperation::Discard] {
+        assert_eq!(
+            info.capabilities.get(operation),
+            Capability::Unsupported(UnsupportedReason::NotImplemented)
+        );
+    }
+    let originals: Vec<_> = std::iter::once(&path)
+        .chain(&extents)
+        .map(|p| fs::read(p).unwrap())
+        .collect();
+    assert_eq!(
+        writer
+            .discard(0, 65536, DiscardPolicy::RequireDeallocation)
+            .unwrap_err()
+            .kind(),
+        std::io::ErrorKind::Unsupported
+    );
+    assert_eq!(
+        writer
+            .resize(131584, ShrinkPolicy::Reject)
+            .unwrap_err()
+            .kind(),
+        std::io::ErrorKind::Unsupported
+    );
+    for (file, original) in std::iter::once(&path).chain(&extents).zip(originals) {
+        assert_eq!(fs::read(file).unwrap(), original);
+    }
+    writer.write_all_at(65529, &[9; 23]).unwrap();
+    assert_eq!(
+        writer
+            .discard(65531, 11, DiscardPolicy::AllowZeroFallback)
+            .unwrap(),
+        DiscardResult::Zeroed
+    );
+    writer.flush().unwrap();
+    drop(writer);
+    let writer = ImageWriter::open_chain(&path, ImageFormat::Vmdk, &extents).unwrap();
+    let mut expected = vec![41; 65536];
+    expected.extend(vec![42; 65536]);
+    expected[65529..65552].fill(9);
+    expected[65531..65542].fill(0);
+    let mut actual = vec![0; expected.len()];
+    writer.read_exact_at(0, &mut actual).unwrap();
+    assert_eq!(actual, expected);
+}
+
+#[cfg(target_os = "linux")]
+#[test]
 fn common_writer_reverts_and_deletes_native_snapshot_without_losing_survivors() {
     use std::sync::Arc;
     use virtdisk::{Qcow2, RawDisk, ReadAt};
@@ -152,7 +288,12 @@ fn all_native_parent_writers_report_parent_retain_lock_and_preserve_cow_bytes() 
             child_bytes,
             "{format:?} failed open mutated child"
         );
-        let writer = ImageWriter::open_chain(&child, format, std::slice::from_ref(&base)).unwrap();
+        assert!(
+            ImageWriter::open_with_options(&child, format, &virtdisk::WriterOpenOptions::default())
+                .is_err()
+        );
+        let options = virtdisk::WriterOpenOptions::default().authorized_paths([base.clone()]);
+        let writer = ImageWriter::open_with_options(&child, format, &options).unwrap();
         let inspection = writer.inspection();
         assert!(inspection.has_parent, "{format:?} missing parent report");
         assert_eq!(

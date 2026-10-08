@@ -32,6 +32,10 @@ pub struct Vdi {
     _cache: CacheReservation,
 }
 impl Vdi {
+    pub(crate) fn container_size(&self) -> u64 {
+        self.source.len()
+    }
+
     pub(crate) fn info_profile(&self) -> (u64, bool) {
         (self.block, self.dynamic)
     }
@@ -63,9 +67,16 @@ impl Vdi {
         parent_paths: &[PathBuf],
         limits: ParserLimits,
     ) -> io::Result<Self> {
+        Self::open_chain_with_budget(path, parent_paths, ReadBudget::new(limits)?)
+    }
+    pub(crate) fn open_chain_with_budget(
+        path: impl AsRef<Path>,
+        parent_paths: &[PathBuf],
+        budget: ReadBudget,
+    ) -> io::Result<Self> {
         let raw = Arc::new(crate::RawDisk::open(path)?);
         let identity = raw.identity()?;
-        Self::open_parent_paths(raw, parent_paths, ReadBudget::new(limits)?, Some(&identity))
+        Self::open_parent_paths(raw, parent_paths, budget, Some(&identity))
     }
     pub(crate) fn open_locked_chain(
         source: Arc<dyn ReadAt>,
@@ -85,11 +96,7 @@ impl Vdi {
         budget: ReadBudget,
         identity: Option<&same_file::Handle>,
     ) -> io::Result<Self> {
-        if parent_paths.len() >= 32
-            || parent_paths.len() as u64 + 1 > budget.limits().recursion_depth
-        {
-            return Err(invalid("VDI chain exceeds recursion limit"));
-        }
+        budget.recursion(parent_paths.len() as u128 + 1, 32)?;
         let mut files = Vec::new();
         let mut identities = Vec::new();
         budget.metadata(parent_paths.len() as u64 * 128)?;

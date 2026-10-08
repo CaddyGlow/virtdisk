@@ -16,9 +16,11 @@ mod policy;
 #[cfg(test)]
 mod test_sync;
 mod transaction;
+#[cfg(target_os = "linux")]
+mod transaction_set;
 pub use policy::{
-    CacheReservation, ParserLimits, ReadBudget, ReadBudgetUsage, ReadContext, ReadError,
-    contextual_reader,
+    CacheReservation, ParserLimitExceeded, ParserLimits, ParserResource, ReadBudget,
+    ReadBudgetUsage, ReadContext, ReadError, contextual_reader,
 };
 
 mod qcow2;
@@ -32,11 +34,25 @@ mod vmdk;
 pub use vmdk::Vmdk;
 mod image;
 mod image_writer;
+mod operation;
 pub use image::{
-    Image, ImageFormat, ImageInfo, ShrinkPolicy, compare_images, convert_image, copy_image,
-    copy_image_with_cancel, detect_format, hash_image, resize_image,
+    Image, ImageFormat, ImageInfo, ShrinkPolicy, compare_images, compare_images_with_context,
+    convert_image, convert_image_with_context, copy_image, copy_image_with_cancel,
+    copy_image_with_context, detect_format, hash_image, hash_image_with_context, resize_image,
+    resize_image_with_context,
 };
 pub use image_writer::ImageWriter;
+pub use operation::OperationError;
+mod operation_context;
+pub use operation_context::{
+    OperationCancelled, OperationContext, OperationLimitExceeded, OperationLimits, OperationPhase,
+    OperationProgress, OperationResource, OperationUsage,
+};
+mod writer_open;
+pub use writer_open::{RecoveryPolicy, RecoveryRequired, WriterOpenOptions};
+mod reader_open;
+pub use reader_open::{ReadRecoveryPolicy, ReaderOpenOptions};
+mod export_source;
 mod qcow2_write;
 pub use qcow2_write::{create_qcow2, create_sparse_qcow2};
 mod qcow2_writer;
@@ -44,13 +60,16 @@ pub use qcow2_writer::Qcow2Writer;
 mod qcow2_overlay;
 pub use qcow2_overlay::{create_qcow2_overlay, create_qcow2_overlay_with_chain};
 mod graph;
+mod graph_manifest;
 pub use graph::{ImageGraph, ImageSpec};
+pub use graph_manifest::GraphManifest;
 mod compact;
-pub use compact::{compact_image, compact_image_with_cancel};
+pub use compact::{compact_image, compact_image_with_cancel, compact_image_with_context};
 mod check;
 pub use check::{
     CheckOptions, CheckReport, CheckScope, check_image, check_image_with_cancel,
-    check_payload_with_cancel,
+    check_image_with_context, check_image_with_limits, check_image_with_limits_and_context,
+    check_payload_with_cancel, check_payload_with_context,
 };
 mod vdi_write;
 pub use vdi_write::{create_vdi, create_vdi_overlay};
@@ -69,7 +88,7 @@ pub use vmdk_write::create_vmdk;
 mod vmdk_writer;
 pub use vmdk_writer::VmdkWriter;
 mod write;
-pub use write::{DiscardPolicy, DiscardResult, WriteAt};
+pub use write::{DiscardPolicy, DiscardResult, WriteAt, zero_image_with_context};
 mod info;
 pub use info::{
     Capability, DiskGeometry, ImageCapabilities, ImageInspection, ImageOperation, ImageProfile,
@@ -182,6 +201,41 @@ impl RawDisk {
         same_file::Handle::from_file(file.try_clone()?)
     }
 
+    #[cfg(target_os = "linux")]
+    pub(crate) fn open_shared_locked(path: &Path) -> io::Result<Self> {
+        let file: File = rustix::fs::open(
+            path,
+            rustix::fs::OFlags::RDONLY
+                | rustix::fs::OFlags::CLOEXEC
+                | rustix::fs::OFlags::NOFOLLOW
+                | rustix::fs::OFlags::NONBLOCK,
+            rustix::fs::Mode::empty(),
+        )?
+        .into();
+        let metadata = file.metadata()?;
+        if !metadata.is_file() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "dependency must be a regular file",
+            ));
+        }
+        file.try_lock_shared().map_err(io::Error::from)?;
+        Ok(Self {
+            length: metadata.len(),
+            file: Mutex::new(file),
+            context: ReadContext {
+                container: Some(path.to_path_buf()),
+                ..Default::default()
+            },
+        })
+    }
+    #[cfg(target_os = "linux")]
+    pub(crate) fn pin_metadata(&self) -> io::Result<std::fs::Metadata> {
+        self.file
+            .lock()
+            .map_err(|_| io::Error::other("disk reader mutex poisoned"))?
+            .metadata()
+    }
     /// Open a regular raw image. Device files and directories are rejected.
     pub fn open(path: impl AsRef<Path>) -> io::Result<Self> {
         let path = path.as_ref();

@@ -21,14 +21,20 @@ fn identity() -> io::Result<[u8; 16]> {
 /// Export an immutable reader to a new dynamic VDI 1.1 image.
 ///
 /// Requires nonempty sector-aligned capacity, at most 16 million 1 MiB blocks.
-/// Uses two source passes, at most 64 MiB of map memory and a 1 MiB buffer.
+/// Uses two source passes, at most 64 MiB of map memory and a 64 KiB buffer.
 /// Zero blocks are unallocated; the final block is padded with zeroes. Image and
 /// modification UUIDs are freshly generated. Existing paths are never replaced.
 /// The source must remain immutable throughout both passes. Metadata is written
 /// last and the result is synced; failures may leave an incomplete destination.
 /// This does not sync the parent directory or provide atomic publication.
-pub fn create_vdi(path: impl AsRef<Path>, source: &dyn ReadAt) -> io::Result<()> {
-    let size = source.len();
+pub fn create_vdi(path: impl AsRef<Path>, mut source: &dyn ReadAt) -> io::Result<()> {
+    export_vdi(path.as_ref(), &mut source)
+}
+pub(crate) fn export_vdi(
+    path: &Path,
+    source: &mut dyn crate::export_source::ExportSource,
+) -> io::Result<()> {
+    let size = source.size();
     if size == 0 || !size.is_multiple_of(512) {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
@@ -52,14 +58,22 @@ pub fn create_vdi(path: impl AsRef<Path>, source: &dyn ReadAt) -> io::Result<()>
             "VDI data offset exceeds format limit",
         )
     })?;
+    source.begin(crate::OperationPhase::AllocationScan, size)?;
     let mut map = vec![u32::MAX; blocks as usize];
-    let mut buffer = vec![0; BLOCK as usize];
+    let mut buffer = crate::operation_context::scratch_buffer(65536)?;
     let mut allocated = 0u32;
     for (i, entry) in map.iter_mut().enumerate() {
         let offset = i as u64 * BLOCK;
-        let count = (size - offset).min(BLOCK) as usize;
-        source.read_exact_at(offset, &mut buffer[..count])?;
-        if buffer[..count].iter().any(|&b| b != 0) {
+        let end = size.min(offset + BLOCK);
+        let mut position = offset;
+        let mut nonzero = false;
+        while position < end {
+            let count = (end - position).min(buffer.len() as u64) as usize;
+            source.read(position, &mut buffer[..count])?;
+            nonzero |= buffer[..count].iter().any(|&b| b != 0);
+            position += count as u64;
+        }
+        if nonzero {
             *entry = allocated;
             allocated += 1;
         }
@@ -84,6 +98,13 @@ pub fn create_vdi(path: impl AsRef<Path>, source: &dyn ReadAt) -> io::Result<()>
     let final_len = data
         .checked_add(allocated as u64 * BLOCK)
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "VDI output size overflow"))?;
+    let payload_bytes: u64 = map
+        .iter()
+        .enumerate()
+        .filter(|(_, entry)| **entry != u32::MAX)
+        .map(|(index, _)| (size - index as u64 * BLOCK).min(BLOCK))
+        .sum();
+    source.begin(crate::OperationPhase::ImageExport, payload_bytes)?;
     let mut file = OpenOptions::new().write(true).create_new(true).open(path)?;
     file.set_len(final_len)?;
     for (i, &entry) in map.iter().enumerate() {
@@ -91,11 +112,16 @@ pub fn create_vdi(path: impl AsRef<Path>, source: &dyn ReadAt) -> io::Result<()>
             continue;
         }
         let offset = i as u64 * BLOCK;
-        let count = (size - offset).min(BLOCK) as usize;
-        buffer.fill(0);
-        source.read_exact_at(offset, &mut buffer[..count])?;
         file.seek(SeekFrom::Start(data + entry as u64 * BLOCK))?;
-        file.write_all(&buffer)?;
+        let end = size.min(offset + BLOCK);
+        let mut position = offset;
+        while position < end {
+            let count = (end - position).min(buffer.len() as u64) as usize;
+            source.read(position, &mut buffer[..count])?;
+            file.write_all(&buffer[..count])?;
+            position += count as u64;
+        }
+        // create_new plus set_len leaves the final block's unread tail zeroed.
     }
     // Sync data before installing the metadata which makes it reachable.
     file.sync_all()?;

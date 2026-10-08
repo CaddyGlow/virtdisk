@@ -58,6 +58,10 @@ impl ReadAt for LockedSource {
 }
 
 impl Qcow2Writer {
+    pub(crate) fn container_size(&self) -> u64 {
+        self.raw.len()
+    }
+
     /// Create a fully allocated image while retaining its exclusive lock.
     ///
     /// Initial contents read as zero; source capacity is limited to 32 GiB for
@@ -146,10 +150,40 @@ impl Qcow2Writer {
         path: std::path::PathBuf,
         authorized: &[std::path::PathBuf],
     ) -> io::Result<Self> {
+        Self::from_raw_policy(raw, path, authorized, crate::RecoveryPolicy::Recover)
+    }
+
+    pub(crate) fn open_policy(
+        path: &std::path::Path,
+        authorized: &[std::path::PathBuf],
+        policy: crate::RecoveryPolicy,
+    ) -> io::Result<Self> {
+        Self::from_raw_policy(
+            RawWriter::open(path)?,
+            path.canonicalize()?,
+            authorized,
+            policy,
+        )
+    }
+
+    fn from_raw_policy(
+        raw: RawWriter,
+        path: std::path::PathBuf,
+        authorized: &[std::path::PathBuf],
+        policy: crate::RecoveryPolicy,
+    ) -> io::Result<Self> {
         let raw = Arc::new(raw);
         #[cfg(target_os = "linux")]
         raw.require_single_link_for_journal()?;
-        journal::recover_authorized(&path, raw.clone(), authorized)?;
+        policy.check_sidecar(&journal::sidecar(&path))?;
+        if policy == crate::RecoveryPolicy::RejectPending {
+            let mut dirty = [0];
+            raw.read_exact_at(79, &mut dirty)?;
+            policy.check(dirty[0] & 1 != 0)?;
+        }
+        if policy == crate::RecoveryPolicy::Recover {
+            journal::recover_authorized(&path, raw.clone(), authorized)?;
+        }
         let mut header = [0; 104];
         raw.read_exact_at(0, &mut header)?;
         let value =
@@ -227,13 +261,11 @@ impl Qcow2Writer {
         let snapshot_directory_length = disk.snapshot_directory()?.1;
         let snapshot_lifecycle_profile = raw.len() <= 33 * 1024 * 1024 * 1024
             && cfg!(target_os = "linux")
-            && disk.backing_reader().is_none()
             && word(36) <= 8192
             && word(60) <= 64
             && snapshot_directory_length <= 65536;
         let snapshot_creation_profile = raw.len() <= 33 * 1024 * 1024 * 1024
             && cfg!(target_os = "linux")
-            && disk.backing_reader().is_none()
             && word(36) <= 8192
             && word(60) < 64
             && snapshot_directory_length <= 65536 - 64;
@@ -271,30 +303,31 @@ impl Qcow2Writer {
                 .load(std::sync::atomic::Ordering::Relaxed)
     }
 
+    pub(crate) fn native_resize_supported(&self) -> bool {
+        self.native_snapshot_lifecycle_supported()
+    }
+
     /// Current virtual capacity in bytes.
     ///
     /// Capacity changes require exclusive mutable access through [`Self::resize`].
     pub fn len(&self) -> u64 {
         self.size
     }
-    /// Change standalone virtual capacity through one durable metadata transaction.
+    /// Change virtual capacity through one durable metadata transaction.
     ///
     /// Linux, sector alignment, a single-cluster L1 table and the 32 GiB writer
     /// limit are required. Growth reads zero. Shrink requires an explicit policy;
     /// removed mappings release container ownership, while a retained boundary
     /// cluster is copied and its invisible suffix cleared. No physical EOF
-    /// shrinking is promised. Backed children and internal snapshots are refused.
+    /// shrinking is promised. Saved disk states retain their content and capacity
+    /// through mapping COW.
+    /// Authorized immutable parents are supported. Internal snapshot resources must fit
+    /// the bounded lifecycle profile.
     /// The caller must exclude all external dependent snapshots and image access.
     /// A transaction above the bounded patch budget fails before mutation;
     /// interrupted mutation requires reopening for complete capacity recovery.
     pub fn resize(&mut self, new_size: u64, policy: crate::ShrinkPolicy) -> io::Result<()> {
         Self::check_size(new_size)?;
-        if self.context.parent.is_some() {
-            return Err(io::Error::new(
-                io::ErrorKind::Unsupported,
-                "native resize of backed QCOW2 images is unsupported",
-            ));
-        }
         let next = {
             let _guard = self.operation()?;
             if new_size == self.size {
@@ -302,10 +335,10 @@ impl Qcow2Writer {
             }
             let mut snapshot_count = [0; 4];
             self.raw.read_exact_at(60, &mut snapshot_count)?;
-            if snapshot_count != [0; 4] {
+            if snapshot_count != [0; 4] && !self.native_snapshot_lifecycle_supported() {
                 return Err(io::Error::new(
                     io::ErrorKind::Unsupported,
-                    "native resize with QCOW2 internal snapshots is unsupported",
+                    "native resize snapshot profile exceeds lifecycle bounds",
                 ));
             }
             let mappings = self

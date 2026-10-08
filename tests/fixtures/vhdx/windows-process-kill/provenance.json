@@ -1,0 +1,344 @@
+{
+  "source_receipt": "/data/cache/virtdisk-native-windows/receipts/20261007T190438Z.json",
+  "artifact": {
+    "path": "/data/cache/rust/x86_64-pc-windows-msvc/debug/process-kill.exe",
+    "sha256": "42113ceeb9577adf319bf5e4c3eba10df74328eb39414620eaed33af1f45fbb3"
+  },
+  "scope": "Exact raw child/parent after actual Windows worker termination at acknowledged flush cut 14; no reconstructed redo or locator edits. Single-sector model; power loss unfulfilled.",
+  "fixtures": [
+    {
+      "sector": 512,
+      "case": {
+        "case": "cut-14",
+        "process": {
+          "acknowledgements": [
+            {
+              "cut": 0,
+              "file": 844424930168833,
+              "kind": 1,
+              "volume": 1343813490
+            },
+            {
+              "cut": 1,
+              "file": 844424930168833,
+              "kind": 2,
+              "volume": 1343813490
+            },
+            {
+              "cut": 2,
+              "file": 844424930168833,
+              "kind": 2,
+              "volume": 1343813490
+            },
+            {
+              "cut": 3,
+              "file": 844424930168833,
+              "kind": 2,
+              "volume": 1343813490
+            },
+            {
+              "cut": 4,
+              "file": 844424930168833,
+              "kind": 2,
+              "volume": 1343813490
+            },
+            {
+              "cut": 5,
+              "file": 844424930168833,
+              "kind": 2,
+              "volume": 1343813490
+            },
+            {
+              "cut": 6,
+              "file": 844424930168833,
+              "kind": 2,
+              "volume": 1343813490
+            },
+            {
+              "cut": 7,
+              "file": 844424930168833,
+              "kind": 2,
+              "volume": 1343813490
+            },
+            {
+              "cut": 8,
+              "file": 844424930168833,
+              "kind": 2,
+              "volume": 1343813490
+            },
+            {
+              "cut": 9,
+              "file": 844424930168833,
+              "kind": 2,
+              "volume": 1343813490
+            },
+            {
+              "cut": 10,
+              "file": 844424930168833,
+              "kind": 2,
+              "volume": 1343813490
+            },
+            {
+              "cut": 11,
+              "file": 844424930168833,
+              "kind": 2,
+              "volume": 1343813490
+            },
+            {
+              "cut": 12,
+              "file": 844424930168833,
+              "kind": 2,
+              "volume": 1343813490
+            },
+            {
+              "cut": 13,
+              "file": 844424930168833,
+              "kind": 2,
+              "volume": 1343813490
+            },
+            {
+              "cut": 14,
+              "file": 844424930168833,
+              "kind": 2,
+              "volume": 1343813490
+            }
+          ],
+          "cut": 14,
+          "exit_code": 1447314261,
+          "intercepted": true,
+          "leaf_sha256": "0fa7f718145c6f6fc5c4c9702aa963f2f6019d833ab71a91d00a67f60bd52338",
+          "pid": 1096,
+          "successful_flushes": 14,
+          "terminate_process": true
+        },
+        "verification": {
+          "clean_recovered_after": "4c3bdbe3b62d692fc1745f9154b139fecd21f98c9c190115b61cf1ceadc7a205",
+          "clean_recovered_before": "4c3bdbe3b62d692fc1745f9154b139fecd21f98c9c190115b61cf1ceadc7a205",
+          "library_recovery_native": {
+            "attach": 0,
+            "block_size": 1048576,
+            "capacity": 4194304,
+            "detach": 0,
+            "logical_sector": 512,
+            "logical_sha256": "134fe6161fb5d1fa6e2ef0660486e69b9ce7d5f621f5b41bb884658c2ffcd66c",
+            "open": 0,
+            "physical_sector": 4096
+          },
+          "logical_sha256": "134fe6161fb5d1fa6e2ef0660486e69b9ce7d5f621f5b41bb884658c2ffcd66c",
+          "model": "new",
+          "native_replay": {
+            "attach": 0,
+            "block_size": 1048576,
+            "capacity": 4194304,
+            "detach": 0,
+            "logical_sector": 512,
+            "logical_sha256": "134fe6161fb5d1fa6e2ef0660486e69b9ce7d5f621f5b41bb884658c2ffcd66c",
+            "open": 0,
+            "physical_sector": 4096
+          },
+          "native_replay_after": "ac68446dc8f1d53d07485928842e40bcfb043ca938600d6a231801cdb47af6c8",
+          "native_replay_before": "0fa7f718145c6f6fc5c4c9702aa963f2f6019d833ab71a91d00a67f60bd52338",
+          "raw_identities": [
+            {
+              "length": 7340032,
+              "path": "target.vhdx",
+              "sha256": "0fa7f718145c6f6fc5c4c9702aa963f2f6019d833ab71a91d00a67f60bd52338"
+            },
+            {
+              "length": 9437184,
+              "path": "base.vhdx",
+              "sha256": "c13fd2cdf8879bae350c5d67efff19a6dd97ee09ca4f516a4ca50cee2291ce45"
+            }
+          ],
+          "released_writer_lock": true
+        },
+        "workload": {
+          "child": true,
+          "retained": false,
+          "sector": 512
+        }
+      },
+      "files": [
+        {
+          "file": "512-base.vhdx.gz",
+          "length": 9437184,
+          "sha256": "c13fd2cdf8879bae350c5d67efff19a6dd97ee09ca4f516a4ca50cee2291ce45",
+          "gzip_sha256": "75f54944af89b50b76e32655664f956225efd8112cb468c68d395c60c4e95227"
+        },
+        {
+          "file": "512-child.vhdx.gz",
+          "length": 7340032,
+          "sha256": "0fa7f718145c6f6fc5c4c9702aa963f2f6019d833ab71a91d00a67f60bd52338",
+          "gzip_sha256": "741ae9a8162b4b393d9a76dccb63e6ce42684aa65ba13f76078281fbce01407c"
+        }
+      ]
+    },
+    {
+      "sector": 4096,
+      "case": {
+        "case": "cut-14",
+        "process": {
+          "acknowledgements": [
+            {
+              "cut": 0,
+              "file": 844424930169841,
+              "kind": 1,
+              "volume": 1343813490
+            },
+            {
+              "cut": 1,
+              "file": 844424930169841,
+              "kind": 2,
+              "volume": 1343813490
+            },
+            {
+              "cut": 2,
+              "file": 844424930169841,
+              "kind": 2,
+              "volume": 1343813490
+            },
+            {
+              "cut": 3,
+              "file": 844424930169841,
+              "kind": 2,
+              "volume": 1343813490
+            },
+            {
+              "cut": 4,
+              "file": 844424930169841,
+              "kind": 2,
+              "volume": 1343813490
+            },
+            {
+              "cut": 5,
+              "file": 844424930169841,
+              "kind": 2,
+              "volume": 1343813490
+            },
+            {
+              "cut": 6,
+              "file": 844424930169841,
+              "kind": 2,
+              "volume": 1343813490
+            },
+            {
+              "cut": 7,
+              "file": 844424930169841,
+              "kind": 2,
+              "volume": 1343813490
+            },
+            {
+              "cut": 8,
+              "file": 844424930169841,
+              "kind": 2,
+              "volume": 1343813490
+            },
+            {
+              "cut": 9,
+              "file": 844424930169841,
+              "kind": 2,
+              "volume": 1343813490
+            },
+            {
+              "cut": 10,
+              "file": 844424930169841,
+              "kind": 2,
+              "volume": 1343813490
+            },
+            {
+              "cut": 11,
+              "file": 844424930169841,
+              "kind": 2,
+              "volume": 1343813490
+            },
+            {
+              "cut": 12,
+              "file": 844424930169841,
+              "kind": 2,
+              "volume": 1343813490
+            },
+            {
+              "cut": 13,
+              "file": 844424930169841,
+              "kind": 2,
+              "volume": 1343813490
+            },
+            {
+              "cut": 14,
+              "file": 844424930169841,
+              "kind": 2,
+              "volume": 1343813490
+            }
+          ],
+          "cut": 14,
+          "exit_code": 1447314261,
+          "intercepted": true,
+          "leaf_sha256": "776398bb38fdd7ba58cf9c5c7099791b8c0045a71e585aeba815800e6feb3d5f",
+          "pid": 3980,
+          "successful_flushes": 14,
+          "terminate_process": true
+        },
+        "verification": {
+          "clean_recovered_after": "25297a73495406382e4d24db5fd8851eef83f3a6141211d1ac631f21f296eef4",
+          "clean_recovered_before": "25297a73495406382e4d24db5fd8851eef83f3a6141211d1ac631f21f296eef4",
+          "library_recovery_native": {
+            "attach": 0,
+            "block_size": 1048576,
+            "capacity": 4194304,
+            "detach": 0,
+            "logical_sector": 4096,
+            "logical_sha256": "134fe6161fb5d1fa6e2ef0660486e69b9ce7d5f621f5b41bb884658c2ffcd66c",
+            "open": 0,
+            "physical_sector": 4096
+          },
+          "logical_sha256": "134fe6161fb5d1fa6e2ef0660486e69b9ce7d5f621f5b41bb884658c2ffcd66c",
+          "model": "new",
+          "native_replay": {
+            "attach": 0,
+            "block_size": 1048576,
+            "capacity": 4194304,
+            "detach": 0,
+            "logical_sector": 4096,
+            "logical_sha256": "134fe6161fb5d1fa6e2ef0660486e69b9ce7d5f621f5b41bb884658c2ffcd66c",
+            "open": 0,
+            "physical_sector": 4096
+          },
+          "native_replay_after": "868506c8cd8618ea436f205eb4256b70ff8059496576b5df4123c6e2671f6ea2",
+          "native_replay_before": "776398bb38fdd7ba58cf9c5c7099791b8c0045a71e585aeba815800e6feb3d5f",
+          "raw_identities": [
+            {
+              "length": 7340032,
+              "path": "target.vhdx",
+              "sha256": "776398bb38fdd7ba58cf9c5c7099791b8c0045a71e585aeba815800e6feb3d5f"
+            },
+            {
+              "length": 9437184,
+              "path": "base.vhdx",
+              "sha256": "f5ee06685efac804f58431c2ab1d6918dda6e42ca27c97ffcc80b8efbd2c2f35"
+            }
+          ],
+          "released_writer_lock": true
+        },
+        "workload": {
+          "child": true,
+          "retained": false,
+          "sector": 4096
+        }
+      },
+      "files": [
+        {
+          "file": "4096-base.vhdx.gz",
+          "length": 9437184,
+          "sha256": "f5ee06685efac804f58431c2ab1d6918dda6e42ca27c97ffcc80b8efbd2c2f35",
+          "gzip_sha256": "cc43433ac4716844c8e1e04453f5873cb35dfd25b36db232c5a47b5e4e8ddc8f"
+        },
+        {
+          "file": "4096-child.vhdx.gz",
+          "length": 7340032,
+          "sha256": "776398bb38fdd7ba58cf9c5c7099791b8c0045a71e585aeba815800e6feb3d5f",
+          "gzip_sha256": "35063042873b486c942366676e347562c5e0054c31f73b46e000096c7cf9bde4"
+        }
+      ]
+    }
+  ]
+}

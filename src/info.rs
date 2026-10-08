@@ -84,6 +84,29 @@ pub enum ImageOperation {
     /// Reclaim physical container allocation.
     Compact,
 }
+impl ImageOperation {
+    /// Stable machine-readable operation name, also used by structured errors.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Read => "read",
+            Self::Write => "write",
+            Self::WriteZeroes => "write-zeroes",
+            Self::Flush => "flush",
+            Self::Resize => "resize",
+            Self::Discard => "discard",
+            Self::Preallocate => "preallocate",
+            Self::ExtentMap => "extent-map",
+            Self::NativeSnapshot => "native-snapshot",
+            Self::NativeSnapshotCreate => "native-snapshot-create",
+            Self::NativeSnapshotDelete => "native-snapshot-delete",
+            Self::NativeSnapshotRevert => "native-snapshot-revert",
+            Self::Derive => "derive",
+            Self::Rebase => "rebase",
+            Self::Merge => "merge",
+            Self::Compact => "compact",
+        }
+    }
+}
 /// Actionable reason an operation is unavailable on the current handle.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UnsupportedReason {
@@ -93,6 +116,16 @@ pub enum UnsupportedReason {
     NotImplemented,
     /// Allocation classification is not available from this handle.
     AllocationUnknown,
+}
+impl UnsupportedReason {
+    /// Stable machine-readable refusal category.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::ReadOnlyHandle => "read-only-handle",
+            Self::NotImplemented => "not-implemented",
+            Self::AllocationUnknown => "allocation-unknown",
+        }
+    }
 }
 /// Availability of one operation on the opened handle.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -114,6 +147,39 @@ pub struct ImageCapabilities {
     snapshot_lifecycle: bool,
 }
 impl ImageCapabilities {
+    /// Enumerate every current-handle operation exactly once, without allocation.
+    ///
+    /// Includes unsupported operations with their conservative refusal categories.
+    /// Supported operations retain their profile/range/platform bounds and may
+    /// fail at runtime. Generic new-output operations are separate APIs: an
+    /// unsupported native `Compact` does not prohibit `compact_image`.
+    /// Future library versions may include additional operations in the report.
+    pub fn iter(
+        &self,
+    ) -> impl ExactSizeIterator<Item = (ImageOperation, Capability)> + DoubleEndedIterator + '_
+    {
+        use ImageOperation::*;
+        [
+            Read,
+            Write,
+            WriteZeroes,
+            Flush,
+            Resize,
+            Discard,
+            Preallocate,
+            ExtentMap,
+            NativeSnapshot,
+            NativeSnapshotCreate,
+            NativeSnapshotDelete,
+            NativeSnapshotRevert,
+            Derive,
+            Rebase,
+            Merge,
+            Compact,
+        ]
+        .into_iter()
+        .map(|operation| (operation, self.get(operation)))
+    }
     /// Query a concrete operation on this handle.
     pub fn get(&self, operation: ImageOperation) -> Capability {
         use ImageOperation::*;
@@ -145,6 +211,11 @@ impl ImageCapabilities {
 /// Validated facts and current-handle operations, without filesystem interpretation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ImageInspection {
+    /// Primary retained container source length, not filesystem allocated storage.
+    /// For non-file sources this is their bounded source length; unavailable facts are absent.
+    pub container_size: Option<u64>,
+    /// Primary container plus its own extent file lengths, excluding parents and journals.
+    pub container_set_size: Option<u64>,
     /// Concrete supported container profile.
     pub profile: ImageProfile,
     /// Container-declared disk geometry.
@@ -173,6 +244,8 @@ fn report(
     validation: ValidationLevel,
 ) -> ImageInspection {
     ImageInspection {
+        container_size: None,
+        container_set_size: None,
         profile,
         geometry: DiskGeometry {
             virtual_size: size,
@@ -194,6 +267,16 @@ fn report(
         native_snapshots: None,
     }
 }
+impl ImageInspection {
+    fn with_container_size(self, size: u64) -> Self {
+        self.with_container_sizes(Some(size), Some(size))
+    }
+    fn with_container_sizes(mut self, primary: Option<u64>, aggregate: Option<u64>) -> Self {
+        self.container_size = primary;
+        self.container_set_size = aggregate;
+        self
+    }
+}
 impl InspectImage for RawDisk {
     fn inspection(&self) -> ImageInspection {
         report(
@@ -205,6 +288,7 @@ impl InspectImage for RawDisk {
             false,
             ValidationLevel::RegularFile,
         )
+        .with_container_size(self.len())
     }
 }
 impl InspectImage for RawWriter {
@@ -218,6 +302,7 @@ impl InspectImage for RawWriter {
             true,
             ValidationLevel::RegularFile,
         )
+        .with_container_size(self.len())
     }
 }
 impl InspectImage for Qcow2 {
@@ -234,7 +319,7 @@ impl InspectImage for Qcow2 {
         );
         r.has_parent = parent;
         r.native_snapshots = Some(snapshots);
-        r
+        r.with_container_size(self.container_size())
     }
 }
 impl InspectImage for Qcow2Writer {
@@ -253,9 +338,8 @@ impl InspectImage for Qcow2Writer {
         r.capabilities.snapshot_lifecycle = self.native_snapshot_lifecycle_supported();
         r.capabilities.discard = cfg!(target_os = "linux");
         r.has_parent = self.has_parent();
-        r.capabilities.resize =
-            cfg!(target_os = "linux") && !self.has_parent() && self.native_snapshot_count() == 0;
-        r
+        r.capabilities.resize = self.native_resize_supported();
+        r.with_container_size(self.container_size())
     }
 }
 impl InspectImage for Vdi {
@@ -271,7 +355,7 @@ impl InspectImage for Vdi {
             ValidationLevel::ActiveOwnership,
         );
         result.has_parent = self.has_parent();
-        result
+        result.with_container_size(self.container_size())
     }
 }
 impl InspectImage for VdiWriter {
@@ -290,7 +374,7 @@ impl InspectImage for VdiWriter {
         result.capabilities.discard = cfg!(target_os = "linux") && dynamic && block <= 1048576;
         result.capabilities.resize =
             cfg!(target_os = "linux") && dynamic && block <= 1048576 && !self.has_parent();
-        result
+        result.with_container_size(self.container_size())
     }
 }
 impl InspectImage for Vmdk {
@@ -306,7 +390,8 @@ impl InspectImage for Vmdk {
             ValidationLevel::ActiveOwnership,
         );
         result.has_parent = self.has_parent();
-        result
+        let (primary, aggregate) = self.container_sizes();
+        result.with_container_sizes(Some(primary), Some(aggregate))
     }
 }
 impl InspectImage for VmdkWriter {
@@ -324,7 +409,8 @@ impl InspectImage for VmdkWriter {
         result.has_parent = self.has_parent();
         result.capabilities.resize = self.native_resize_supported();
         result.capabilities.discard = self.native_discard_supported();
-        result
+        let (primary, aggregate) = self.container_sizes();
+        result.with_container_sizes(Some(primary), aggregate)
     }
 }
 impl InspectImage for Vhdx {
@@ -340,7 +426,7 @@ impl InspectImage for Vhdx {
             ValidationLevel::ActiveOwnership,
         );
         result.has_parent = self.has_parent();
-        result
+        result.with_container_size(self.container_size())
     }
 }
 impl InspectImage for VhdxWriter {
@@ -358,6 +444,7 @@ impl InspectImage for VhdxWriter {
         result.has_parent = self.has_parent();
         result.capabilities.discard = self.native_discard_supported();
         result.capabilities.resize = self.native_resize_supported();
-        result
+        let size = self.container_size();
+        result.with_container_sizes(size, size)
     }
 }

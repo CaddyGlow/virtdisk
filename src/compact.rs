@@ -15,7 +15,27 @@ pub fn compact_image(
     output: impl AsRef<Path>,
     format: ImageFormat,
 ) -> io::Result<()> {
-    compact_image_with_cancel(source, output, format, &|| false)
+    compact_image_with_context(
+        source,
+        output,
+        format,
+        &mut crate::OperationContext::default(),
+    )
+}
+
+/// Compact and verify a staged sparse image with common budgets and cancellation.
+///
+/// Uses the accounting and publication contract of [`crate::convert_image_with_context`].
+/// Zero-allocation scans are separate phases; no guest filesystem is interpreted.
+/// Cancellation or quotas before publication leave the output absent and staging
+/// cleanup is best effort. Backend metadata and flush work are not interruptible.
+pub fn compact_image_with_context(
+    source: &dyn ReadAt,
+    output: impl AsRef<Path>,
+    format: ImageFormat,
+    context: &mut crate::OperationContext<'_>,
+) -> io::Result<()> {
+    crate::image::materialize_with_context(source, output.as_ref(), format, true, context)
 }
 
 /// Compact a new output with cancellation checked between logical reads and before publication.

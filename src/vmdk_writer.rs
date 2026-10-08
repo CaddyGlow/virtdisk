@@ -1,5 +1,8 @@
 #[path = "vmdk_flat.rs"]
 mod flat;
+#[cfg(target_os = "linux")]
+#[path = "vmdk_sparse_set.rs"]
+mod sparse_set;
 use std::io;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
@@ -16,8 +19,9 @@ use crate::{RawWriter, ReadAt, Vmdk};
 /// Payload overwrites remain non-atomic and may partially complete on failure.
 /// Parented children require `open_chain`; compressed and dirty native profiles fail.
 /// Native standalone capacity changes use bounded staged metadata transactions.
-/// Native snapshots and absent grain-table creation during ordinary
-/// writes are not implemented. Failed transactions
+/// Native snapshots and monolithic missing-table creation during ordinary
+/// writes are not implemented. Authorized split profiles support bounded table
+/// creation through their complete-set coordinator. Failed transactions
 /// require reopening for recovery. External programs must respect the advisory lock,
 /// sidecar exclusion and immutable-reader contract.
 pub struct VmdkWriter {
@@ -30,6 +34,8 @@ pub struct VmdkWriter {
     cid_width: usize,
     size: u64,
     flat: Option<flat::Flat>,
+    #[cfg(target_os = "linux")]
+    sparse: Option<Box<sparse_set::Sparse>>,
     parent: Option<Arc<Vmdk>>,
     operation: Mutex<State>,
 }
@@ -112,9 +118,32 @@ impl ReadAt for LockedSource {
 }
 
 impl VmdkWriter {
+    pub(crate) fn split_sparse_profile(path: &Path) -> io::Result<bool> {
+        #[cfg(target_os = "linux")]
+        {
+            sparse_set::matches_profile(path)
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = path;
+            Ok(false)
+        }
+    }
+    pub(crate) fn container_sizes(&self) -> (u64, Option<u64>) {
+        let primary = self.raw.len();
+        #[cfg(target_os = "linux")]
+        if let Some(sparse) = &self.sparse {
+            return (primary, sparse.container_set_size());
+        }
+        let aggregate = self.flat.as_ref().map_or(Some(primary), |flat| {
+            primary.checked_add(flat.container_extents_size()?)
+        });
+        (primary, aggregate)
+    }
+
     pub(crate) fn native_discard_supported(&self) -> bool {
         cfg!(target_os = "linux")
-            && self.flat.is_none()
+            && !self.is_descriptor()
             && self.raw.len() <= 33 * 1024 * 1024 * 1024
     }
 
@@ -195,7 +224,7 @@ impl VmdkWriter {
     }
     pub(crate) fn native_resize_supported(&self) -> bool {
         cfg!(target_os = "linux")
-            && self.flat.is_none()
+            && !self.is_descriptor()
             && self.parent.is_none()
             && self.raw.len().is_multiple_of(65536)
     }
@@ -218,7 +247,7 @@ impl VmdkWriter {
         cut: Option<(usize, usize)>,
     ) -> io::Result<()> {
         Self::check_size(new_size)?;
-        if !cfg!(target_os = "linux") || self.flat.is_some() || self.parent.is_some() {
+        if !cfg!(target_os = "linux") || self.is_descriptor() || self.parent.is_some() {
             return Err(io::Error::new(
                 io::ErrorKind::Unsupported,
                 "native VMDK resize requires standalone Linux hosted sparse profile",
@@ -523,17 +552,38 @@ impl VmdkWriter {
         }
         Ok(())
     }
-    /// Open an existing standalone monolithicFlat or twoGbMaxExtentFlat descriptor.
+    /// Open an existing standalone flat or Linux split hosted sparse descriptor.
     /// Every authorized extent and the descriptor retain locks and opened identities. Parsing is bounded
     /// to 64 KiB and authorization to 256 paths; capacity is at most 32 GiB. A fresh CID
     /// is synced before payload mutation. Writes may partially complete on I/O failure;
     /// at most 256 extents (split extents at most 2 GiB). Cross-extent I/O can complete a
-    /// prefix before failure; no multi-file transaction, creation, resizing or parented flat writes are provided.
+    /// prefix before failure. Linux `twoGbMaxExtentSparse` supports allocated-grain
+    /// overwrites, zeroing and existing-table grain allocation through a complete-set
+    /// recovery coordinator. Allocation requires grain-aligned physical tails and
+    /// bounded whole-call projected sizes/budgets. Missing tables use a bounded appended
+    /// arena in empty extents or validated metadata padding in allocated extents. Backed
+    /// split writes, native descriptor discard, creation and resizing are unsupported.
     pub fn open_descriptor(
         path: impl AsRef<Path>,
         authorized_extent_paths: &[std::path::PathBuf],
     ) -> io::Result<Self> {
-        let opened = flat::open(path.as_ref(), authorized_extent_paths)?;
+        Self::open_descriptor_policy(
+            path.as_ref(),
+            authorized_extent_paths,
+            crate::RecoveryPolicy::Recover,
+        )
+    }
+    fn open_descriptor_policy(
+        path: &std::path::Path,
+        authorized_extent_paths: &[std::path::PathBuf],
+        policy: crate::RecoveryPolicy,
+    ) -> io::Result<Self> {
+        #[cfg(target_os = "linux")]
+        if sparse_set::matches_profile(path)? {
+            let opened = sparse_set::open_policy(path, authorized_extent_paths, false, policy)?;
+            return Self::from_sparse(opened);
+        }
+        let opened = flat::open_policy(path, authorized_extent_paths, policy)?;
         Ok(Self {
             raw: opened.descriptor,
             _identity: opened.identity,
@@ -544,7 +594,33 @@ impl VmdkWriter {
             cid_width: opened.cid_width,
             size: opened.length,
             flat: Some(opened.flat),
+            #[cfg(target_os = "linux")]
+            sparse: None,
             parent: None,
+            operation: Mutex::new(State {
+                mappings: Vec::new(),
+                zero_mask: Vec::new(),
+                epoch: false,
+                failed: false,
+            }),
+        })
+    }
+    #[cfg(target_os = "linux")]
+    fn from_sparse(opened: sparse_set::Opened) -> io::Result<Self> {
+        let size = opened.sparse.len();
+        let parent = opened.sparse.parent_reader();
+        Ok(Self {
+            raw: opened.raw,
+            _identity: opened.identity,
+            path: opened.path,
+            primary: Vec::new(),
+            redundant: Vec::new(),
+            cid_offset: 0,
+            cid_width: 0,
+            size,
+            flat: None,
+            sparse: Some(Box::new(opened.sparse)),
+            parent,
             operation: Mutex::new(State {
                 mappings: Vec::new(),
                 zero_mask: Vec::new(),
@@ -555,7 +631,17 @@ impl VmdkWriter {
     }
     /// Whether this opened writer uses an explicitly authorized external descriptor.
     pub fn is_descriptor(&self) -> bool {
-        self.flat.is_some()
+        self.flat.is_some() || self.has_sparse_descriptor()
+    }
+    fn has_sparse_descriptor(&self) -> bool {
+        #[cfg(target_os = "linux")]
+        {
+            self.sparse.is_some()
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            false
+        }
     }
     pub(crate) fn info_profile(&self) -> (Option<u64>, bool) {
         (
@@ -619,13 +705,17 @@ impl VmdkWriter {
             None,
         )
     }
-    /// Lock a hosted sparse child and resolve its explicitly authorized immutable parents.
+    /// Lock a monolithic or split hosted sparse child and resolve its explicitly authorized immutable parents.
     pub fn open_chain(
         path: impl AsRef<Path>,
         authorized_paths: &[std::path::PathBuf],
     ) -> io::Result<Self> {
         if !cfg!(target_os = "linux") {
             return Err(io::ErrorKind::Unsupported.into());
+        }
+        #[cfg(target_os = "linux")]
+        if sparse_set::matches_profile(path.as_ref())? {
+            return Self::from_sparse(sparse_set::open_chain(path.as_ref(), authorized_paths)?);
         }
         let raw = RawWriter::open(path.as_ref())?;
         raw.require_single_link_for_journal()?;
@@ -691,6 +781,49 @@ impl VmdkWriter {
             path.as_ref().canonicalize()?,
         )
     }
+    pub(crate) fn open_policy(
+        path: &std::path::Path,
+        authorized: Option<&[std::path::PathBuf]>,
+        policy: crate::RecoveryPolicy,
+    ) -> io::Result<Self> {
+        if let Some(paths) = authorized {
+            #[cfg(target_os = "linux")]
+            if sparse_set::matches_profile(path)? {
+                return Self::from_sparse(sparse_set::open_policy(path, paths, true, policy)?);
+            }
+            let source = crate::RawDisk::open(path)?;
+            let mut magic = [0; 4];
+            if source.len() >= 4 {
+                source.read_exact_at(0, &mut magic)?;
+            }
+            drop(source);
+            if magic != *b"KDMV" {
+                return Self::open_descriptor_policy(path, paths, policy);
+            }
+            if !cfg!(target_os = "linux") {
+                return Err(io::ErrorKind::Unsupported.into());
+            }
+            let raw = Arc::new(RawWriter::open(path)?);
+            let path = path.canonicalize()?;
+            let source = Arc::new(LockedSource {
+                size: raw.len(),
+                raw: raw.clone(),
+            });
+            let (parent, identity) =
+                Vmdk::resolve_writer_parent(source, &path, paths, raw.opened_identity()?)?;
+            let raw =
+                Arc::try_unwrap(raw).map_err(|_| io::Error::other("VMDK source still borrowed"))?;
+            Self::from_raw_parent_policy(raw, path, parent, Some(identity), policy)
+        } else {
+            Self::from_raw_parent_policy(
+                RawWriter::open(path)?,
+                path.canonicalize()?,
+                None,
+                None,
+                policy,
+            )
+        }
+    }
 
     fn check_size(size: u64) -> io::Result<()> {
         if size == 0 || size > 32 * 1024 * 1024 * 1024 || !size.is_multiple_of(512) {
@@ -711,6 +844,15 @@ impl VmdkWriter {
         parent: Option<Arc<Vmdk>>,
         identity: Option<same_file::Handle>,
     ) -> io::Result<Self> {
+        Self::from_raw_parent_policy(raw, path, parent, identity, crate::RecoveryPolicy::Recover)
+    }
+    fn from_raw_parent_policy(
+        raw: RawWriter,
+        path: std::path::PathBuf,
+        parent: Option<Arc<Vmdk>>,
+        identity: Option<same_file::Handle>,
+        policy: crate::RecoveryPolicy,
+    ) -> io::Result<Self> {
         let identity = match identity {
             Some(identity) => identity,
             None => raw.opened_identity()?,
@@ -718,7 +860,8 @@ impl VmdkWriter {
         let raw = Arc::new(raw);
         #[cfg(target_os = "linux")]
         raw.require_single_link_for_journal()?;
-        if crate::transaction::pending(&path)? {
+        policy.check(crate::transaction::pending(&path)?)?;
+        if policy == crate::RecoveryPolicy::Recover && crate::transaction::pending(&path)? {
             crate::transaction::recover(&path, raw.clone(), &|source| {
                 Vmdk::open_parented(source, parent.clone()).map(drop)
             })?;
@@ -815,6 +958,8 @@ impl VmdkWriter {
             cid_width,
             size,
             flat: None,
+            #[cfg(target_os = "linux")]
+            sparse: None,
             parent,
             operation: Mutex::new(State {
                 mappings,
@@ -973,6 +1118,10 @@ impl VmdkWriter {
 
     /// Write a bounded range, allocating unallocated grains through the journal.
     pub fn write_all_at(&self, offset: u64, data: &[u8]) -> io::Result<()> {
+        #[cfg(target_os = "linux")]
+        if let Some(sparse) = &self.sparse {
+            return sparse.write_all_at(offset, data);
+        }
         crate::check_range(offset, data.len() as u64, self.size)?;
         let mut state = self.operation()?;
         if let Some(flat) = &self.flat {
@@ -1017,6 +1166,10 @@ impl VmdkWriter {
 
     /// Read a bounded logical range from the currently written image.
     pub fn read_exact_at(&self, offset: u64, dst: &mut [u8]) -> io::Result<()> {
+        #[cfg(target_os = "linux")]
+        if let Some(sparse) = &self.sparse {
+            return sparse.read_exact_at(offset, dst);
+        }
         crate::check_range(offset, dst.len() as u64, self.size)?;
         let state = self.operation()?;
         if let Some(flat) = &self.flat {
@@ -1045,6 +1198,10 @@ impl VmdkWriter {
 
     /// Zero a bounded logical range while retaining its allocation.
     pub fn write_zeroes(&self, offset: u64, length: u64) -> io::Result<()> {
+        #[cfg(target_os = "linux")]
+        if let Some(sparse) = &self.sparse {
+            return sparse.write_zeroes(offset, length);
+        }
         crate::check_range(offset, length, self.size)?;
         let mut state = self.operation()?;
         if let Some(flat) = &self.flat {
@@ -1089,6 +1246,10 @@ impl VmdkWriter {
 
     /// Durably flush completed payload writes through the host filesystem.
     pub fn flush(&self) -> io::Result<()> {
+        #[cfg(target_os = "linux")]
+        if let Some(sparse) = &self.sparse {
+            return sparse.flush();
+        }
         let mut state = self.operation()?;
         if let Some(flat) = &self.flat {
             flat.flush()?;
@@ -1459,7 +1620,12 @@ mod recovery_tests {
             assert!(writer.read_exact_at(0, &mut [0; 1]).is_err());
             assert!(Vmdk::open(Arc::new(crate::RawDisk::open(&path).unwrap())).is_err());
             drop(writer);
-            let writer = VmdkWriter::open(&path).unwrap();
+            crate::writer_open::refuse_pending_open(&path, crate::ImageFormat::Vmdk, None);
+            let options =
+                crate::WriterOpenOptions::default().recovery_policy(crate::RecoveryPolicy::Recover);
+            let writer =
+                crate::ImageWriter::open_with_options(&path, crate::ImageFormat::Vmdk, &options)
+                    .unwrap();
             let mut out = [1; 64];
             writer.read_exact_at(65536, &mut out).unwrap();
             assert_eq!(&out[..17], &[0; 17]);

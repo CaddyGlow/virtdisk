@@ -64,10 +64,23 @@ pub struct Qcow2 {
 }
 
 impl Qcow2 {
+    pub(crate) fn container_size(&self) -> u64 {
+        self.source.len()
+    }
+
     pub(crate) fn declared_backing(&self) -> Option<(&str, Option<&str>)> {
         self.backing_name
             .as_deref()
             .map(|name| (name, self.backing_format.as_deref()))
+    }
+    pub(crate) fn resolved_backing_format(&self) -> Option<crate::ImageFormat> {
+        self.backing.as_ref().map(|_| {
+            if self.backing_qcow.is_some() {
+                crate::ImageFormat::Qcow2
+            } else {
+                crate::ImageFormat::Raw
+            }
+        })
     }
     pub(crate) fn info_profile(&self) -> (u32, u64, bool, u32) {
         (
@@ -103,6 +116,11 @@ impl Qcow2 {
     }
 
     fn parse(source: Arc<dyn ReadAt>) -> io::Result<Self> {
+        // Fixed header bytes are materialized metadata even without extensions
+        // or backing names. Charge them before reading image-controlled bytes.
+        if let Some(budget) = source.budget() {
+            budget.metadata(104)?;
+        }
         if let Some(path) = source.context().container {
             match std::fs::symlink_metadata(crate::qcow2_writer::journal_path(&path)) {
                 Ok(_) => {
@@ -253,7 +271,17 @@ impl Qcow2 {
         authorized_backing_paths: &[PathBuf],
         limits: crate::ParserLimits,
     ) -> io::Result<Self> {
-        let budget = crate::ReadBudget::new(limits)?;
+        Self::open_chain_with_budget(
+            path,
+            authorized_backing_paths,
+            crate::ReadBudget::new(limits)?,
+        )
+    }
+    pub(crate) fn open_chain_with_budget(
+        path: impl AsRef<Path>,
+        authorized_backing_paths: &[PathBuf],
+        budget: crate::ReadBudget,
+    ) -> io::Result<Self> {
         let approved: HashSet<_> = authorized_backing_paths
             .iter()
             .map(|path| {
@@ -310,9 +338,8 @@ impl Qcow2 {
         depth: usize,
         budget: &crate::ReadBudget,
     ) -> io::Result<Self> {
-        if depth as u64 >= budget.limits().recursion_depth.min(32)
-            || !paths.insert(path.to_path_buf())
-        {
+        budget.recursion(depth as u128 + 1, 32)?;
+        if !paths.insert(path.to_path_buf()) {
             return Err(invalid("QCOW2 backing cycle or depth limit exceeded"));
         }
         let source = Arc::new(RawDisk::open(path)?);

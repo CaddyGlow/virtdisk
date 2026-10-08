@@ -192,7 +192,8 @@ fn global_snapshot_walk_honors_cancellation_and_caller_budgets() {
     );
     for limits in [
         virtdisk::ParserLimits {
-            metadata_bytes: 1,
+            // Permit parsing the header, but no snapshot-walk metadata.
+            metadata_bytes: 104,
             ..Default::default()
         },
         virtdisk::ParserLimits {

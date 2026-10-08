@@ -30,12 +30,19 @@ pub(crate) fn create_locked_vmdk(
 }
 pub(crate) fn create_locked_vmdk_with_parent(
     path: impl AsRef<Path>,
-    source: &dyn ReadAt,
+    mut source: &dyn ReadAt,
     fully_allocated: bool,
     parent: Option<(u32, &str)>,
 ) -> io::Result<File> {
-    let path = path.as_ref();
-    let length = source.len();
+    export_vmdk(path.as_ref(), &mut source, fully_allocated, parent)
+}
+pub(crate) fn export_vmdk(
+    path: &Path,
+    source: &mut dyn crate::export_source::ExportSource,
+    fully_allocated: bool,
+    parent: Option<(u32, &str)>,
+) -> io::Result<File> {
+    let length = source.size();
     if length == 0 || !length.is_multiple_of(512) || length > 1 << 40 {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
@@ -90,6 +97,7 @@ pub(crate) fn create_locked_vmdk_with_parent(
             "VMDK descriptor too large",
         ));
     }
+    source.begin(crate::OperationPhase::ImageExport, length)?;
     let mut file = OpenOptions::new()
         .read(true)
         .write(true)
@@ -128,7 +136,7 @@ pub(crate) fn create_locked_vmdk_with_parent(
         let offset = index * 65536;
         let take = (length - offset).min(65536) as usize;
         grain.fill(0);
-        source.read_exact_at(offset, &mut grain[..take])?;
+        source.read(offset, &mut grain[..take])?;
         if fully_allocated || grain.iter().any(|b| *b != 0) {
             put32(
                 &mut table,

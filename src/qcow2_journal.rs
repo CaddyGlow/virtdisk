@@ -502,7 +502,18 @@ mod tests {
                 }],
             };
             assert!(commit(&path, raw.clone(), record, Some(cut)).is_err());
-            recover(&path, raw.clone()).unwrap();
+            drop(source);
+            drop(raw);
+            if std::fs::symlink_metadata(sidecar(&path)).is_ok() {
+                crate::writer_open::refuse_pending_open(&path, crate::ImageFormat::Qcow2, None);
+            }
+            let options =
+                crate::WriterOpenOptions::default().recovery_policy(crate::RecoveryPolicy::Recover);
+            drop(
+                crate::ImageWriter::open_with_options(&path, crate::ImageFormat::Qcow2, &options)
+                    .unwrap(),
+            );
+            let raw = std::sync::Arc::new(crate::RawWriter::open(&path).unwrap());
             recover(&path, raw.clone()).unwrap();
             let mut actual = [0; 512];
             raw.read_exact_at(5 * 65536, &mut actual).unwrap();

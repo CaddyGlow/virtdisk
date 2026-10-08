@@ -45,7 +45,7 @@ fn grow_crosses_l1_coverage_and_zero_capacity_without_rewriting_image() {
 }
 
 #[test]
-fn unsupported_ranges_backed_children_and_zero_tail_policy_are_checked_before_writes() {
+fn unsupported_ranges_and_zero_tail_policy_are_checked_before_writes() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("disk.qcow2");
     let mut w = Qcow2Writer::create(&path, 2 * C).unwrap();
@@ -69,10 +69,14 @@ fn unsupported_ranges_backed_children_and_zero_tail_policy_are_checked_before_wr
     let child = dir.path().join("child.qcow2");
     std::fs::write(&parent, vec![9; C as usize]).unwrap();
     virtdisk::create_qcow2_overlay(&child, &parent, "raw", C).unwrap();
-    let before = std::fs::read(&child).unwrap();
+    let parent_bytes = std::fs::read(&parent).unwrap();
     let mut w = Qcow2Writer::open_chain(&child, std::slice::from_ref(&parent)).unwrap();
-    assert!(w.resize(2 * C, ShrinkPolicy::Reject).is_err());
-    assert_eq!(std::fs::read(&child).unwrap(), before);
+    w.resize(2 * C, ShrinkPolicy::Reject).unwrap();
+    let mut bytes = vec![1; (2 * C) as usize];
+    w.read_exact_at(0, &mut bytes).unwrap();
+    assert!(bytes[..C as usize].iter().all(|byte| *byte == 9));
+    assert!(bytes[C as usize..].iter().all(|byte| *byte == 0));
+    assert_eq!(std::fs::read(&parent).unwrap(), parent_bytes);
 }
 
 #[test]

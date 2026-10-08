@@ -624,3 +624,55 @@ fn chain_descriptor_linkage_profiles_and_cumulative_budgets_are_strict() {
         assert!(Vmdk::open_chain_with_limits(&child, std::slice::from_ref(&base), limits).is_err());
     }
 }
+
+#[test]
+fn hosted_v2_zero_feature_preserves_allocation_and_masking() {
+    for flags in 0..=7u32 {
+        let mut bytes = fixture();
+        bytes[4..8].copy_from_slice(&2u32.to_le_bytes());
+        bytes[8..12].copy_from_slice(&flags.to_le_bytes());
+        if flags & 1 != 0 {
+            bytes[73..77].copy_from_slice(&[10, 32, 13, 10]);
+        }
+        if flags & 4 != 0 {
+            bytes[1028..1032].copy_from_slice(&1u32.to_le_bytes());
+        }
+        if flags & 2 != 0 {
+            bytes.resize(4096, 0);
+            bytes[48..56].copy_from_slice(&4u64.to_le_bytes());
+            bytes[64..72].copy_from_slice(&7u64.to_le_bytes());
+            bytes[1024..1028].copy_from_slice(&7u32.to_le_bytes());
+            bytes[2048..2052].copy_from_slice(&5u32.to_le_bytes());
+            let table = bytes[1024..1032].to_vec();
+            bytes[2560..2568].copy_from_slice(&table);
+            bytes[3584..4096].fill(42);
+        }
+        let disk = open(bytes).unwrap();
+        let mut actual = [9; 1024];
+        disk.read_exact_at(0, &mut actual).unwrap();
+        assert_eq!(&actual[..512], &[42; 512], "flags={flags}");
+        assert_eq!(&actual[512..], &[0; 512], "flags={flags}");
+    }
+    let mut zero = fixture();
+    zero[4..8].copy_from_slice(&2u32.to_le_bytes());
+    zero[1028..1032].copy_from_slice(&1u32.to_le_bytes());
+    assert_eq!(open(zero).err().unwrap().kind(), io::ErrorKind::InvalidData);
+    for (offset, value) in [
+        (4, 3u32.to_le_bytes().to_vec()),
+        (4, 0u32.to_le_bytes().to_vec()),
+        (8, 12u32.to_le_bytes().to_vec()),
+        (72, vec![1]),
+        (77, vec![1]),
+        (8, 5u32.to_le_bytes().to_vec()),
+    ] {
+        let mut bad = fixture();
+        bad[4..8].copy_from_slice(&2u32.to_le_bytes());
+        bad[offset..offset + value.len()].copy_from_slice(&value);
+        let expected = if offset == 8 && value == 5u32.to_le_bytes() {
+            io::ErrorKind::InvalidData
+        } else {
+            io::ErrorKind::Unsupported
+        };
+        assert_eq!(open(bad).err().unwrap().kind(), expected, "offset={offset}");
+    }
+}

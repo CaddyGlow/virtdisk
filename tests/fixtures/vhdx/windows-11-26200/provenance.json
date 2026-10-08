@@ -1,0 +1,104 @@
+{
+  "source_receipt": "/data/cache/virtdisk-native-windows/receipts/20261007T172747Z.json",
+  "windows": "Microsoft Windows11Pro10.0.26200.8037",
+  "producer_executable": {
+    "path": "/data/cache/rust/x86_64-pc-windows-msvc/debug/produce.exe",
+    "sha256": "068a79f644d9434b48d254e9c2e9d141f3d73c5da5d291a6edfe8d9fcefe124a"
+  },
+  "cases": {
+    "512": {
+      "child_sha256": "718c2ab48cd0df43900d3f3607302d5b2d054a6c987a717ec62a9a7916230bd4",
+      "gate": "passed",
+      "native": {
+        "capacity": 4194304,
+        "create": 0,
+        "logical_sector": 512,
+        "logical_sha256": "ec419e770d9abd432f754fb249934368e3a1f735afe6475af80b7c1ec1422e1c",
+        "native": {
+          "attach": 0,
+          "block_size": 2097152,
+          "capacity": 4194304,
+          "detach": 0,
+          "logical_sector": 512,
+          "logical_sha256": "ec419e770d9abd432f754fb249934368e3a1f735afe6475af80b7c1ec1422e1c",
+          "open": 0,
+          "physical_sector": 4096
+        },
+        "writes": [
+          {
+            "byte": 11,
+            "length": 512,
+            "offset": 8192
+          },
+          {
+            "byte": 13,
+            "length": 512,
+            "offset": 1056768
+          },
+          {
+            "byte": 17,
+            "length": 512,
+            "offset": 3153920
+          }
+        ]
+      },
+      "parent_after": "c13fd2cdf8879bae350c5d67efff19a6dd97ee09ca4f516a4ca50cee2291ce45",
+      "parent_before": "c13fd2cdf8879bae350c5d67efff19a6dd97ee09ca4f516a4ca50cee2291ce45",
+      "source_identities": [
+        {
+          "length": 9437184,
+          "path": "base.vhdx",
+          "sha256": "c13fd2cdf8879bae350c5d67efff19a6dd97ee09ca4f516a4ca50cee2291ce45"
+        }
+      ],
+      "source_manifest_sha256": "716dfeb244728c6f1ac88976be966427086ee43c18ce6c59322af64f4a519b08"
+    },
+    "4096": {
+      "child_sha256": "4c11c282c77d9f02b75a1aa0e9c33d8f416307f4a9129f0ea4f545da1e257046",
+      "gate": "passed",
+      "native": {
+        "capacity": 4194304,
+        "create": 0,
+        "logical_sector": 4096,
+        "logical_sha256": "4fea4b3d34cb7ee8c00617c0e7c0e23232db5ee7ae1cd78999f14a71deaa69cd",
+        "native": {
+          "attach": 0,
+          "block_size": 2097152,
+          "capacity": 4194304,
+          "detach": 0,
+          "logical_sector": 4096,
+          "logical_sha256": "4fea4b3d34cb7ee8c00617c0e7c0e23232db5ee7ae1cd78999f14a71deaa69cd",
+          "open": 0,
+          "physical_sector": 4096
+        },
+        "writes": [
+          {
+            "byte": 11,
+            "length": 4096,
+            "offset": 8192
+          },
+          {
+            "byte": 13,
+            "length": 4096,
+            "offset": 1056768
+          },
+          {
+            "byte": 17,
+            "length": 4096,
+            "offset": 3153920
+          }
+        ]
+      },
+      "parent_after": "f5ee06685efac804f58431c2ab1d6918dda6e42ca27c97ffcc80b8efbd2c2f35",
+      "parent_before": "f5ee06685efac804f58431c2ab1d6918dda6e42ca27c97ffcc80b8efbd2c2f35",
+      "source_identities": [
+        {
+          "length": 9437184,
+          "path": "base.vhdx",
+          "sha256": "f5ee06685efac804f58431c2ab1d6918dda6e42ca27c97ffcc80b8efbd2c2f35"
+        }
+      ],
+      "source_manifest_sha256": "0cbdf44c1716af93d89ccc98b2678e2e2acff36d8406f5db2efa7e329f062da4"
+    }
+  }
+}

@@ -81,14 +81,16 @@ pub(super) fn parse(bytes: &[u8]) -> io::Result<Locator> {
         )?;
     }
     if let Some(path) = values.get("absolute_win32_path") {
-        let tail = path
-            .strip_prefix("\\\\?\\")
-            .ok_or_else(|| invalid("invalid native VHDX absolute path"))?;
-        let b = tail.as_bytes();
-        let drive = b.len() > 3 && b[0].is_ascii_alphabetic() && b[1] == b':' && b[2] == b'\\';
-        let unc = tail
-            .strip_prefix("UNC\\")
-            .is_some_and(|s| s.split('\\').filter(|p| !p.is_empty()).count() >= 3);
+        // Windows' native provider also emits ordinary drive-rooted paths.
+        // Both forms remain metadata hints; attachment requires an explicitly
+        // authorized opened parent identity before parsing its contents.
+        let tail = path.strip_prefix("\\\\?\\").unwrap_or(path);
+        let drive = drive_rooted(tail) && !tail[2..].contains([':', '/']);
+        let unc = path.starts_with("\\\\?\\")
+            && !tail.contains([':', '/'])
+            && tail
+                .strip_prefix("UNC\\")
+                .is_some_and(|s| s.split('\\').filter(|p| !p.is_empty()).count() >= 3);
         if !drive && !unc {
             return Err(invalid("invalid native VHDX absolute path"));
         }
@@ -150,7 +152,17 @@ impl super::Vhdx {
         authorized_parent_paths: &[std::path::PathBuf],
         limits: crate::ParserLimits,
     ) -> io::Result<Self> {
-        let budget = crate::ReadBudget::new(limits)?;
+        Self::open_chain_with_budget(
+            path,
+            authorized_parent_paths,
+            crate::ReadBudget::new(limits)?,
+        )
+    }
+    pub(crate) fn open_chain_with_budget(
+        path: impl AsRef<std::path::Path>,
+        authorized_parent_paths: &[std::path::PathBuf],
+        budget: crate::ReadBudget,
+    ) -> io::Result<Self> {
         let mut approved = std::collections::BTreeMap::new();
         for path in authorized_parent_paths {
             budget.work(1)?;
@@ -177,6 +189,19 @@ impl super::Vhdx {
         locator_directory: &std::path::Path,
         authorized: &[std::path::PathBuf],
     ) -> io::Result<Self> {
+        Self::open_chain_at_with_budget(
+            path,
+            locator_directory,
+            authorized,
+            crate::ReadBudget::new(crate::ParserLimits::default())?,
+        )
+    }
+    pub(crate) fn open_chain_at_with_budget(
+        path: &std::path::Path,
+        locator_directory: &std::path::Path,
+        authorized: &[std::path::PathBuf],
+        budget: crate::ReadBudget,
+    ) -> io::Result<Self> {
         let source = std::sync::Arc::new(crate::RawDisk::open(std::fs::canonicalize(path)?)?);
         let identity = source.identity()?;
         let directory = std::fs::canonicalize(locator_directory)?;
@@ -184,7 +209,7 @@ impl super::Vhdx {
             path.file_name()
                 .ok_or_else(|| invalid("VHDX staged source has no filename"))?,
         );
-        Self::open_chain_source(source, &context_path, authorized, identity)
+        Self::open_chain_source_with_budget(source, &context_path, authorized, identity, budget)
     }
     fn open_chain_source(
         source: std::sync::Arc<dyn crate::ReadAt>,
@@ -192,7 +217,21 @@ impl super::Vhdx {
         authorized: &[std::path::PathBuf],
         identity: same_file::Handle,
     ) -> io::Result<Self> {
-        let budget = crate::ReadBudget::new(crate::ParserLimits::default())?;
+        Self::open_chain_source_with_budget(
+            source,
+            path,
+            authorized,
+            identity,
+            crate::ReadBudget::new(crate::ParserLimits::default())?,
+        )
+    }
+    fn open_chain_source_with_budget(
+        source: std::sync::Arc<dyn crate::ReadAt>,
+        path: &std::path::Path,
+        authorized: &[std::path::PathBuf],
+        identity: same_file::Handle,
+        budget: crate::ReadBudget,
+    ) -> io::Result<Self> {
         let mut approved = std::collections::BTreeMap::new();
         for path in authorized {
             budget.work(1)?;
@@ -211,9 +250,7 @@ impl super::Vhdx {
         budget: &crate::ReadBudget,
     ) -> io::Result<Self> {
         budget.work(1)?;
-        if identities.len() as u64 >= budget.limits().recursion_depth.min(32) {
-            return Err(invalid("VHDX parent chain depth exceeded"));
-        }
+        budget.recursion(identities.len() as u128 + 1, 32)?;
         let source = std::sync::Arc::new(crate::RawDisk::open(path)?);
         let identity = source.identity()?;
         if !identities.is_empty() && approved.get(path) != Some(&identity) {
@@ -294,13 +331,17 @@ impl super::Vhdx {
         Ok(image)
     }
 }
+fn drive_rooted(name: &str) -> bool {
+    let b = name.as_bytes();
+    b.len() > 3 && b[0].is_ascii_alphabetic() && b[1] == b':' && b[2] == b'\\'
+}
 fn resolve(child: &std::path::Path, name: &str) -> io::Result<std::path::PathBuf> {
     #[cfg(windows)]
-    if name.starts_with("\\\\?\\") {
+    if name.starts_with("\\\\?\\") || drive_rooted(name) {
         return Ok(std::path::PathBuf::from(name));
     }
     #[cfg(not(windows))]
-    if name.starts_with("\\\\?\\") {
+    if name.starts_with("\\\\?\\") || drive_rooted(name) {
         return Err(io::Error::new(
             io::ErrorKind::Unsupported,
             "Windows VHDX parent namespace is unavailable",
@@ -495,7 +536,7 @@ mod tests {
             ("relative_path", r"C:\parent.vhdx"),
             ("relative_path", "file://parent.vhdx"),
             ("volume_path", absolute),
-            ("absolute_win32_path", r"C:\parent.vhdx"),
+            ("absolute_win32_path", r"C:parent.vhdx"),
         ] {
             assert!(parse(&fixture(&[("parent_linkage", linkage), (key, bad)])).is_err());
         }
@@ -506,6 +547,50 @@ mod tests {
         let at = u32le(&invalid, 36) as usize;
         invalid[at..at + 2].copy_from_slice(&0xd800u16.to_le_bytes());
         assert!(parse(&invalid).is_err());
+    }
+    #[test]
+    fn windows_provider_drive_rooted_and_extended_namespace_paths() {
+        let _process_boundary = crate::test_sync::writer_test();
+        let linkage = "{0e382594-bdb1-4949-b894-da2d82312c32}";
+        let absolute = r"C:\virtdisk-acceptance\20261007T172444Z\sector-512\base.vhdx";
+        let volume = r"\\?\Volume{f8ca6cb5-12a2-470c-bfdf-fe35d8c84a63}\virtdisk-acceptance\20261007T172444Z\sector-512\base.vhdx";
+        let p = parse(&fixture(&[
+            ("parent_linkage", linkage),
+            ("absolute_win32_path", absolute),
+            ("relative_path", r".\base.vhdx"),
+            ("volume_path", volume),
+            ("parent_linkage2", "{00000000-0000-0000-0000-000000000000}"),
+        ]))
+        .unwrap();
+        assert_eq!(p.paths[0], r".\base.vhdx");
+        assert_eq!(
+            p.paths[1],
+            r"\\?\Volume{f8ca6cb5-12a2-470c-bfdf-fe35d8c84a63}\virtdisk-acceptance\20261007T172444Z\sector-512\base.vhdx"
+        );
+        for path in [
+            r"C:relative.vhdx",
+            r"\\.\PhysicalDrive0",
+            r"\\?\GLOBALROOT\Device\Harddisk0",
+            r"C:\base.vhdx:stream",
+            r"C:/base.vhdx",
+            r"\\server\share\base.vhdx",
+        ] {
+            assert!(
+                parse(&fixture(&[
+                    ("parent_linkage", linkage),
+                    ("absolute_win32_path", path)
+                ]))
+                .is_err(),
+                "{path}"
+            );
+        }
+        #[cfg(not(windows))]
+        assert_eq!(
+            resolve(std::path::Path::new("child.vhdx"), absolute)
+                .unwrap_err()
+                .kind(),
+            io::ErrorKind::Unsupported
+        );
     }
     #[test]
     fn authorized_parent_identity_replacement_is_rejected_before_parsing() {

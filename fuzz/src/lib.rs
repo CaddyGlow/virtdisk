@@ -1,5 +1,6 @@
 //! Read-only disk parsing with input, read, and validation work bounds.
 mod vhdx_chain;
+mod vmdk_split;
 mod writable;
 use std::{io, sync::Arc};
 use virtdisk::{ParserLimits, Qcow2, Qcow2Writer, RawWriter, ReadAt, Vdi, Vhdx, Vmdk};
@@ -77,6 +78,9 @@ pub fn run(target: &str, data: &[u8]) -> Result<(), &'static str> {
         "vdi" | "vmdk" | "vhdx" => container(target, data),
         "raw-write" => raw_write(data),
         "qcow2-write" => qcow2_write(data),
+        "vmdk-write" if matches!(data.first(), Some(4..=7)) => {
+            vmdk_split::run(data);
+        }
         "vdi-write" | "vmdk-write" | "vhdx-write" => writable::native(target, data),
         _ => return Err("unknown fuzz target"),
     }
@@ -516,7 +520,11 @@ pub fn seeds(target: &str) -> Vec<Vec<u8>> {
         return vhdx_chain::seeds();
     }
     if ["vdi-write", "vmdk-write", "vhdx-write"].contains(&target) {
-        return writable::seeds(target);
+        let mut seeds = writable::seeds(target);
+        if target == "vmdk-write" {
+            seeds.extend(vmdk_split::seeds());
+        }
+        return seeds;
     }
     if target == "qcow2-write" {
         return vec![

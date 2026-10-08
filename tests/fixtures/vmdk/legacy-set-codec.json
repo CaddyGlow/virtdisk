@@ -1,0 +1,7 @@
+{
+  "source_checkpoint": "virtdisk-multiple-tables-20261007-sources.zip",
+  "archived_source": "src/transaction_set.rs",
+  "archived_source_sha256": "75f4d19fe95d1e0abb4cc80de65856c350df61432a702990294ce3b15743a6fb",
+  "fixture_sha256": "66615a15bdcb2410acff0fedf5f9ccab4831cd8d97843a1a055af4bc54620c82",
+  "scope": "Participant/Set/Cursor codec copied verbatim; imports/constants/error helper and acceptance wrapper supplied outside copied range; frozen VDTXSET1 decoder, no filesystem operations"
+}

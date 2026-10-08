@@ -15,6 +15,68 @@ impl ReadAt for Bytes {
     }
 }
 #[test]
+fn export_streams_large_blocks_in_bounded_reads() {
+    struct Bounded(Bytes);
+    impl ReadAt for Bounded {
+        fn len(&self) -> u64 {
+            self.0.len()
+        }
+        fn read_exact_at(&self, offset: u64, destination: &mut [u8]) -> io::Result<()> {
+            if destination.len() > 65536 {
+                return Err(io::Error::other("export read exceeds 64 KiB"));
+            }
+            self.0.read_exact_at(offset, destination)
+        }
+    }
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("streamed.vdi");
+    let mut bytes = vec![0; 3 * 1024 * 1024 + 512];
+    for offset in [65535, 65536, 1024 * 1024 - 1, bytes.len() - 1] {
+        bytes[offset] = 91;
+    }
+    create_vdi(&path, &Bounded(Bytes(bytes.clone()))).unwrap();
+    let disk = Vdi::open(Arc::new(RawDisk::open(&path).unwrap())).unwrap();
+    let mut actual = vec![0; bytes.len()];
+    disk.read_exact_at(0, &mut actual).unwrap();
+    assert_eq!(actual, bytes);
+    let native = std::fs::read(path).unwrap();
+    assert_eq!(u32::from_le_bytes(native[388..392].try_into().unwrap()), 2);
+    assert!(
+        native[native.len() - (1024 * 1024 - 512)..]
+            .iter()
+            .all(|&b| b == 0)
+    );
+}
+#[test]
+fn failed_streaming_payload_leaves_metadata_uninstalled() {
+    struct FailedPayload(std::sync::atomic::AtomicUsize);
+    impl ReadAt for FailedPayload {
+        fn len(&self) -> u64 {
+            1024 * 1024
+        }
+        fn read_exact_at(&self, _: u64, destination: &mut [u8]) -> io::Result<()> {
+            // Sixteen reads scan the block; fail on the second payload chunk.
+            if self.0.fetch_add(1, std::sync::atomic::Ordering::Relaxed) == 17 {
+                return Err(io::Error::other("payload read failed"));
+            }
+            destination.fill(7);
+            Ok(())
+        }
+    }
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("failed.vdi");
+    let error = create_vdi(
+        &path,
+        &FailedPayload(std::sync::atomic::AtomicUsize::new(0)),
+    )
+    .unwrap_err();
+    assert_eq!(error.to_string(), "payload read failed");
+    let native = std::fs::read(&path).unwrap();
+    assert!(native[..1024].iter().all(|&byte| byte == 0));
+    assert!(native[1024..1024 + 65536].iter().all(|&byte| byte == 7));
+    assert!(Vdi::open(Arc::new(RawDisk::open(path).unwrap())).is_err());
+}
+#[test]
 fn exports_sparse_data_and_partial_block_and_unique_identity() {
     let dir = tempfile::tempdir().unwrap();
     let a = dir.path().join("a.vdi");

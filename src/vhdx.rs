@@ -97,6 +97,10 @@ type WriterParts = (
     Option<Vhdx>,
 );
 impl Vhdx {
+    pub(crate) fn container_size(&self) -> u64 {
+        self.source.len()
+    }
+
     /// Whether this image declares a native parent locator.
     pub fn has_parent(&self) -> bool {
         self.locator.is_some()

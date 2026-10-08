@@ -83,8 +83,27 @@ records on standalone fixtures, checking exact native capacity and all flattened
 bytes. This establishes encoder/replay interoperability for that native log
 profile. Installed QEMU's differencing support remains unavailable; standalone
 flattened export is a separate logical-content oracle, not native child acceptance.
-Actual Windows-produced partial children, Windows opening of emitted children and
-power-loss recovery remain external gates. Bitmap/log reclamation, optional
+Actual Windows 11 Pro build 10.0.26200.8037 opens emitted partial children
+at both 512-byte and 4096-byte sectors through its native provider, hashes the
+complete surfaced disk and leaves child and parent files unchanged. Standalone
+fixtures also pass; see `evidence/windows-vhdx-clean-20261007.json` and
+`windows-acceptance.md`. Windows-native replay also passes four deterministic durable-redo publication
+cuts, plus four library-recovered native acceptance runs; see
+`evidence/windows-vhdx-dirty-20261007.json`. Windows-produced 512/4096-sector partial children also pass the Rust reader
+against complete independent byte models, with native BAT/bitmap states and
+original locator bytes retained. See `evidence/windows-vhdx-produced-20261007.json`
+and `tests/vhdx_windows_native.rs`. Bounded actual process-interruption results are recorded below; physical
+power-loss recovery remains a separate gate. Bitmap/log reclamation, optional
 fully-present promotion after every bit becomes private, explicit progress and
 cancellation, mixed-capacity parent chains and advanced parent resize remain
 separate work toward the complete plan.
+
+
+The instrumented real Windows process-interruption gate passes 100 cases,
+including 84 actual terminations after acknowledged successful flushes and 16
+controls/traces. Both sector sizes and standalone/differencing fresh/retained
+profiles match independent full-byte old/new models through separate library
+recovery and native replay copies. Exact interrupted child fixtures are retained
+under `tests/fixtures/vhdx/windows-process-kill`; see
+`evidence/windows-vhdx-process-kill-20261007.json`. This closes a bounded
+single-sector process-interruption gate; physical power loss remains unverified.

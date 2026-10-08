@@ -89,9 +89,12 @@ fn locator() -> Vec<u8> {
         ("parent_linkage", "{00000000-0000-0000-0000-000000000000}"),
         ("relative_path", "parent.vhdx"),
     ];
-    let mut b = vec![0; 44];
+    encode_locator(&pairs)
+}
+fn encode_locator(pairs: &[(&str, &str)]) -> Vec<u8> {
+    let mut b = vec![0; 20 + pairs.len() * 12];
     b[..16].copy_from_slice(&guid("b7ef4ab09ed1814ab78925b8e9445913"));
-    b[18] = 2;
+    b[18..20].copy_from_slice(&(pairs.len() as u16).to_le_bytes());
     for (i, (key, value)) in pairs.iter().enumerate() {
         for (j, s) in [key, value].iter().enumerate() {
             let start = b.len() as u32;
@@ -133,7 +136,25 @@ pub fn seeds() -> Vec<Vec<u8>> {
     put64(&mut missing, 2 * M + 4096 * 8, 0);
     let mut zero = valid.clone();
     put64(&mut zero, 2 * M + 8, 2);
-    vec![valid, zero, overlap, missing]
+    let native_locator = |absolute: &str| {
+        let mut b = valid.clone();
+        let loc = encode_locator(&[
+            ("parent_linkage", "{00000000-0000-0000-0000-000000000000}"),
+            ("relative_path", "parent.vhdx"),
+            ("absolute_win32_path", absolute),
+            (
+                "volume_path",
+                r"\\?\Volume{f8ca6cb5-12a2-470c-bfdf-fe35d8c84a63}\parent.vhdx",
+            ),
+        ]);
+        put(&mut b, 3 * M + 32 + 5 * 32 + 20, loc.len() as u32);
+        b[3 * M + 65616..3 * M + 65616 + loc.len()].copy_from_slice(&loc);
+        b
+    };
+    let ordinary = native_locator(r"C:\images\parent.vhdx");
+    let stream = native_locator(r"C:\images\parent.vhdx:stream");
+    let device = native_locator(r"\\.\PhysicalDrive0");
+    vec![valid, zero, overlap, missing, ordinary, stream, device]
 }
 pub fn open(data: &[u8]) -> std::io::Result<Vhdx> {
     let directory = tempfile::tempdir()?;
@@ -195,5 +216,15 @@ mod tests {
         let image = open(&seeds[1]).unwrap();
         image.read_exact_at(M as u64, &mut bytes).unwrap();
         assert_eq!(bytes, [0; 4]);
+    }
+    #[test]
+    fn native_drive_locator_is_authorized_but_stream_and_device_hints_are_rejected() {
+        let seeds = seeds();
+        let image = open(&seeds[4]).unwrap();
+        let mut bytes = [0; 4];
+        image.read_exact_at(510, &mut bytes).unwrap();
+        assert_eq!(bytes, [99, 99, 17, 17]);
+        assert!(open(&seeds[5]).is_err());
+        assert!(open(&seeds[6]).is_err());
     }
 }

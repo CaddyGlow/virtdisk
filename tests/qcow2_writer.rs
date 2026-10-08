@@ -1,8 +1,13 @@
 use std::sync::Arc;
 use virtdisk::{Qcow2, Qcow2Writer, RawDisk, ReadAt};
+#[cfg(target_os = "linux")]
+#[path = "../src/test_sync.rs"]
+mod process_boundary;
 
 #[test]
 fn writes_cross_clusters_flush_and_reopen() {
+    #[cfg(target_os = "linux")]
+    let _process_boundary = process_boundary::writer_test();
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("disk.qcow2");
     let writer = Qcow2Writer::create(&path, 131072).unwrap();
@@ -26,17 +31,21 @@ fn writes_cross_clusters_flush_and_reopen() {
 
 #[test]
 fn exclusive_handles_and_creation_never_overwrite() {
+    #[cfg(target_os = "linux")]
+    let _process_boundary = process_boundary::writer_test();
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("disk.qcow2");
     let writer = Qcow2Writer::create(&path, 65536).unwrap();
     assert!(Qcow2Writer::create(&path, 65536).is_err());
     assert!(Qcow2Writer::open(&path).is_err());
     drop(writer);
-    assert!(Qcow2Writer::open(&path).is_ok());
+    Qcow2Writer::open(&path).expect("writer lock must be released after its final handle drops");
 }
 
 #[test]
 fn sparse_profile_is_rejected_without_mutation() {
+    #[cfg(target_os = "linux")]
+    let _process_boundary = process_boundary::writer_test();
     use std::io::{Seek, SeekFrom, Write};
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("disk.qcow2");
@@ -53,6 +62,8 @@ fn sparse_profile_is_rejected_without_mutation() {
 
 #[test]
 fn unsupported_headers_fail_before_mutation() {
+    #[cfg(target_os = "linux")]
+    let _process_boundary = process_boundary::writer_test();
     use std::io::{Seek, SeekFrom, Write};
     let dir = tempfile::tempdir().unwrap();
     for (offset, bytes) in [
@@ -76,6 +87,8 @@ fn unsupported_headers_fail_before_mutation() {
 #[ignore = "requires independent qemu-img oracle"]
 #[cfg(target_os = "linux")]
 fn qemu_validates_written_payload_and_sparse_allocation() {
+    #[cfg(target_os = "linux")]
+    let _process_boundary = process_boundary::subprocess_test();
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("disk.qcow2");
     let raw = dir.path().join("disk.raw");
@@ -122,6 +135,8 @@ fn qemu_validates_written_payload_and_sparse_allocation() {
 #[test]
 #[cfg(target_os = "linux")]
 fn valid_shared_payload_copy_on_write_preserves_other_guest_cluster() {
+    #[cfg(target_os = "linux")]
+    let _process_boundary = process_boundary::writer_test();
     use std::io::{Seek, SeekFrom, Write};
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("shared.qcow2");
@@ -153,6 +168,8 @@ fn valid_shared_payload_copy_on_write_preserves_other_guest_cluster() {
 #[test]
 #[cfg(target_os = "linux")]
 fn sparse_allocation_creates_private_mapping_and_preserves_neighbor_zeroes() {
+    #[cfg(target_os = "linux")]
+    let _process_boundary = process_boundary::writer_test();
     use std::io::{Seek, SeekFrom, Write};
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("sparse-native.qcow2");

@@ -66,6 +66,16 @@ pub struct VhdxWriter {
     _partial_cache: CacheReservation,
 }
 impl VhdxWriter {
+    pub(crate) fn container_size(&self) -> Option<u64> {
+        self.state
+            .lock()
+            .ok()?
+            .file
+            .metadata()
+            .ok()
+            .map(|metadata| metadata.len())
+    }
+
     /// Whether this writer retains an explicitly authorized native parent chain.
     pub fn has_parent(&self) -> bool {
         self.base.is_some()
@@ -106,6 +116,16 @@ impl VhdxWriter {
         let file = OpenOptions::new().read(true).write(true).open(path)?;
         file.try_lock().map_err(io::Error::from)?;
         Self::from_locked_file(file, None)
+    }
+    pub(crate) fn open_policy(
+        path: &Path,
+        authorized: Option<&[std::path::PathBuf]>,
+        policy: crate::RecoveryPolicy,
+    ) -> io::Result<Self> {
+        let file = OpenOptions::new().read(true).write(true).open(path)?;
+        file.try_lock().map_err(io::Error::from)?;
+        let file = crate::vhdx_recover::recover_locked(file, path, authorized, policy)?;
+        Self::from_locked_file(file, authorized.map(|paths| (path, paths)))
     }
     /// Open and exclusively lock a child with explicitly authorized parents.
     pub fn open_chain(

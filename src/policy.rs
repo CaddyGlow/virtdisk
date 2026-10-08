@@ -177,20 +177,130 @@ pub struct ReadBudgetUsage {
 /// Shared accounting retained by deferred readers. Counters never wrap.
 #[derive(Debug, Clone)]
 pub struct ReadBudget(Arc<Accounting>);
-fn charge(counter: &AtomicU64, amount: u64, limit: u64, name: &str) -> io::Result<()> {
+
+/// Resource refused by shared parser accounting.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum ParserResource {
+    /// Cumulative materialized metadata bytes.
+    MetadataBytes,
+    /// Simultaneously retained cache bytes.
+    CacheBytes,
+    /// Cumulative positional reads and format work items.
+    WorkItems,
+    /// Cumulative decoded output bytes.
+    DecompressedBytes,
+    /// Scratch/output bytes requested for one compression unit.
+    DecompressionBufferBytes,
+    /// Number of images in an authorized chain, including the child.
+    RecursionDepth,
+    /// Bytes in one materialized descriptor or mapping table.
+    AttributeBytes,
+}
+/// Structured refusal of shared accounting or a parser profile bound.
+/// Failed shared charges leave the corresponding counter unchanged. Concurrent
+/// callers may advance other counters; requested usage records the value
+/// observed at the refused charge, without wrapping u64 arithmetic.
+#[derive(Debug)]
+pub struct ParserLimitExceeded {
+    resource: ParserResource,
+    limit: u64,
+    requested: u128,
+}
+impl ParserLimitExceeded {
+    /// Exhausted parser resource.
+    pub fn resource(&self) -> ParserResource {
+        self.resource
+    }
+    /// Effective caller ceiling.
+    pub fn limit(&self) -> u64 {
+        self.limit
+    }
+    /// Observed usage plus requested charge, or the requested unit size.
+    pub fn requested(&self) -> u128 {
+        self.requested
+    }
+    fn error(resource: ParserResource, limit: u64, requested: u128) -> io::Error {
+        io::Error::new(
+            io::ErrorKind::Unsupported,
+            Self {
+                resource,
+                limit,
+                requested,
+            },
+        )
+    }
+}
+impl fmt::Display for ParserLimitExceeded {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let name = match self.resource {
+            ParserResource::MetadataBytes => "metadata",
+            ParserResource::CacheBytes => "cache",
+            ParserResource::WorkItems => "work",
+            ParserResource::DecompressedBytes => "decoded output",
+            ParserResource::DecompressionBufferBytes => {
+                return f
+                    .write_str("compression unit exceeds configured decompression-buffer limit");
+            }
+            ParserResource::RecursionDepth => {
+                return write!(
+                    f,
+                    "recursion depth limit exceeded (requested {}, limit {})",
+                    self.requested, self.limit
+                );
+            }
+            ParserResource::AttributeBytes => "attribute",
+        };
+        write!(f, "{name} exceeds configured parser limit {}", self.limit)
+    }
+}
+impl std::error::Error for ParserLimitExceeded {}
+
+fn charge(
+    counter: &AtomicU64,
+    amount: u64,
+    limit: u64,
+    resource: ParserResource,
+) -> io::Result<()> {
     counter
         .try_update(Ordering::AcqRel, Ordering::Acquire, |old| {
             old.checked_add(amount).filter(|&next| next <= limit)
         })
         .map(|_| ())
-        .map_err(|_| {
-            io::Error::new(
-                io::ErrorKind::Unsupported,
-                format!("{name} exceeds configured parser limit {limit}"),
-            )
+        .map_err(|old| {
+            ParserLimitExceeded::error(resource, limit, u128::from(old) + u128::from(amount))
         })
 }
 impl ReadBudget {
+    pub(crate) fn recursion(&self, requested: u128, profile_limit: u64) -> io::Result<()> {
+        Self::bound(
+            ParserResource::RecursionDepth,
+            self.0.limits.recursion_depth.min(profile_limit),
+            requested,
+        )
+    }
+    pub(crate) fn attribute(&self, bytes: u64) -> io::Result<()> {
+        Self::bound(
+            ParserResource::AttributeBytes,
+            self.0.limits.attribute_bytes,
+            u128::from(bytes),
+        )
+    }
+    fn bound(resource: ParserResource, limit: u64, requested: u128) -> io::Result<()> {
+        if requested > u128::from(limit) {
+            // These existing profile checks use InvalidData; preserve that kind.
+            Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                ParserLimitExceeded {
+                    resource,
+                    limit,
+                    requested,
+                },
+            ))
+        } else {
+            Ok(())
+        }
+    }
     /// Start a bounded parser operation with validated caller limits.
     pub fn new(limits: ParserLimits) -> io::Result<Self> {
         limits.validate()?;
@@ -221,31 +331,42 @@ impl ReadBudget {
             &self.0.metadata,
             bytes,
             self.0.limits.metadata_bytes,
-            "metadata",
+            ParserResource::MetadataBytes,
         )
     }
     /// Charge positional reads or format iteration work before doing it.
     pub fn work(&self, items: u64) -> io::Result<()> {
-        charge(&self.0.work, items, self.0.limits.work_items, "work")
+        charge(
+            &self.0.work,
+            items,
+            self.0.limits.work_items,
+            ParserResource::WorkItems,
+        )
     }
     /// Charge output before allocating or decoding a compression unit.
     pub fn decode(&self, bytes: u64) -> io::Result<()> {
         if bytes > self.0.limits.decompression_buffer_bytes {
-            return Err(io::Error::new(
-                io::ErrorKind::Unsupported,
-                "compression unit exceeds configured decompression-buffer limit",
+            return Err(ParserLimitExceeded::error(
+                ParserResource::DecompressionBufferBytes,
+                self.0.limits.decompression_buffer_bytes,
+                u128::from(bytes),
             ));
         }
         charge(
             &self.0.decoded,
             bytes,
             self.0.limits.decompressed_bytes,
-            "decoded output",
+            ParserResource::DecompressedBytes,
         )
     }
     /// Reserve live cache bytes; dropping the returned reservation releases them.
     pub fn cache(&self, bytes: u64) -> io::Result<CacheReservation> {
-        charge(&self.0.cache, bytes, self.0.limits.cache_bytes, "cache")?;
+        charge(
+            &self.0.cache,
+            bytes,
+            self.0.limits.cache_bytes,
+            ParserResource::CacheBytes,
+        )?;
         Ok(CacheReservation {
             budget: self.clone(),
             bytes,

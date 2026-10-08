@@ -57,7 +57,7 @@ fn snapshot_invalid_requests_fail_before_metadata_mutation() {
 }
 
 #[test]
-fn near_full_native_directory_and_resize_are_rejected_before_mutation() {
+fn near_full_native_directory_refuses_creation_but_resize_preserves_saved_state() {
     let _guard = SERIAL.lock().unwrap();
     use std::io::{Seek, SeekFrom, Write};
     let dir = tempfile::tempdir().unwrap();
@@ -79,14 +79,18 @@ fn near_full_native_directory_and_resize_are_rejected_before_mutation() {
         std::io::ErrorKind::Unsupported
     );
     assert_eq!(std::fs::read(&path).unwrap(), before);
-    assert_eq!(
-        writer
-            .resize(131072, virtdisk::ShrinkPolicy::RequireZero)
-            .unwrap_err()
-            .kind(),
-        std::io::ErrorKind::Unsupported
-    );
-    assert_eq!(std::fs::read(&path).unwrap(), before);
+    writer
+        .resize(131072, virtdisk::ShrinkPolicy::RequireZero)
+        .unwrap();
+    assert_eq!(writer.len(), 131072);
+    drop(writer);
+    let disk = Arc::new(Qcow2::open_chain(&path, &[]).unwrap());
+    disk.validate_active_mapping().unwrap();
+    let saved = disk.open_snapshot(b"id").unwrap();
+    assert_eq!(saved.len(), 65536);
+    let mut saved_bytes = vec![37; 65536];
+    saved.read_exact_at(0, &mut saved_bytes).unwrap();
+    assert!(saved_bytes.iter().all(|byte| *byte == 0));
 }
 
 #[test]

@@ -101,6 +101,15 @@ and generic image operations. Keep CLI parsing out of the library.
 
 ### Detection and dependencies
 
+The common opening API now uses separate `ReaderOpenOptions` and
+`WriterOpenOptions` values. Immutable VHDX replay uses `ReadRecoveryPolicy`;
+mutating recovery uses `RecoveryPolicy`. Keeping these policies distinct makes
+the permitted action explicit in the type system. Private option fields and
+fallible limit setters preserve validation. Existing constructors remain
+compatible; new CLI mutation paths use the explicit writer policy and default
+to rejection of pending recovery. See the status ledger for verified profiles
+and the remaining CLI limits/progress work.
+
 Detect known container signatures with bounded reads. Require explicit format
 selection for creation. Treat raw as an explicit choice or a documented
 fallback; malformed recognized containers must not fall back to raw. Text VMDK
@@ -295,18 +304,71 @@ errors. Clearly identify whether an operation is native or produces a new file.
 
 ## Delivery milestones and completion gates
 
-Deliver the milestones in the order below, with independently reviewable
-changes for each format profile and operation. The API/raw foundation comes
-first, followed by QCOW2, VDI, VHDX, and VMDK. Advanced management follows once
-the relevant writers, ownership checks, and recovery contracts pass their
-gates. Reader and fixture work for another format can proceed independently;
-mutation must wait for its validation and durability prerequisites.
+### Remaining-work priority (updated 2026-10-08)
+
+Deliver remaining work in the following user-selected order. This supersedes
+the original milestone ordering below; milestone numbers remain stable for
+existing evidence references.
+
+1. **Common API:** consolidate opening/recovery policies, operation limits,
+   errors, progress/cancellation, capability reporting and CLI integration.
+2. **Snapshots and chains:** establish common lifecycle and ownership contracts,
+   persistent graph manifests, parent/sibling preservation and branch-aware
+   rebase/commit/merge. Implement against existing supported writer profiles;
+   expose profile limitations explicitly until the corresponding format stage.
+3. **QCOW2:** remaining allocation, resize, snapshot and advanced-profile work.
+4. **VHDX:** remaining resize, reclamation and platform persistence work.
+5. **VDI:** remaining resize, discard, compaction and platform persistence work.
+6. **VMDK:** remaining flat/split management, publication and stream profiles.
+
+Use independently reviewable changes for each public contract, format profile
+and operation. Shared raw/storage changes needed by these stages belong with
+the relevant common API or format increment. Format-specific snapshot machinery
+that requires an unfinished writer profile belongs with that format stage.
+Constrained repair, incremental tracking and performance optimization remain
+later work unless required to satisfy a stage's acceptance contract.
+
+Mutation must wait for its validation and durability prerequisites. Retain
+test-driven development and the existing acceptance gates at every stage.
+Honggfuzz campaigns and deterministic fuzz replay remain paused until the user
+explicitly resumes them; ordinary behavioral and recovery tests continue.
 
 For every delivered capability, record the exact format/version/profile,
 supported platforms, alignment and capacity limits, dependency authorization,
 failure behavior, tests, and native-tool evidence in the status document.
 Keep unsupported cases explicit. A milestone is complete only when its
 documented public behavior and release gates are satisfied.
+
+### Rust API and design requirements
+
+Apply idiomatic Rust throughout the remaining implementation:
+
+- Express ownership and borrowing explicitly. Retain authorized parent and
+  extent handles for their required lifetime; avoid unnecessary cloning,
+  shared ownership or interior mutability. Use RAII for locks and resources,
+  with explicit fallible flush/commit methods rather than fallible work in Drop.
+- Use enums and typed options for mutually exclusive policies and operation
+  states; use validated newtypes where they prevent unit or identity mistakes.
+  Avoid boolean-heavy APIs and invalid combinations of public fields.
+- Return Result for fallible operations and structured errors where callers
+  need to distinguish recovery, authorization, unsupported profiles and I/O
+  failures. Preserve underlying error sources and existing public API
+  compatibility; never silently downgrade requested behavior.
+- Keep traits small and driven by actual shared behavior. Prefer composition
+  and explicit format dispatch to speculative abstraction frameworks. Use
+  generics or trait objects according to concrete lifetime and dispatch needs,
+  rather than imposing either throughout the library.
+- Keep constructors, builders and state transitions consistent with standard
+  Rust conventions. Introduce builders or typestate only when they materially
+  enforce configuration or lifecycle invariants. Keep format-specific details
+  behind their implementation boundaries.
+- Document public contracts, failure effects, limits and examples. Avoid
+  panics on image-controlled input; use checked arithmetic and bounded
+  allocation. Keep unsafe code narrowly scoped with documented safety
+  invariants whenever safe Rust cannot meet the requirement.
+- Test public behavior and failure invariants rather than mirroring private
+  implementation. Preserve formatting, warnings-denied Clippy and required
+  locked tests as acceptance checks.
 
 ### Test-driven implementation workflow
 
@@ -454,28 +516,30 @@ may supplement honggfuzz where toolchain/platform support is established.
 The Nix flake provides Linux x86_64/aarch64 shells, stable Rust 1.99.0,
 Windows MSVC target libraries and cargo-xwin, native honggfuzz dependencies,
 and a separate nightly shell. Use stable through the default shell and
-`.#fuzz`; retain nightly under `.#nightly` for experiments that require it.
+`path:./nix#fuzz`; retain nightly under `path:./nix#nightly` for experiments that require it.
 Follow the sibling `../vlmcsd-rs/fuzz` Honggfuzz workspace pattern rather than
 introducing a second fuzzing framework. Preserve existing toolchain choices.
 
-The checkout includes a tracked `flake.lock` pinning Nix inputs. Preserve those
+The flake and its pinned lockfile now reside in `nix/`. Use the explicit
+`path:./nix` reference from the repository root, including before that directory
+is tracked. The moved `nix/flake.lock` preserves the original input pins. Preserve those
 pins during validation; update them deliberately as environment work. Campaign
 receipts must hash the lockfile as well as the flake and Cargo lockfiles.
 
 Required Rust checks after implementation changes:
 
 ```sh
-nix develop . --command cargo fmt -- --check
-nix develop . --command cargo clippy --all-targets --all-features --locked -- -D warnings
-nix develop . --command cargo test --all-features --locked
+nix develop --no-write-lock-file path:./nix --command cargo fmt -- --check
+nix develop --no-write-lock-file path:./nix --command cargo clippy --all-targets --all-features --locked -- -D warnings
+nix develop --no-write-lock-file path:./nix --command cargo test --all-features --locked
 ```
 
-Fuzz workspace checks:
+Fuzz workspace checks, only after the user explicitly resumes fuzzing/replay:
 
 ```sh
-nix develop .#fuzz --command cargo fmt --manifest-path fuzz/Cargo.toml -- --check
-nix develop .#fuzz --command cargo clippy --manifest-path fuzz/Cargo.toml --all-targets --locked -- -D warnings
-nix develop .#fuzz --command cargo test --manifest-path fuzz/Cargo.toml --locked
+nix develop --no-write-lock-file path:./nix#fuzz --command cargo fmt --manifest-path fuzz/Cargo.toml -- --check
+nix develop --no-write-lock-file path:./nix#fuzz --command cargo clippy --manifest-path fuzz/Cargo.toml --all-targets --locked -- -D warnings
+nix develop --no-write-lock-file path:./nix#fuzz --command cargo test --manifest-path fuzz/Cargo.toml --locked
 ```
 
 Use the repository campaign runner for bounded honggfuzz runs. Extend it for
@@ -501,7 +565,9 @@ evidence separately and scope support claims accordingly.
 - Supported writable feature subsets for each format and version.
 - Per-format transaction/recovery approach, including sidecar policy.
 - Safe default behavior for discard, shrink, repair and parent modifications.
-- Whether external snapshot metadata remains caller-owned or gains a manifest.
+- How caller-owned versioned graph declarations evolve into atomic image/manifest
+  generations. The initial bounded manifest and explicit-authority opening are
+  defined in [graph-manifests.md](graph-manifests.md).
 - Availability of native hypervisor test environments and fixture licensing.
 - Encryption key handling, legacy VHD, and additional VMDK profiles as separate
   extensions after core write and recovery support.
@@ -623,3 +689,122 @@ the sequence.
 
 Consult the full versioned format specifications and upstream implementations
 when implementing each profile; this plan is not a replacement for them.
+
+The initial atomic image/manifest generation profile uses a private sibling
+staging directory and Linux `RENAME_NOREPLACE` publication through
+`ImageGraph::snapshot_generation`. Other platforms explicitly refuse this
+profile. Broader graph transactions, CLI exposure, relocation and native
+power-loss validation remain planned; see
+[the generation contract](graph-manifests.md#atomic-snapshot-generations-on-linux).
+
+The first graph CLI action is `graph snapshot MANIFEST PARENT DIRECTORY FORMAT
+AUTHORIZED_IMAGE...`, exposing the atomic generation profile with explicit
+whole-graph authority and shared parser/payload controls. Graph inspection,
+flatten/merge/rebase command exposure and in-place branch transactions remain
+separate deliverables.
+
+Graph CLI now exposes the existing new-output `flatten`, ancestry-checked
+`merge` and QCOW2 `rebase` contracts with explicit authority and shared limits.
+The input manifest remains immutable. Atomic rebased generations, graph
+inspection, persistent branch selection and in-place chain management remain
+open; new-output materialization does not fulfill those transaction requirements.
+
+Atomic rebased generations now use the shared Linux generation publisher,
+exposed by `ImageGraph::rebase_generation` and `graph rebase-generation`.
+Post-rename parent-directory sync failure is fault-injected for snapshot and
+rebase generations. Persistent branch selection, existing-generation replacement,
+in-place chain transactions and actual power-loss gates remain open.
+
+Persistent caller-owned disk-state selection is exposed by `graph select` and
+contextual graph manifest saving. It produces a new validated declaration while
+preserving all branches; it does not replace an existing current-state pointer
+or perform an in-place image revert. Those transaction profiles remain open.
+
+Graph inspection is exposed by `graph info`, reporting validated selection,
+parent indexes, logical sizes and lossless native path diagnostics under explicit
+whole-graph authority. Existing-generation replacement and in-place branch
+transactions remain open; inspection does not grant destructive ownership.
+
+Owned single-file graph leaf deletion now has contextual cancellation and
+post-unlink sync-failure coverage. Persistent declaration updates remain separate
+from unlink; atomic graph deletion and multi-file VMDK ownership/deletion still
+require their own transaction protocols before CLI exposure.
+
+QCOW2 native internal snapshot creation/deletion/revert now accepts authorized
+immutable raw/QCOW2 parents within the existing bounded Linux profile. Backed
+resize, refcount-table relocation and advanced profiles remain open; the parent
+chain is not captured or mutated by child snapshots.
+
+### Standalone QCOW2 resize with internal snapshots
+
+The native standalone v3 resize path now accepts bounded internal snapshot
+profiles. Active growth/shrink uses the existing copy-on-write allocator and
+journal; saved states retain their original bytes and virtual capacities.
+Capabilities and CLI coverage follow this behavior. See
+[the resize contract](qcow2-resize.md) for limits and recovery evidence.
+Backed resize, refcount-table relocation, persistent graph transactions and the
+remaining format/platform acceptance gates stay open. Fuzzing remains paused.
+
+### Authorized backed QCOW2 resize
+
+The bounded native resize transaction now handles explicitly authorized immutable
+raw/QCOW2 parents. New space is masked to zero; inherited boundary prefixes are
+copied privately, and zero-tail shrink checks resolved parent bytes. Snapshot
+contents and capacities remain unchanged. Journal recovery requires the same
+parent authorization. The patch budget remains a real pre-mutation limit for
+large growth. Refcount-table relocation, advanced profiles and the remaining
+common/graph/format/platform gates remain open. See [the contract](qcow2-resize.md).
+
+### Common native resize controls
+
+`ImageWriter::resize_with_context` adds bounded resolved-tail verification,
+cumulative quotas and cancellation before the native capacity transaction.
+It preserves existing resize policies, typed operation errors, backend recovery
+and explicit flush. CLI native resize accepts the same controls and explicit
+parent paths. See [operation contexts](operation-contexts.md#native-capacity-changes)
+for the accounting boundary. Native backend metadata/journal accounting and
+other common/graph/format/platform gates remain open; fuzzing remains paused.
+
+### Common native snapshot lifecycle controls
+
+Native snapshot create/delete/revert now have context-aware `ImageWriter`
+methods and CLI controls. One preflight native call and a dedicated final
+cancellation phase preserve the backend journal/recovery contract; no callbacks
+run inside mutation. Parent authorization and snapshot contents/capacities remain
+unchanged. See [the accounting contract](operation-contexts.md#native-disk-snapshot-lifecycle).
+Native metadata budgets, persistent graph transactions and other common/format/
+platform gates remain open; fuzz campaigns and replay remain paused.
+
+### Existing graph manifest replacement
+
+Linux `GraphManifest::replace`/`replace_with_context` atomically replace an
+existing declaration after checking its expected prior bytes under a retained
+lock. Private staging sync, final identity/content validation, cancellation and
+parent sync define publication behavior. CLI `graph select-in-place` persists a
+selected registered state after exact authority validation. See
+[the contract](graph-manifests.md#atomic-replacement-of-existing-declarations-on-linux).
+Image/manifest deletion, in-place multi-file chain changes and their recovery
+remain open, alongside other common/format/platform gates. Fuzzing remains paused.
+
+### Persistent manifest compatibility and bounded opening
+
+Manifest replacement now compares parsed declarations initially, accepting valid
+alternative native/Unicode path encodings, while retaining exact original bytes
+for final stale-content validation. Linux manifest opening refuses FIFO paths
+without waiting for a producer. Both defects were confirmed by failing behavioral
+regressions before correction. Persistent image/manifest deletion and multi-file
+branch transactions remain open; fuzz campaigns/replay remain paused.
+
+### Common native storage controls and persistent deletion prerequisites
+
+Native trim and preallocation now have context-aware `ImageWriter` methods and
+CLI controls. Whole-range validation, quotas, final cancellation and successful
+range accounting preserve native fallback/alignment/recovery behavior. See
+[the contract](operation-contexts.md#native-discard-and-preallocation).
+
+Persistent owned-leaf deletion still requires an image/manifest journal and
+explicit recovery. The concrete ordering, authority/framing/physical-budget
+requirements and fault-state acceptance matrix are written in
+[the transaction design](graph-deletion-transaction-design.md). They are design
+prerequisites, not implemented deletion support. Backend budgets, persistent
+transactions and remaining format/platform gates stay open; fuzzing stays paused.

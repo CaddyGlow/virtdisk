@@ -332,10 +332,11 @@ fn optional_virtual_metadata_survives_native_fork() {
     let id = [71; 16];
     p[e..e + 16].copy_from_slice(&id);
     put(&mut p, e + 16, 65616);
-    put(&mut p, e + 20, 8);
+    let optional: Vec<u8> = (0..131073).map(|i| (i % 251) as u8).collect();
+    put(&mut p, e + 20, optional.len() as u32);
     put(&mut p, e + 24, 2);
-    p[3 * M + 65616..3 * M + 65624].copy_from_slice(b"optional");
-    std::fs::write(&parent, p).unwrap();
+    p[3 * M + 65616..3 * M + 65616 + optional.len()].copy_from_slice(&optional);
+    std::fs::write(&parent, &p).unwrap();
     virtdisk::create_vhdx_overlay(&path, &parent, &[]).unwrap();
     let b = std::fs::read(&path).unwrap();
     let e = (0..7)
@@ -343,8 +344,9 @@ fn optional_virtual_metadata_survives_native_fork() {
         .find(|&e| b[e..e + 16] == id)
         .unwrap();
     let off = u32::from_le_bytes(b[e + 16..e + 20].try_into().unwrap()) as usize;
-    assert_eq!(&b[3 * M + off..3 * M + off + 8], b"optional");
-    assert!(Vhdx::open_chain(&path, &[parent]).is_ok());
+    assert_eq!(&b[3 * M + off..3 * M + off + optional.len()], optional);
+    assert!(Vhdx::open_chain(&path, std::slice::from_ref(&parent)).is_ok());
+    assert_eq!(std::fs::read(parent).unwrap(), p);
 }
 #[test]
 #[ignore = "requires qemu-img; documents unavailable native differencing oracle separately from standalone flattening"]

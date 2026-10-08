@@ -183,7 +183,7 @@ pub(crate) fn digest_reader(source: &dyn ReadAt) -> io::Result<[u8; 32]> {
 }
 
 impl Record {
-    fn validate_original(&self, source: &dyn ReadAt) -> io::Result<()> {
+    pub(crate) fn validate_original(&self, source: &dyn ReadAt) -> io::Result<()> {
         self.validate()?;
         if source.len() < self.original_length.min(self.final_length)
             || source.len() > self.original_length.max(self.final_length)
@@ -320,6 +320,19 @@ struct OwnedPatched {
     record: std::sync::Arc<Record>,
     replacement: bool,
 }
+
+#[cfg(target_os = "linux")]
+pub(crate) fn shadow(
+    source: std::sync::Arc<dyn ReadAt>,
+    record: Record,
+    replacement: bool,
+) -> std::sync::Arc<dyn ReadAt> {
+    std::sync::Arc::new(OwnedPatched {
+        source,
+        record: std::sync::Arc::new(record),
+        replacement,
+    })
+}
 impl ReadAt for OwnedPatched {
     fn len(&self) -> u64 {
         if self.replacement {
@@ -453,7 +466,7 @@ pub(crate) fn recover(
     #[cfg(target_os = "linux")]
     {
         use std::os::unix::fs::OpenOptionsExt;
-        options.custom_flags(0x20000);
+        options.custom_flags(0x20000 | 0x800);
     } // O_NOFOLLOW
     let mut file = match options.open(journal) {
         Ok(file) => file,
@@ -465,6 +478,12 @@ pub(crate) fn recover(
     }
     let mut bytes = Vec::new();
     (&mut file).take(LIMIT as u64 + 1).read_to_end(&mut bytes)?;
+    if bytes.starts_with(b"VDTXPAR1") {
+        return Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "image is a multi-file transaction participant; reopen the authorized VMDK descriptor to recover",
+        ));
+    }
     let record = Record::decode(&bytes)?;
     sync_parent(path)?;
     replay(path, raw, &record, None, validator)

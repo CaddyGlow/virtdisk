@@ -1,0 +1,324 @@
+{
+  "receipt": "/data/cache/virtdisk-native-windows/receipts/20261007T175334Z.json",
+  "executable": {
+    "path": "/data/cache/rust/x86_64-pc-windows-msvc/debug/mutate.exe",
+    "sha256": "3e18ce90d513d78308a6d404e013a51c7a735311a0cfdf0bb1b8598079794d05"
+  },
+  "guest_root": "C:\\virtdisk-acceptance\\20261007T175334Z",
+  "results": {
+    "512-base": {
+      "after": [
+        {
+          "path": "base.vhdx",
+          "sha256": "dba75291cc7b6c62ae29b5c3549c907cdf6785ee2b55add6990a2c6d553bbddb"
+        }
+      ],
+      "before": [
+        {
+          "path": "base.vhdx",
+          "sha256": "c13fd2cdf8879bae350c5d67efff19a6dd97ee09ca4f516a4ca50cee2291ce45"
+        }
+      ],
+      "cases": [
+        {
+          "after": "dba75291cc7b6c62ae29b5c3549c907cdf6785ee2b55add6990a2c6d553bbddb",
+          "before": "dba75291cc7b6c62ae29b5c3549c907cdf6785ee2b55add6990a2c6d553bbddb",
+          "competing_writer_lock": "passed",
+          "image": "base.vhdx",
+          "native": {
+            "attach": 0,
+            "block_size": 1048576,
+            "capacity": 4194304,
+            "detach": 0,
+            "logical_sector": 512,
+            "logical_sha256": "07d53862955969214c9b15f459661237378f7b75a37bafe6347cabcd109c7991",
+            "open": 0,
+            "physical_sector": 4096
+          },
+          "rust_write_flush_reopen": "passed"
+        },
+        {
+          "after": "8e368dddc4984981b82c4496e9690139d9902c0f4353f206a91389949d892164",
+          "before": "8e368dddc4984981b82c4496e9690139d9902c0f4353f206a91389949d892164",
+          "competing_writer_lock": "passed",
+          "image": "rust-created.vhdx",
+          "native": {
+            "attach": 0,
+            "block_size": 1048576,
+            "capacity": 4194304,
+            "detach": 0,
+            "logical_sector": 512,
+            "logical_sha256": "7ccdbc0ebb45b4719625843c4952c8e4559247e8f617284d2cd3744bb58a8c93",
+            "open": 0,
+            "physical_sector": 4096
+          },
+          "rust_write_flush_reopen": "passed"
+        },
+        {
+          "after": "583fd14b8486b3ca6049359bfaf06cbd1523521b8bd6062dcb56d66b40fa0814",
+          "before": "583fd14b8486b3ca6049359bfaf06cbd1523521b8bd6062dcb56d66b40fa0814",
+          "competing_writer_lock": "passed",
+          "image": "rust-overlay.vhdx",
+          "native": {
+            "attach": 0,
+            "block_size": 1048576,
+            "capacity": 4194304,
+            "detach": 0,
+            "logical_sector": 512,
+            "logical_sha256": "07d53862955969214c9b15f459661237378f7b75a37bafe6347cabcd109c7991",
+            "open": 0,
+            "physical_sector": 4096
+          },
+          "rust_write_flush_reopen": "passed"
+        }
+      ],
+      "gate": "passed",
+      "native_discard": "unsupported_unchanged",
+      "native_resize": "unsupported_unchanged",
+      "power_loss": "unfulfilled",
+      "process_interruption": "unfulfilled",
+      "source_manifest_sha256": "716dfeb244728c6f1ac88976be966427086ee43c18ce6c59322af64f4a519b08"
+    },
+    "512-child": {
+      "after": [
+        {
+          "path": "child.vhdx",
+          "sha256": "8b8ab3bf2bf5df848afa2e2240155ebff77ada502ea161b5ba2345243561466c"
+        },
+        {
+          "path": "base.vhdx",
+          "sha256": "c13fd2cdf8879bae350c5d67efff19a6dd97ee09ca4f516a4ca50cee2291ce45"
+        }
+      ],
+      "before": [
+        {
+          "path": "child.vhdx",
+          "sha256": "548ff2cbc305ca66b927a431ad86a373f202d950b571050a1bf7c3161a5b2b5c"
+        },
+        {
+          "path": "base.vhdx",
+          "sha256": "c13fd2cdf8879bae350c5d67efff19a6dd97ee09ca4f516a4ca50cee2291ce45"
+        }
+      ],
+      "cases": [
+        {
+          "after": "8b8ab3bf2bf5df848afa2e2240155ebff77ada502ea161b5ba2345243561466c",
+          "before": "8b8ab3bf2bf5df848afa2e2240155ebff77ada502ea161b5ba2345243561466c",
+          "competing_writer_lock": "passed",
+          "image": "child.vhdx",
+          "native": {
+            "attach": 0,
+            "block_size": 1048576,
+            "capacity": 4194304,
+            "detach": 0,
+            "logical_sector": 512,
+            "logical_sha256": "4040b39fcf14643e0a9ca6ab4a1598ba496d0dbad8da30bf825a266e7781e1ae",
+            "open": 0,
+            "physical_sector": 4096
+          },
+          "rust_write_flush_reopen": "passed"
+        },
+        {
+          "after": "d9e9a8f915d05ef8bd97c262f06443172d15fc2d7f95d8cbb6d45ca2214c08bb",
+          "before": "d9e9a8f915d05ef8bd97c262f06443172d15fc2d7f95d8cbb6d45ca2214c08bb",
+          "competing_writer_lock": "passed",
+          "image": "rust-created.vhdx",
+          "native": {
+            "attach": 0,
+            "block_size": 1048576,
+            "capacity": 4194304,
+            "detach": 0,
+            "logical_sector": 512,
+            "logical_sha256": "7ccdbc0ebb45b4719625843c4952c8e4559247e8f617284d2cd3744bb58a8c93",
+            "open": 0,
+            "physical_sector": 4096
+          },
+          "rust_write_flush_reopen": "passed"
+        },
+        {
+          "after": "264c510bd743192fea58fa18da396f69d6bdcd1b8d693d37857ddcc9b0ec01cf",
+          "before": "264c510bd743192fea58fa18da396f69d6bdcd1b8d693d37857ddcc9b0ec01cf",
+          "competing_writer_lock": "passed",
+          "image": "rust-overlay.vhdx",
+          "native": {
+            "attach": 0,
+            "block_size": 1048576,
+            "capacity": 4194304,
+            "detach": 0,
+            "logical_sector": 512,
+            "logical_sha256": "07d53862955969214c9b15f459661237378f7b75a37bafe6347cabcd109c7991",
+            "open": 0,
+            "physical_sector": 4096
+          },
+          "rust_write_flush_reopen": "passed"
+        }
+      ],
+      "gate": "passed",
+      "native_discard": "unsupported_unchanged",
+      "native_resize": "unsupported_unchanged",
+      "power_loss": "unfulfilled",
+      "process_interruption": "unfulfilled",
+      "source_manifest_sha256": "aa4f02a75350814f430291404a5acd10e9cd0efa1496c073feb8eb4812de2251"
+    },
+    "4096-base": {
+      "after": [
+        {
+          "path": "base.vhdx",
+          "sha256": "7e66eade896b255f3a7af36950e737f0da9bb19f303f1b7ad2327c80487ffca6"
+        }
+      ],
+      "before": [
+        {
+          "path": "base.vhdx",
+          "sha256": "f5ee06685efac804f58431c2ab1d6918dda6e42ca27c97ffcc80b8efbd2c2f35"
+        }
+      ],
+      "cases": [
+        {
+          "after": "7e66eade896b255f3a7af36950e737f0da9bb19f303f1b7ad2327c80487ffca6",
+          "before": "7e66eade896b255f3a7af36950e737f0da9bb19f303f1b7ad2327c80487ffca6",
+          "competing_writer_lock": "passed",
+          "image": "base.vhdx",
+          "native": {
+            "attach": 0,
+            "block_size": 1048576,
+            "capacity": 4194304,
+            "detach": 0,
+            "logical_sector": 4096,
+            "logical_sha256": "d57f9b817cc6b31293cc714cdde128f1254075c09db7b312c4d72273e279b470",
+            "open": 0,
+            "physical_sector": 4096
+          },
+          "rust_write_flush_reopen": "passed"
+        },
+        {
+          "after": "db107d0499a0731da1ca0ff3b4a7ab2e3f4a2ff7242bc5adda0ba3ee58b4751f",
+          "before": "db107d0499a0731da1ca0ff3b4a7ab2e3f4a2ff7242bc5adda0ba3ee58b4751f",
+          "competing_writer_lock": "passed",
+          "image": "rust-created.vhdx",
+          "native": {
+            "attach": 0,
+            "block_size": 1048576,
+            "capacity": 4194304,
+            "detach": 0,
+            "logical_sector": 512,
+            "logical_sha256": "7ccdbc0ebb45b4719625843c4952c8e4559247e8f617284d2cd3744bb58a8c93",
+            "open": 0,
+            "physical_sector": 4096
+          },
+          "rust_write_flush_reopen": "passed"
+        },
+        {
+          "after": "8c4e34046a0394b84a2dd4d314332ece126f21eaf7da3eb5747d43f4b9b4b1e1",
+          "before": "8c4e34046a0394b84a2dd4d314332ece126f21eaf7da3eb5747d43f4b9b4b1e1",
+          "competing_writer_lock": "passed",
+          "image": "rust-overlay.vhdx",
+          "native": {
+            "attach": 0,
+            "block_size": 1048576,
+            "capacity": 4194304,
+            "detach": 0,
+            "logical_sector": 4096,
+            "logical_sha256": "d57f9b817cc6b31293cc714cdde128f1254075c09db7b312c4d72273e279b470",
+            "open": 0,
+            "physical_sector": 4096
+          },
+          "rust_write_flush_reopen": "passed"
+        }
+      ],
+      "gate": "passed",
+      "native_discard": "unsupported_unchanged",
+      "native_resize": "unsupported_unchanged",
+      "power_loss": "unfulfilled",
+      "process_interruption": "unfulfilled",
+      "source_manifest_sha256": "0cbdf44c1716af93d89ccc98b2678e2e2acff36d8406f5db2efa7e329f062da4"
+    },
+    "4096-child": {
+      "after": [
+        {
+          "path": "child.vhdx",
+          "sha256": "7a88d37aaeac65448238dc70152c98ca0caee6721b773d266d8fdc5fc42ec6f2"
+        },
+        {
+          "path": "base.vhdx",
+          "sha256": "f5ee06685efac804f58431c2ab1d6918dda6e42ca27c97ffcc80b8efbd2c2f35"
+        }
+      ],
+      "before": [
+        {
+          "path": "child.vhdx",
+          "sha256": "dcd27e74301c5a5a4c33f8ddd4c31ceea23c080df2a5e8e6c35298fc1e9d65a4"
+        },
+        {
+          "path": "base.vhdx",
+          "sha256": "f5ee06685efac804f58431c2ab1d6918dda6e42ca27c97ffcc80b8efbd2c2f35"
+        }
+      ],
+      "cases": [
+        {
+          "after": "7a88d37aaeac65448238dc70152c98ca0caee6721b773d266d8fdc5fc42ec6f2",
+          "before": "7a88d37aaeac65448238dc70152c98ca0caee6721b773d266d8fdc5fc42ec6f2",
+          "competing_writer_lock": "passed",
+          "image": "child.vhdx",
+          "native": {
+            "attach": 0,
+            "block_size": 1048576,
+            "capacity": 4194304,
+            "detach": 0,
+            "logical_sector": 4096,
+            "logical_sha256": "60ce903f59ac1fd7a96bf51bdcb60f4590dbb83ee09873a63d6df543be81f3bf",
+            "open": 0,
+            "physical_sector": 4096
+          },
+          "rust_write_flush_reopen": "passed"
+        },
+        {
+          "after": "8479bba20e232f0b3e17ad4b0bc2c647b202a84c0d3783bc6a85087bb603dc45",
+          "before": "8479bba20e232f0b3e17ad4b0bc2c647b202a84c0d3783bc6a85087bb603dc45",
+          "competing_writer_lock": "passed",
+          "image": "rust-created.vhdx",
+          "native": {
+            "attach": 0,
+            "block_size": 1048576,
+            "capacity": 4194304,
+            "detach": 0,
+            "logical_sector": 512,
+            "logical_sha256": "7ccdbc0ebb45b4719625843c4952c8e4559247e8f617284d2cd3744bb58a8c93",
+            "open": 0,
+            "physical_sector": 4096
+          },
+          "rust_write_flush_reopen": "passed"
+        },
+        {
+          "after": "e1b2ca4deb61cc3a6c334d10748dda3de20b21350ca852adc35a6854e676da74",
+          "before": "e1b2ca4deb61cc3a6c334d10748dda3de20b21350ca852adc35a6854e676da74",
+          "competing_writer_lock": "passed",
+          "image": "rust-overlay.vhdx",
+          "native": {
+            "attach": 0,
+            "block_size": 1048576,
+            "capacity": 4194304,
+            "detach": 0,
+            "logical_sector": 4096,
+            "logical_sha256": "d57f9b817cc6b31293cc714cdde128f1254075c09db7b312c4d72273e279b470",
+            "open": 0,
+            "physical_sector": 4096
+          },
+          "rust_write_flush_reopen": "passed"
+        }
+      ],
+      "gate": "passed",
+      "native_discard": "unsupported_unchanged",
+      "native_resize": "unsupported_unchanged",
+      "power_loss": "unfulfilled",
+      "process_interruption": "unfulfilled",
+      "source_manifest_sha256": "6203710e88418840afe9a1bbff55d8f2cf8f0cd9c7c83978a958ac2a39d90db9"
+    }
+  },
+  "passed": true,
+  "scope": "Steady-state Rust creation/mutation and native full-content verification; process interruption and power loss remain unfulfilled.",
+  "preserved_executable": {
+    "path": "/data/cache/virtdisk-native-windows/artifacts/3e18ce90d513d78308a6d404e013a51c7a735311a0cfdf0bb1b8598079794d05.exe",
+    "sha256": "3e18ce90d513d78308a6d404e013a51c7a735311a0cfdf0bb1b8598079794d05"
+  }
+}

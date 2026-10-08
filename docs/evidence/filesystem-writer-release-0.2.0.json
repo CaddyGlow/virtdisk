@@ -1,0 +1,911 @@
+{
+  "version": "0.2.0",
+  "status": "published_registry_artifact_verified",
+  "crate_url": "https://static.crates.io/crates/virtdisk/virtdisk-0.2.0.crate",
+  "registry_version_url": "https://crates.io/api/v1/crates/virtdisk/0.2.0",
+  "published_at": "2026-10-07T21:44:40.932962Z",
+  "crate_sha256": "ed266f4c5cae3fba8b0470b42cfe43dd379c12ecfaab31a52f56456ce0fe4f8d",
+  "crate_bytes": 390838,
+  "vcs": {
+    "git": {
+      "sha1": "784fd7e454859feb66d65052cce5487403286ef8",
+      "dirty": true
+    },
+    "path_in_vcs": ""
+  },
+  "packaged_files": [
+    {
+      "path": ".cargo_vcs_info.json",
+      "sha256": "a09a44278cf55a74e0e4f123727dd023f43b75a13186953de2c11e20cd57da97",
+      "bytes": 113
+    },
+    {
+      "path": ".github/workflows/ci.yml",
+      "sha256": "21f4dab68f9321d516b20c267750ae4ac33a19ed40b3c097b9e87590199e5956",
+      "bytes": 1887
+    },
+    {
+      "path": ".github/workflows/fuzz.yml",
+      "sha256": "3b1a73b9d7c9f8a8ab8821a3c4b9f6c5ef6a098874465fe98511a36818e66089",
+      "bytes": 1492
+    },
+    {
+      "path": ".github/workflows/release.yml",
+      "sha256": "ac49e8e72b5d7844cc280a1aedc0b532beeaec8a06ae3d0ff17cab7a7c94b7b6",
+      "bytes": 2560
+    },
+    {
+      "path": ".gitignore",
+      "sha256": "aab744a0b3c1807bac876f60ef4f7cde3b520ba15d6b183c0abc9cae45baa1b7",
+      "bytes": 110
+    },
+    {
+      "path": "AGENTS.md",
+      "sha256": "b81d5ae647a52d04e81a664085f71ca192598096d02e206ba5d6dba3608caa66",
+      "bytes": 372
+    },
+    {
+      "path": "Cargo.lock",
+      "sha256": "ca9f268d770e513ca3075f5dd41e14f0277c4094018afffa6b1387348f4b4ef9",
+      "bytes": 7554
+    },
+    {
+      "path": "Cargo.toml",
+      "sha256": "d3b0e19b881d4eb9c2a020f4d3c1b8d52931c262fc36a30081249b69d3b6c263",
+      "bytes": 5423
+    },
+    {
+      "path": "Cargo.toml.orig",
+      "sha256": "aa8c1a0fa5dbadc228e7744e17e95de5101cb75afc617cce096437ad255a4ce7",
+      "bytes": 1013
+    },
+    {
+      "path": "FILESYSTEM_WRITER_RELEASE_PLAN.md",
+      "sha256": "4f7aa6a16aa0428a900b12a69535a9fa3f750f47becd716ba87e11ee5a27757f",
+      "bytes": 2066
+    },
+    {
+      "path": "LICENSE",
+      "sha256": "229e345d495bf4b72b9c1439adad71b4c44632d4fa43480ac730bff2bed9fd18",
+      "bytes": 1078
+    },
+    {
+      "path": "README.md",
+      "sha256": "08fe65f47eefdf7a9ccc199bdc5afa38fbc72738d99f579b4be666a817b58a58",
+      "bytes": 11699
+    },
+    {
+      "path": "docs/check.md",
+      "sha256": "2d3ad98135209adcfdfc9931e73cf8c0c83285b7384830b37bd75b5b784cc7d1",
+      "bytes": 2889
+    },
+    {
+      "path": "docs/evidence/windows-vhdx-clean-20261007.json",
+      "sha256": "77045c518951ef417e9602e3fa890bb1f729e5170c3b874ad8034c6f66ef5462",
+      "bytes": 5389
+    },
+    {
+      "path": "docs/evidence/windows-vhdx-dirty-20261007.json",
+      "sha256": "e6a038b84d0c60743c5810b92f0adaf5b58c2f12e0ca1fb4d0df2027f810d3f6",
+      "bytes": 9046
+    },
+    {
+      "path": "docs/evidence/windows-vhdx-dirty-initial-20261007.json",
+      "sha256": "2e9c1e3622b4b5b31f006f0702da5ba1f1d9c52cd2afb80b64e3b791e73603f0",
+      "bytes": 8141
+    },
+    {
+      "path": "docs/evidence/windows-vhdx-mutation-20261007.json",
+      "sha256": "1d9e68b98e95064f1419bf7683465dc95f249ab4393e00b3d0d31e590e3f7b76",
+      "bytes": 12066
+    },
+    {
+      "path": "docs/evidence/windows-vhdx-process-kill-20261007.json",
+      "sha256": "31a0031416a985ab1c92a00395234427349ea5fca91cb2ee89de183568c2900f",
+      "bytes": 196377
+    },
+    {
+      "path": "docs/evidence/windows-vhdx-produced-20261007.json",
+      "sha256": "229cd39cc965557875ab54c06ae7a2c74c19689f894ba7fdaf42f635fa8c6cdd",
+      "bytes": 4416
+    },
+    {
+      "path": "docs/filesystem-writer-release.md",
+      "sha256": "4d0558b0a3a2bed4c8fc745bcd8e9fc8a8476907e6faf9ce29fed92853b0bf29",
+      "bytes": 8832
+    },
+    {
+      "path": "docs/hosted-write-recovery.md",
+      "sha256": "b0f95925e4742140002c5c485bac28ef7c06b946ed30845ab236c5c50c8725d2",
+      "bytes": 9878
+    },
+    {
+      "path": "docs/implementation-plan.md",
+      "sha256": "fa841c91088d2248186cec2e3d1f493aebde3459cae6ecf9a331a4a9d802fee1",
+      "bytes": 33956
+    },
+    {
+      "path": "docs/implementation-status.md",
+      "sha256": "55110f877b00048d46c9133f7ec990e36e9186d4f7dcbc1636bb289bcd68c6ce",
+      "bytes": 59676
+    },
+    {
+      "path": "docs/inspection-container-sizes.md",
+      "sha256": "af4d4314f57e8f217cd07d915a1d7635e31136491b22c174c4c50764e9297e5b",
+      "bytes": 8113
+    },
+    {
+      "path": "docs/qcow2-refcount-growth.md",
+      "sha256": "74c87cdba566dcfcc18d26dbec05f87a728deb84faa21720ab38c5a2b4403df8",
+      "bytes": 2728
+    },
+    {
+      "path": "docs/qcow2-resize.md",
+      "sha256": "1befd46a69541ad90ee26488278ff98ca2e0e0820a2d2902f7218802634908b7",
+      "bytes": 1964
+    },
+    {
+      "path": "docs/qcow2-snapshot-lifecycle-design.md",
+      "sha256": "fb0ded1e6493f8b9bd3ea6ff3da9d07982e8d516722ec21800f356d3fcac2413",
+      "bytes": 6441
+    },
+    {
+      "path": "docs/qcow2-snapshot-write.md",
+      "sha256": "43014cfa5b0990f9ee6dd7d547222875a724df09ff948b09006c4246697f8ed7",
+      "bytes": 2779
+    },
+    {
+      "path": "docs/qcow2-snapshots.md",
+      "sha256": "7e5e59fc718745f9ede5ada67f80049091d0d0147b2d617c970fb1a332c92110",
+      "bytes": 2276
+    },
+    {
+      "path": "docs/qcow2-write-recovery.md",
+      "sha256": "43ec1a4a8b6c71d65c013c096e6025f24c91041d896add84862bd2bc144845ed",
+      "bytes": 10458
+    },
+    {
+      "path": "docs/raw-storage.md",
+      "sha256": "a3e7c01bda87467fe7c7d9910e1d08b2e56dd127edbc7240ebb2c0c720596749",
+      "bytes": 2049
+    },
+    {
+      "path": "docs/vdi-differencing.md",
+      "sha256": "81993c8b471ed450c90f5f94a097a0de778d3eec9dc34ec5e129726f0daecb7d",
+      "bytes": 2901
+    },
+    {
+      "path": "docs/vdi-resize.md",
+      "sha256": "3aabad082dca3093902b3a36ea7dbf5f5b8ef505123d9f183c6b2f3b62e8ac65",
+      "bytes": 5366
+    },
+    {
+      "path": "docs/vdi-write-recovery.md",
+      "sha256": "e9c7317181b598d030eda03f9a3448f7012159a53da0096606a55867bef93b8f",
+      "bytes": 4362
+    },
+    {
+      "path": "docs/vhdx-differencing.md",
+      "sha256": "a142a61ce12cfcc5c82a94739972f46f0df44c78d95d777c7dc8661372ae0ac8",
+      "bytes": 6704
+    },
+    {
+      "path": "docs/vhdx-native-transactions.md",
+      "sha256": "2e7b64f992ff067c17156e498f69b1eb91202a18deeeeab5bf051e41abf00d0d",
+      "bytes": 7115
+    },
+    {
+      "path": "docs/vhdx-partial-write.md",
+      "sha256": "93fcae7189abfa2ccaf04745d26a082c0c9c92f9d62cacda80956479ff72b7de",
+      "bytes": 7343
+    },
+    {
+      "path": "docs/vhdx-resize.md",
+      "sha256": "e7a0c5c8ff5ccf6b5c75a5135e17a109f3634ae6f6446b6df4d5630fe164763f",
+      "bytes": 5247
+    },
+    {
+      "path": "docs/vmdk-discard.md",
+      "sha256": "dbd2a3f3901223c1f2caba1ba5a65b2226ad96d08e6e1b5571e97773ce948c37",
+      "bytes": 2919
+    },
+    {
+      "path": "docs/vmdk-resize.md",
+      "sha256": "2c7675dafabf21ae20331c4791688244e4fdf171719afdc16f06515132988437",
+      "bytes": 3487
+    },
+    {
+      "path": "docs/vmdk-split-parent-cow.md",
+      "sha256": "bac200e816b6e2abf9a6118d6c2217703aded1161b30154cf3cfd25f939723b6",
+      "bytes": 16771
+    },
+    {
+      "path": "docs/vmdk-split-transactions.md",
+      "sha256": "31e6b3ecc0222379493a8d92bb0fce04a2660451abb5898a7e35f3a0c52e0f67",
+      "bytes": 28473
+    },
+    {
+      "path": "docs/windows-acceptance.md",
+      "sha256": "ee19c13dd7ae419a76f1c9dcb94462802884f84d159ce1fa0f77243f2b27b33c",
+      "bytes": 22672
+    },
+    {
+      "path": "flake.lock",
+      "sha256": "fd297949d676bd92fb446a59f83a58111d5a6d41454c2382d2f64046ca7f2688",
+      "bytes": 1108
+    },
+    {
+      "path": "flake.nix",
+      "sha256": "5446c8aa794c17e1cfd48cf9b39af7e3dd6b8a5441561b263c5bf1ae97bb2e09",
+      "bytes": 2133
+    },
+    {
+      "path": "rust-toolchain.toml",
+      "sha256": "2ad6f15416572b4836585087f1d4abc53b8fa2dbd616f8dacfaa587ed6714228",
+      "bytes": 86
+    },
+    {
+      "path": "scripts/fuzz-campaign.py",
+      "sha256": "d293f511021c130af24c3009b9423c0aa9436efbf0dc09991d3820799e81827b",
+      "bytes": 3574
+    },
+    {
+      "path": "scripts/publish-crates.py",
+      "sha256": "e5e76997ae919616789fc121fef594c45b68c2d89f99ac172306c49646bbacaf",
+      "bytes": 2724
+    },
+    {
+      "path": "src/bin/virtdisk.rs",
+      "sha256": "e5f2502ca1ba472f565e7b63a8b1bde3ad6201bc0f5de566ea97706f4b98e203",
+      "bytes": 16091
+    },
+    {
+      "path": "src/check.rs",
+      "sha256": "7f8efe821b88a934c005cb86b84e687c35e4cc0ba924c5b851662f01bd14baf1",
+      "bytes": 4881
+    },
+    {
+      "path": "src/compact.rs",
+      "sha256": "98f3679f4040de47767899cbb358caa9e94bd123d1b111df0a872832bdbad94c",
+      "bytes": 3876
+    },
+    {
+      "path": "src/graph.rs",
+      "sha256": "b257b4ab457333a62157d4e02e9d9268f4d4f2b31ef5858e6c337ef663b9ed60",
+      "bytes": 19145
+    },
+    {
+      "path": "src/image.rs",
+      "sha256": "176bec2d7c2e3f354298468d617e13ea754a2c6762693e0978eafc36421b5dc6",
+      "bytes": 16270
+    },
+    {
+      "path": "src/image_writer.rs",
+      "sha256": "3f8a7000ffef0561c786b3c56cba10a74098c1fb25f2302221d2bdc5c01a343a",
+      "bytes": 12186
+    },
+    {
+      "path": "src/info.rs",
+      "sha256": "e1c7b1698b457bae46236d5cacb721668089a463fa9172c998bb78bfdcda4247",
+      "bytes": 13883
+    },
+    {
+      "path": "src/lib.rs",
+      "sha256": "49455fc159265ebdc48262f78939c817703ac8192c7d9891d888c2f7a51c9010",
+      "bytes": 13663
+    },
+    {
+      "path": "src/policy.rs",
+      "sha256": "3d478cb228b8f8cab640dd481b34cc51571beda10ca1562a5c53b2d8eef4d371",
+      "bytes": 12610
+    },
+    {
+      "path": "src/qcow2/snapshots.rs",
+      "sha256": "e1102059981b2b9138c3e2774c276fa39f25b3612035eb7df02648e0b1b9adcb",
+      "bytes": 8892
+    },
+    {
+      "path": "src/qcow2/validation.rs",
+      "sha256": "647273b59b5ab6020cbde1cbbf0df836e65fde8ca5c3d1b7e90b01978440ebaa",
+      "bytes": 19220
+    },
+    {
+      "path": "src/qcow2.rs",
+      "sha256": "bfca3bbff5f58213da475d434011772caeab58ddaa767a0ac238e45a9549ca8c",
+      "bytes": 31205
+    },
+    {
+      "path": "src/qcow2_allocate.rs",
+      "sha256": "546d70b848091950643ab351acd76ac60b928cfa7fe88cd7127f7679c0a519e0",
+      "bytes": 27579
+    },
+    {
+      "path": "src/qcow2_journal.rs",
+      "sha256": "ae3d983d12f7f26b7fc0765eb82e9f0607df49cf8e0f34f492696bd21b9e5b5c",
+      "bytes": 22856
+    },
+    {
+      "path": "src/qcow2_overlay.rs",
+      "sha256": "3ccd844540ef4b0e71bf6f3b4d6978777ff55fda06d673515982933229a7e937",
+      "bytes": 5751
+    },
+    {
+      "path": "src/qcow2_snapshot_write.rs",
+      "sha256": "b30b8f8bf66447ea45ebc34af924769ff865c1453a79b74d54f4e88349c7c6ba",
+      "bytes": 36412
+    },
+    {
+      "path": "src/qcow2_write.rs",
+      "sha256": "8eae0c6b37751d18c40adfee3c53fde379dad74ffb75f59c537782b746ac12ba",
+      "bytes": 7374
+    },
+    {
+      "path": "src/qcow2_writer.rs",
+      "sha256": "1270543ce0b658536c96330c9ff87c5c56836e071c5e37e23f6a8ff11117785f",
+      "bytes": 21850
+    },
+    {
+      "path": "src/raw_write.rs",
+      "sha256": "6c445cf44f85b3ad11ed57fbfeb1ec3d8590342861f0802c503aca1dfc3502a8",
+      "bytes": 10897
+    },
+    {
+      "path": "src/test_sync.rs",
+      "sha256": "092367b54e9fd388736ba0fb9a1dde5cf83a731d23134075cfd412bcc8d14b8e",
+      "bytes": 838
+    },
+    {
+      "path": "src/transaction.rs",
+      "sha256": "2f9b6cd603cbfbfb2a168c2737883ab1c435ed36ecaea2738065e9deb1a55996",
+      "bytes": 20386
+    },
+    {
+      "path": "src/transaction_set.rs",
+      "sha256": "a2a5c4c6952732fa379bf68e5bc86ec5e1e2691a502e672db3f95a50aae5cdb9",
+      "bytes": 45473
+    },
+    {
+      "path": "src/vdi.rs",
+      "sha256": "52bdaf98830ae707fc24347a70863111d9e4345db9b3fb536f620d3a1ca19bc6",
+      "bytes": 13715
+    },
+    {
+      "path": "src/vdi_write.rs",
+      "sha256": "e160a1ef59b652f67782c98d6d7590bcbe7c4383188b6a964396e3c46ccff51c",
+      "bytes": 7423
+    },
+    {
+      "path": "src/vdi_writer.rs",
+      "sha256": "a589deb082a9eada7e242047402630122aea8bc2ff3f91350ac76f3f3027f724",
+      "bytes": 50867
+    },
+    {
+      "path": "src/vhdx/log.rs",
+      "sha256": "30d872fcab0ccb48cfa245d487d08590778d4b1fbf661b5d52f5ef305aa467e1",
+      "bytes": 13856
+    },
+    {
+      "path": "src/vhdx/parent.rs",
+      "sha256": "ee277419a1d4459f4d57e953d2486db31e11be82d36a7c501c09413cc5b556e9",
+      "bytes": 24962
+    },
+    {
+      "path": "src/vhdx.rs",
+      "sha256": "b4684805f3e64adb7cc77b1ee4b4b87d65ef1d8b0027f9526f1807a0e57cd27b",
+      "bytes": 26914
+    },
+    {
+      "path": "src/vhdx_allocate.rs",
+      "sha256": "1b5e514af29c30f11cbd86aafb9c6e206d3333fd0fcdd91362c322db13383283",
+      "bytes": 71784
+    },
+    {
+      "path": "src/vhdx_recover.rs",
+      "sha256": "30faf5876700d1f693bd8994d12783009e9234635a67c46d5f4da599744153e9",
+      "bytes": 9931
+    },
+    {
+      "path": "src/vhdx_write.rs",
+      "sha256": "6ca42c5f69f526227ed0e2a673022f51545cbcf24ade30483099624b3a85be5e",
+      "bytes": 12121
+    },
+    {
+      "path": "src/vhdx_writer.rs",
+      "sha256": "6e6623ef6db0a92a37f406a75959ccb359cdc33aabc0172c69170215f74b83ab",
+      "bytes": 27302
+    },
+    {
+      "path": "src/vmdk.rs",
+      "sha256": "0c0b97ff9301ecfd509e02039fec4580e136a0e72aa137ef91e5c880a87910a0",
+      "bytes": 43744
+    },
+    {
+      "path": "src/vmdk_flat.rs",
+      "sha256": "0e0af443a009bca4425a2c9d62eb818ba9ec6382cdabfbbe2022694a25fe4810",
+      "bytes": 10592
+    },
+    {
+      "path": "src/vmdk_pinned.rs",
+      "sha256": "86ed5ef3bb47a3ac3ef7755338a0f59fc65b909bcf8ea7e6591a8719c0bef716",
+      "bytes": 34338
+    },
+    {
+      "path": "src/vmdk_sparse_set.rs",
+      "sha256": "41495e2a0977099f6257ab627b5fe8e4f0d2d3a09146d7ce63e78a85438783cc",
+      "bytes": 97458
+    },
+    {
+      "path": "src/vmdk_write.rs",
+      "sha256": "3ed69dfa0938a4c37c8ed6ae360c62ee52ddc22cb171e7515e81202a96ebb8fd",
+      "bytes": 5500
+    },
+    {
+      "path": "src/vmdk_writer.rs",
+      "sha256": "b016199742d63e1138d90c62713632cda7aa0d46f902937c8e55a47e1cfacc88",
+      "bytes": 65998
+    },
+    {
+      "path": "src/write.rs",
+      "sha256": "a2cea6579bee40814ad8501b4e126db7270c8a0b980f45bdb7e48373c8cf7489",
+      "bytes": 7088
+    },
+    {
+      "path": "tests/check.rs",
+      "sha256": "01107a4445493d1f998acf3b79f8064654a8f9d32dacf6c82b995ccd8459998b",
+      "bytes": 11134
+    },
+    {
+      "path": "tests/cli.rs",
+      "sha256": "fc5acfd67be7fca622be3f557a3d95e01b216070a5de2e1dc92808171516568d",
+      "bytes": 28824
+    },
+    {
+      "path": "tests/compact.rs",
+      "sha256": "0e0f24452b0ac4ac641217b3830470aadf54d369c37479f3acea46457b254143",
+      "bytes": 4584
+    },
+    {
+      "path": "tests/compact_review.rs",
+      "sha256": "3822ce358604911fa287f3e65e3f6bae346d818ff95f6c3fca302fb8c95e7e8f",
+      "bytes": 925
+    },
+    {
+      "path": "tests/discard.rs",
+      "sha256": "876d703625396df3a9b01200421cc701944b3d35549a2dd2ea98c889e807f0b8",
+      "bytes": 7214
+    },
+    {
+      "path": "tests/fixtures/vhdx/windows-11-26200/4096-base.vhdx.gz",
+      "sha256": "cc43433ac4716844c8e1e04453f5873cb35dfd25b36db232c5a47b5e4e8ddc8f",
+      "bytes": 9835
+    },
+    {
+      "path": "tests/fixtures/vhdx/windows-11-26200/4096-child.vhdx.gz",
+      "sha256": "13fbdfbc4fe451b5b8dac668d93a63c069646c742e0f42861b964d4f9143e6cc",
+      "bytes": 10658
+    },
+    {
+      "path": "tests/fixtures/vhdx/windows-11-26200/512-base.vhdx.gz",
+      "sha256": "75f54944af89b50b76e32655664f956225efd8112cb468c68d395c60c4e95227",
+      "bytes": 9830
+    },
+    {
+      "path": "tests/fixtures/vhdx/windows-11-26200/512-child.vhdx.gz",
+      "sha256": "645603f777d4b5f7bd9400e5b122a52c69b041686e88d77c51ee7fa6c74b934e",
+      "bytes": 10647
+    },
+    {
+      "path": "tests/fixtures/vhdx/windows-11-26200/provenance.json",
+      "sha256": "619c8c3adf87ab7c4f4ff7195217638c34227857600be24b1530aed4a5f3e13f",
+      "bytes": 3336
+    },
+    {
+      "path": "tests/fixtures/vhdx/windows-process-kill/4096-base.vhdx.gz",
+      "sha256": "cc43433ac4716844c8e1e04453f5873cb35dfd25b36db232c5a47b5e4e8ddc8f",
+      "bytes": 9835
+    },
+    {
+      "path": "tests/fixtures/vhdx/windows-process-kill/4096-child.vhdx.gz",
+      "sha256": "35063042873b486c942366676e347562c5e0054c31f73b46e000096c7cf9bde4",
+      "bytes": 8020
+    },
+    {
+      "path": "tests/fixtures/vhdx/windows-process-kill/512-base.vhdx.gz",
+      "sha256": "75f54944af89b50b76e32655664f956225efd8112cb468c68d395c60c4e95227",
+      "bytes": 9830
+    },
+    {
+      "path": "tests/fixtures/vhdx/windows-process-kill/512-child.vhdx.gz",
+      "sha256": "741ae9a8162b4b393d9a76dccb63e6ce42684aa65ba13f76078281fbce01407c",
+      "bytes": 8023
+    },
+    {
+      "path": "tests/fixtures/vhdx/windows-process-kill/provenance.json",
+      "sha256": "012c75977a7dd71673b5d81659394434f96ba7874a831da0c214610221a21a64",
+      "bytes": 10759
+    },
+    {
+      "path": "tests/fixtures/vmdk/legacy-set-codec.json",
+      "sha256": "124b58fc77991213c54839ebc20885c956a7c318af6cf814d21517365d8541ab",
+      "bytes": 501
+    },
+    {
+      "path": "tests/fixtures/vmdk/legacy-set-codec.rs",
+      "sha256": "66615a15bdcb2410acff0fedf5f9ccab4831cd8d97843a1a055af4bc54620c82",
+      "bytes": 6321
+    },
+    {
+      "path": "tests/graph.rs",
+      "sha256": "7accd5a8b41b5b7d2a5d4df52089195d0591fc26281a8c929a6030635b91964a",
+      "bytes": 9142
+    },
+    {
+      "path": "tests/graph_native.rs",
+      "sha256": "b0a36f8f9a28255f6cd27e9c3bc38f19390fa71c8aca3803bbccce31927e006d",
+      "bytes": 5323
+    },
+    {
+      "path": "tests/graph_review.rs",
+      "sha256": "994d5e8e5a6e93f194deb82c382401a31cc5e5dc2c3d5614ccf15f9d3233dbcc",
+      "bytes": 3260
+    },
+    {
+      "path": "tests/image.rs",
+      "sha256": "11bc0933e6e490fd0a129e25cd91feae7643a72a6cb4348dc9d9a8f1dabc7a28",
+      "bytes": 9797
+    },
+    {
+      "path": "tests/image_chain.rs",
+      "sha256": "c657db3ad98767651303db4965f12de576ac7e7bcdc80a28a6952698392de210",
+      "bytes": 2517
+    },
+    {
+      "path": "tests/image_create.rs",
+      "sha256": "99553d17f86e70edf13eac2a864f720ffccf5c145ea0b1725134e2240df46f82",
+      "bytes": 3305
+    },
+    {
+      "path": "tests/image_resize_native.rs",
+      "sha256": "57383691131421933d3dd0fa52563a87a9999e062d300ec16ce4d56b77e84a78",
+      "bytes": 2250
+    },
+    {
+      "path": "tests/image_writer.rs",
+      "sha256": "81186c140b0aea18f2e01684663300d039b395d20a48b325c80bca01b00e6bb4",
+      "bytes": 19842
+    },
+    {
+      "path": "tests/info.rs",
+      "sha256": "3648894a1c9831fd314484932d3d7be74964b949b7eeed3e0df35d9329d7ef01",
+      "bytes": 17154
+    },
+    {
+      "path": "tests/qcow2.rs",
+      "sha256": "466f6bc7bc9cc3cc631da7d5ad8aa274adee64b72f077308e8e4599b9537e852",
+      "bytes": 35952
+    },
+    {
+      "path": "tests/qcow2_discard.rs",
+      "sha256": "be434c53a1f90ff22c1b0401d914ab13e0e8570e99082c49e1ff7c643c2b825d",
+      "bytes": 4236
+    },
+    {
+      "path": "tests/qcow2_overlay.rs",
+      "sha256": "2e40d773f1b931ca3a6eae2551301e3c8d428e26101a43b023b66afa354355ef",
+      "bytes": 4175
+    },
+    {
+      "path": "tests/qcow2_overlay_writer.rs",
+      "sha256": "59024646d6a51eb842482d19b2c56a349aed648e749a12fc34494001aa91775d",
+      "bytes": 6116
+    },
+    {
+      "path": "tests/qcow2_pending.rs",
+      "sha256": "b61893548628279459c8d8f125a57b9941f1a627cbcd57ddfe0e6c4a60ad6e05",
+      "bytes": 1602
+    },
+    {
+      "path": "tests/qcow2_refcount_growth.rs",
+      "sha256": "c456e75a4c65047ae8fe90425a2b122f3018a817ae53115926f6884e16a25eee",
+      "bytes": 5372
+    },
+    {
+      "path": "tests/qcow2_resize.rs",
+      "sha256": "4b40b9b82775f019d942be54ceeb572be9ef3ef8a8b2d009c7caadeae477eb6a",
+      "bytes": 4981
+    },
+    {
+      "path": "tests/qcow2_shared_l2.rs",
+      "sha256": "d6198b6f2eacbe1ce170b49b456662a2a3d72c366b19e054deef80b167eba685",
+      "bytes": 4113
+    },
+    {
+      "path": "tests/qcow2_snapshot_lifecycle.rs",
+      "sha256": "a9a772f19a1c4fdcfdd8cfe874d71f80baad4cf799e67c76d37c4591d88cf30c",
+      "bytes": 18118
+    },
+    {
+      "path": "tests/qcow2_snapshot_validation.rs",
+      "sha256": "7b61dde9c81105d410fed3fbcc7c04d3fac22aae305abc1d503f2dd4b857dfad",
+      "bytes": 7066
+    },
+    {
+      "path": "tests/qcow2_snapshot_write.rs",
+      "sha256": "a5b73ad3ade2555637225e1015659fa7ed1a00f024564031fd10d0e1a505a56e",
+      "bytes": 10684
+    },
+    {
+      "path": "tests/qcow2_snapshots.rs",
+      "sha256": "02315385a72f18fb03c0356c76e405f310d259f64f4eee4d6170040dfa448695",
+      "bytes": 8327
+    },
+    {
+      "path": "tests/qcow2_write.rs",
+      "sha256": "8be85e6c8d664387dab9d23f96ca30ef0619fd2a01e7680af62a3b21f049c8ba",
+      "bytes": 4060
+    },
+    {
+      "path": "tests/qcow2_writer.rs",
+      "sha256": "9cdc19e195ea66ec1f0a3a07f4e4cde1a982767749fa657f6ba66c6b4a237579",
+      "bytes": 7806
+    },
+    {
+      "path": "tests/raw_preallocate.rs",
+      "sha256": "42bd0589c1a8f46ab3558476516e68549e81540a348b327a4056bf7c6aa1e774",
+      "bytes": 2400
+    },
+    {
+      "path": "tests/raw_write.rs",
+      "sha256": "8a9fc357442527cb39664c9c615adcc6d02a390193e1114fd6e6c0efb367b5d8",
+      "bytes": 5063
+    },
+    {
+      "path": "tests/recovery_review.rs",
+      "sha256": "cc0b21f7d064466025362f639204abb8f7d9ede4cedd91ff23d9168fbe8dea1d",
+      "bytes": 3718
+    },
+    {
+      "path": "tests/vdi.rs",
+      "sha256": "a1e633a2c57a7deb18c3ebfc49810a27e3291354b070425e2107b83cd5fc0b25",
+      "bytes": 6982
+    },
+    {
+      "path": "tests/vdi_chain.rs",
+      "sha256": "b574660dc3efae1237190ce8264577c4af89703d44fcec05339ef3df0b8e7813",
+      "bytes": 10969
+    },
+    {
+      "path": "tests/vdi_discard.rs",
+      "sha256": "5e0e30388d0980ac7ead7e0a5ff8e1ca72625337cff9a935e25d85cd1a5d63e3",
+      "bytes": 8613
+    },
+    {
+      "path": "tests/vdi_resize.rs",
+      "sha256": "7ee2c1f0acb4143f68a7deaffc8dce5f3dee99a16a955ac57f69577bc246fa78",
+      "bytes": 9726
+    },
+    {
+      "path": "tests/vdi_virtualbox.rs",
+      "sha256": "9ca1a79bbbc60189a5239417a96cea2874926954db80e3f553b09c00a1346ff0",
+      "bytes": 8840
+    },
+    {
+      "path": "tests/vdi_write.rs",
+      "sha256": "32e7131d296664015883f9f96aa6d6ff499e595b5e87f84e3516cf341c4ef213",
+      "bytes": 3725
+    },
+    {
+      "path": "tests/vdi_writer.rs",
+      "sha256": "8b97611fb8c6953a00a1c7379844ad9b8781efd72013192e5feb2c3e742c45e4",
+      "bytes": 8652
+    },
+    {
+      "path": "tests/vhdx.rs",
+      "sha256": "1376f233043a563837c4fed50d9d615a6169341b774fc2f3bc15124bae12fc65",
+      "bytes": 6944
+    },
+    {
+      "path": "tests/vhdx_allocate.rs",
+      "sha256": "aba9994b39149b745785cb21d3610eba99783aba4c91e8255852e37462f844e1",
+      "bytes": 5279
+    },
+    {
+      "path": "tests/vhdx_differencing.rs",
+      "sha256": "9b43d3204220649082858dc8abb479a601b7c6200d1a76fa7d828a69ef053632",
+      "bytes": 14473
+    },
+    {
+      "path": "tests/vhdx_discard.rs",
+      "sha256": "4184ed7d3e98c18c05c795b0cb8a3f7c162906ee4ad07d1a76cca1c46e91228d",
+      "bytes": 4507
+    },
+    {
+      "path": "tests/vhdx_extents.rs",
+      "sha256": "0d9abd54d2219098d492ba7ea47616dce93210fcdcf6f5b026298e79d7718a9d",
+      "bytes": 4985
+    },
+    {
+      "path": "tests/vhdx_log.rs",
+      "sha256": "979e69574ee8a982ca9ac4f116c25d126ecc9f22085538c16bd22c7109a482d1",
+      "bytes": 8822
+    },
+    {
+      "path": "tests/vhdx_partial_write.rs",
+      "sha256": "20c3a2908903112747e1d037b49c62dc167656103a583350b864ea7890bac4de",
+      "bytes": 8180
+    },
+    {
+      "path": "tests/vhdx_recover.rs",
+      "sha256": "d21edea794f054b1d293b799555e5bb0d2090c2c17613723c45f906248d61f6c",
+      "bytes": 3721
+    },
+    {
+      "path": "tests/vhdx_resize.rs",
+      "sha256": "8485acf6e0c8aa0df4278200184c16bfae87310ead2dc8a0d6559c24b9d09e86",
+      "bytes": 8533
+    },
+    {
+      "path": "tests/vhdx_windows_native.rs",
+      "sha256": "0bc2f870209b73bd211b1e554e4a4705115cccd724dc0aaca43766763f226947",
+      "bytes": 5401
+    },
+    {
+      "path": "tests/vhdx_write.rs",
+      "sha256": "f37de474acd49bdb945efc1248841cba67d5344fa3681b432b4f45e9ffd4bf59",
+      "bytes": 4369
+    },
+    {
+      "path": "tests/vhdx_writer.rs",
+      "sha256": "07a4862275d86aaa21dc046ad189af9a3b9ee53498de10bd9bc520e3bea24a52",
+      "bytes": 6057
+    },
+    {
+      "path": "tests/vmdk.rs",
+      "sha256": "95bb863fbdd6c6b03302137e0483ce49b4298b1b35f0b2dd3effa56ee258149c",
+      "bytes": 24160
+    },
+    {
+      "path": "tests/vmdk_discard.rs",
+      "sha256": "d8c81cd293bbec6418d18d26a2c3811c85f810503fe808b488c8287a9db5f85e",
+      "bytes": 10959
+    },
+    {
+      "path": "tests/vmdk_flat_writer.rs",
+      "sha256": "1b7286024182f2ff722518a233329625a5db3235223bcad2314a96732d6c3a73",
+      "bytes": 9600
+    },
+    {
+      "path": "tests/vmdk_resize.rs",
+      "sha256": "be3db73ad8076387668db2bda2a633fd348ee088d8cc8b0742b89e5504c9d638",
+      "bytes": 6730
+    },
+    {
+      "path": "tests/vmdk_sparse_set.rs",
+      "sha256": "c93eeea10eb0b35cfaae2e6bc635aaec1f0e7eb860dcac3559fbf241d548d557",
+      "bytes": 35108
+    },
+    {
+      "path": "tests/vmdk_split_parent.rs",
+      "sha256": "265ffef4854862e1cfd6ea6f8e048638a8c5197f73420c6fdf6f596b98fd7670",
+      "bytes": 9304
+    },
+    {
+      "path": "tests/vmdk_split_writer.rs",
+      "sha256": "3ad68cc1c314b9fc9774397400bbe0488d280d477cef218e13b617db153d0e0f",
+      "bytes": 5562
+    },
+    {
+      "path": "tests/vmdk_write.rs",
+      "sha256": "360afb60401687450432e86a32d896b68f3d58feabd8a3e02e163f7177311c02",
+      "bytes": 2366
+    },
+    {
+      "path": "tests/vmdk_writer.rs",
+      "sha256": "68993fcbc6f0d34d56b793d324da7ee27c9f823be906226ad6bd34379a2b6933",
+      "bytes": 15849
+    }
+  ],
+  "checks": {
+    "standard": {
+      "passed": 406,
+      "failed": 0,
+      "ignored": 68,
+      "groups": 62,
+      "log": "/data/cache/virtdisk-0.2.0-standard-tests-final.log"
+    },
+    "fmt": 0,
+    "linux_clippy": 0,
+    "windows_msvc_clippy": 0,
+    "publish_dry_run": 0,
+    "publish": 0
+  },
+  "fuzz": "paused_by_user",
+  "public_api": {
+    "methods": [
+      "ImageWriter::open",
+      "ImageWriter::open_chain",
+      "ImageWriter::create",
+      "ImageWriter::read_exact_at",
+      "WriteAt::len",
+      "WriteAt::write_all_at",
+      "WriteAt::flush",
+      "InspectImage::inspection"
+    ],
+    "read_at": "immutable reader contract preserved; mutable writers expose inherent reads and do not implement ReadAt",
+    "features": {
+      "default_library": [],
+      "optional": "cli"
+    },
+    "rust_version": "1.99"
+  },
+  "consumer": {
+    "directory": "/data/cache/virtdisk-0.2.0-registry-consumer",
+    "virtdisk_source": "registry+https://github.com/rust-lang/crates.io-index",
+    "features": [],
+    "partmgr": "frozen local source snapshot; virtdisk itself comes from registry without path patch",
+    "sibling_checkout_modified": false,
+    "standard_passed": 5,
+    "standard_ignored": 1,
+    "native_qcow2_passed": 1,
+    "native_receipt": "/data/cache/virtdisk-0.2.0-registry-native/writer-bridge-cFTyM0/evidence.txt",
+    "native_receipt_sha256": "1547fbadfed20c3a7572f85c7be1bdb99a450008b79effe0a182dbee93eb89c3",
+    "source_and_lock_hashes": {
+      "Cargo.lock": "9a7a6aceeff7dabb73eb0d515a53b22c0f1a9ec480d0105f2473f9fae1cc7087",
+      "Cargo.toml": "83dd57bac320d8f8631ea01ebcd249cb40ee13520a8f33eb223373b37ce84c01",
+      "tests/public_api.rs": "cb3eb43759219d6b3d74dcba6fa1ceeb4ba425630a6fca88b0de393288dbdaa5",
+      "tests/session.rs": "19b08e239817b16e984fdf11341ef87645044eda0e56a1c29f58e41c665878af",
+      "examples/profile.rs": "1ddce38d26bdf1046d0b96425dafe635197e3b61a5fd1b7f4411cebfe2451016",
+      "src/lib.rs": "931f1b8828274c0002ec74f85b29ce6da5d8bf6fd44066ef36cf65e34ff5a8f9"
+    },
+    "performance": {
+      "scope": "small debug measurements, not sustained performance qualification or a predefined acceptance threshold",
+      "samples": [
+        {
+          "format": "Raw",
+          "profile": "debug_smoke",
+          "sequential_operations": 8,
+          "random_operations": 64,
+          "sequential_ns": 50252,
+          "random_write_ns": 36907,
+          "random_read_ns": 30386,
+          "flush_ns": 5086257,
+          "full_reopen_verify_ns": 1115349,
+          "logical_bytes": 2097152,
+          "region_bytes": 65536,
+          "exact_model": true
+        },
+        {
+          "format": "Qcow2",
+          "profile": "debug_smoke",
+          "sequential_operations": 8,
+          "random_operations": 64,
+          "sequential_ns": 19488,
+          "random_write_ns": 39283,
+          "random_read_ns": 32682,
+          "flush_ns": 4423582,
+          "full_reopen_verify_ns": 1061739,
+          "logical_bytes": 2097152,
+          "region_bytes": 65536,
+          "exact_model": true
+        }
+      ]
+    }
+  },
+  "log_sha256": {
+    "/data/cache/virtdisk-0.2.0-clippy-final.log": "d6e5dd79afa41e4f0d67be4bc192f96b7b00cf59b63dba221d2ac62e73d290f5",
+    "/data/cache/virtdisk-0.2.0-standard-tests-final.log": "548f37cf3d62eb1be8115e206b3eb03da02b3a5bb2785e4cfcc94e2640e9f7a2",
+    "/data/cache/virtdisk-0.2.0-windows-clippy.log": "131e21aa5d7b7ef73ed06797b436fea1f46e8ef300b3af4c1247c0608cbfbbc7",
+    "/data/cache/virtdisk-0.2.0-publish-dry-run.log": "b5befb983aa6e163ff03550b8d5c087f4af197f29308a6bafd37d8080830b3ca",
+    "/data/cache/virtdisk-0.2.0-publish.log": "9d6629dad9c415d166d54fb0f1d29206365458c4a359f5ee31b03ed2f278fe67",
+    "/data/cache/virtdisk-0.2.0-consumer-candidate.log": "311c854a3b1f6561027a5cd1dad5429acd8ef1405207af4afb2b97904a40c7f7",
+    "/data/cache/virtdisk-0.2.0-registry-consumer.log": "114d5f6ba81e43843f61a8c190d3eac13f34d0e50c169f854f2c816d7ddf8072",
+    "/data/cache/virtdisk-0.2.0-registry-native.log": "e8e97ec9641ad635e39077f8c800f1827322965486de3231310e22bd5222fa24",
+    "/data/cache/virtdisk-0.2.0-registry-profile.log": "9521bd1a3d5bad45f79cdfa8f6ffce235e4d67440be845693a3dc46b04dd1680"
+  },
+  "limits": [
+    "Windows MSVC check is compilation evidence, not fresh Windows servicing/capture or power-loss evidence",
+    "Native QEMU/VirtualBox/VMware and sustained performance profiles remain separately scoped acceptance work",
+    "Original partmgr checkout migration remains consumer owner action; isolated copied bridge passed registry gates",
+    "Fuzz campaigns and deterministic fuzz replay remain paused"
+  ]
+}

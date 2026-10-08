@@ -1,6 +1,42 @@
 use virtdisk::{
     Capability, ImageOperation, InspectImage, RawWriter, UnsupportedReason, VdiWriter, VmdkWriter,
 };
+
+#[cfg(target_os = "linux")]
+#[test]
+fn inspection_reports_primary_and_set_eof_for_every_family() {
+    use virtdisk::{Image, ImageFormat, ImageWriter, WriteAt};
+    let dir = tempfile::tempdir().unwrap();
+    for format in [
+        ImageFormat::Raw,
+        ImageFormat::Qcow2,
+        ImageFormat::Vdi,
+        ImageFormat::Vmdk,
+        ImageFormat::Vhdx,
+    ] {
+        let path = dir.path().join(format!("{format:?}"));
+        let writer = ImageWriter::create_sparse(&path, format, 2 * 1048576).unwrap();
+        let eof = std::fs::metadata(&path).unwrap().len();
+        if format != ImageFormat::Raw {
+            assert_ne!(eof, writer.len());
+        }
+        assert_eq!(writer.inspection().container_size, Some(eof), "{format:?}");
+        assert_eq!(
+            writer.inspection().container_set_size,
+            Some(eof),
+            "{format:?}"
+        );
+        drop(writer);
+        let reader = Image::open(&path, Some(format)).unwrap();
+        assert_eq!(reader.inspection().container_size, Some(eof), "{format:?}");
+        assert_eq!(
+            reader.inspection().container_set_size,
+            Some(eof),
+            "{format:?}"
+        );
+        assert_eq!(reader.info().container_size, eof);
+    }
+}
 #[test]
 fn opened_writer_reports_actual_operations_not_family_promises() {
     let dir = tempfile::tempdir().unwrap();
@@ -141,10 +177,10 @@ fn qcow_snapshot_creation_updates_handle_count_and_resize_capability() {
     writer.create_snapshot(b"1", b"state").unwrap();
     let info = writer.inspection();
     assert_eq!(info.native_snapshots, Some(1));
-    assert!(matches!(
+    assert_eq!(
         info.capabilities.get(ImageOperation::Resize),
-        Capability::Unsupported(_)
-    ));
+        Capability::Supported
+    );
     drop(writer);
     let writer = Qcow2Writer::open(&path).unwrap();
     assert_eq!(writer.inspection().native_snapshots, Some(1));
@@ -180,4 +216,186 @@ fn snapshot_lifecycle_inspection_reports_specific_operations_and_refreshes_count
         info.capabilities.get(ImageOperation::NativeSnapshotDelete),
         Capability::Supported
     );
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn inspection_tracks_allocation_and_physical_tail_changes_without_reopen() {
+    use virtdisk::{DiscardPolicy, ImageFormat, ImageWriter, ShrinkPolicy, WriteAt};
+    let dir = tempfile::tempdir().unwrap();
+    for format in [
+        ImageFormat::Qcow2,
+        ImageFormat::Vdi,
+        ImageFormat::Vmdk,
+        ImageFormat::Vhdx,
+    ] {
+        let path = dir.path().join(format!("{format:?}"));
+        let mut writer = ImageWriter::create_sparse(&path, format, 2 * 1048576).unwrap();
+        let before = writer.inspection().container_size.unwrap();
+        writer.write_all_at(0, &[7; 512]).unwrap();
+        let after = std::fs::metadata(&path).unwrap().len();
+        assert!(after > before, "{format:?} allocation must grow EOF");
+        assert_eq!(writer.inspection().container_size, Some(after));
+        assert_eq!(writer.inspection().container_set_size, Some(after));
+        if format == ImageFormat::Vdi {
+            writer
+                .discard(0, 1048576, DiscardPolicy::RequireDeallocation)
+                .unwrap();
+            let discarded = std::fs::metadata(&path).unwrap().len();
+            assert!(discarded < after);
+            assert_eq!(writer.inspection().container_size, Some(discarded));
+            assert_eq!(writer.inspection().container_set_size, Some(discarded));
+        } else if matches!(format, ImageFormat::Qcow2 | ImageFormat::Vmdk) {
+            writer.resize(1048576, ShrinkPolicy::AllowDataLoss).unwrap();
+            assert_eq!(writer.inspection().geometry.virtual_size, 1048576);
+            assert_eq!(writer.inspection().container_size, Some(after));
+            assert_eq!(writer.inspection().container_set_size, Some(after));
+        }
+    }
+    let path = dir.path().join("raw");
+    let raw = RawWriter::create(&path, 1024).unwrap();
+    raw.resize(512).unwrap();
+    assert_eq!(raw.inspection().container_size, Some(512));
+    assert_eq!(raw.inspection().container_set_size, Some(512));
+    assert_eq!(raw.inspection().geometry.virtual_size, 512);
+    raw.resize(0).unwrap();
+    assert_eq!(raw.inspection().container_size, Some(0));
+    assert_eq!(raw.inspection().container_set_size, Some(0));
+}
+
+#[test]
+fn descriptor_sizes_include_full_flat_files_but_keep_primary_dimension() {
+    use virtdisk::{Image, ImageFormat};
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("disk.vmdk");
+    let first = dir.path().join("first-flat.vmdk");
+    let second = dir.path().join("second-flat.vmdk");
+    std::fs::write(&first, vec![17; 2048]).unwrap();
+    std::fs::write(&second, vec![23; 3072]).unwrap();
+    std::fs::write(&path, "version=1\nCID=12345678\nparentCID=ffffffff\ncreateType=\"twoGbMaxExtentFlat\"\nRW 2 FLAT \"first-flat.vmdk\" 1\nRW 2 FLAT \"second-flat.vmdk\" 2\n").unwrap();
+    let primary = std::fs::metadata(&path).unwrap().len();
+    let set = primary + 2048 + 3072;
+    let authorized = [first, second];
+    let reader = Image::open_chain(&path, Some(ImageFormat::Vmdk), &authorized).unwrap();
+    assert_eq!(reader.info().container_size, primary);
+    assert_eq!(reader.inspection().container_size, Some(primary));
+    assert_eq!(reader.inspection().container_set_size, Some(set));
+    assert_eq!(reader.inspection().geometry.virtual_size, 2048);
+    drop(reader);
+    let writer = VmdkWriter::open_descriptor(&path, &authorized).unwrap();
+    assert_eq!(writer.inspection().container_size, Some(primary));
+    assert_eq!(writer.inspection().container_set_size, Some(set));
+    writer.write_all_at(1000, &[9; 48]).unwrap();
+    assert_eq!(writer.inspection().container_size, Some(primary));
+    assert_eq!(writer.inspection().container_set_size, Some(set));
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn split_sparse_sizes_track_both_extent_allocations_without_reopen() {
+    use virtdisk::{Image, ImageFormat};
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("disk.vmdk");
+    let mut extents = Vec::new();
+    for name in ["disk-s1.vmdk", "disk-s2.vmdk"] {
+        let extent = dir.path().join(name);
+        drop(VmdkWriter::create_sparse(&extent, 65536).unwrap());
+        let mut bytes = std::fs::read(&extent).unwrap();
+        let offset = u64::from_le_bytes(bytes[28..36].try_into().unwrap()) as usize * 512;
+        let size = u64::from_le_bytes(bytes[36..44].try_into().unwrap()) as usize * 512;
+        bytes[offset..offset + size].fill(0);
+        std::fs::write(&extent, bytes).unwrap();
+        extents.push(extent);
+    }
+    std::fs::write(&path, "version=1\nCID=12345678\nparentCID=ffffffff\ncreateType=\"twoGbMaxExtentSparse\"\nRW 128 SPARSE \"disk-s1.vmdk\"\nRW 128 SPARSE \"disk-s2.vmdk\"\n").unwrap();
+    let primary = std::fs::metadata(&path).unwrap().len();
+    let actual_set = || {
+        primary
+            + extents
+                .iter()
+                .map(|p| std::fs::metadata(p).unwrap().len())
+                .sum::<u64>()
+    };
+    let before = actual_set();
+    let writer = VmdkWriter::open_descriptor(&path, &extents).unwrap();
+    assert_eq!(writer.inspection().container_size, Some(primary));
+    assert_eq!(writer.inspection().container_set_size, Some(before));
+    writer.write_all_at(65535, &[7; 2]).unwrap();
+    assert!(actual_set() > before);
+    assert_eq!(writer.inspection().container_size, Some(primary));
+    assert_eq!(writer.inspection().container_set_size, Some(actual_set()));
+    writer.flush().unwrap();
+    drop(writer);
+    let reader = Image::open_chain(&path, Some(ImageFormat::Vmdk), &extents).unwrap();
+    assert_eq!(reader.info().container_size, primary);
+    assert_eq!(reader.inspection().container_set_size, Some(actual_set()));
+}
+
+#[test]
+fn bounded_non_file_container_source_reports_its_own_length() {
+    use std::{io, sync::Arc};
+    use virtdisk::{Qcow2, Qcow2Writer, ReadAt};
+    struct Bytes(Vec<u8>);
+    impl ReadAt for Bytes {
+        fn len(&self) -> u64 {
+            self.0.len() as u64
+        }
+        fn read_exact_at(&self, at: u64, out: &mut [u8]) -> io::Result<()> {
+            let start = usize::try_from(at).map_err(|_| io::ErrorKind::UnexpectedEof)?;
+            let end = start
+                .checked_add(out.len())
+                .ok_or(io::ErrorKind::UnexpectedEof)?;
+            out.copy_from_slice(self.0.get(start..end).ok_or(io::ErrorKind::UnexpectedEof)?);
+            Ok(())
+        }
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("disk");
+    drop(Qcow2Writer::create(&path, 65536).unwrap());
+    let bytes = std::fs::read(&path).unwrap();
+    let length = bytes.len() as u64;
+    std::fs::remove_file(&path).unwrap();
+    let reader = Qcow2::open(Arc::new(Bytes(bytes))).unwrap();
+    assert_eq!(reader.inspection().container_size, Some(length));
+    assert_eq!(reader.inspection().container_set_size, Some(length));
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn inspection_excludes_authorized_parent_containers_for_every_backed_family() {
+    use virtdisk::{Image, ImageFormat, ImageWriter};
+    let dir = tempfile::tempdir().unwrap();
+    for format in [
+        ImageFormat::Qcow2,
+        ImageFormat::Vdi,
+        ImageFormat::Vmdk,
+        ImageFormat::Vhdx,
+    ] {
+        let base = dir.path().join(format!("base{format:?}"));
+        let child = dir.path().join(format!("child{format:?}"));
+        drop(ImageWriter::create(&base, format, 2 * 1048576).unwrap());
+        match format {
+            ImageFormat::Qcow2 => {
+                virtdisk::create_qcow2_overlay(&child, &base, "qcow2", 2 * 1048576).unwrap()
+            }
+            ImageFormat::Vdi => virtdisk::create_vdi_overlay(&child, &base, &[]).unwrap(),
+            ImageFormat::Vmdk => {
+                drop(
+                    VmdkWriter::create_overlay(&child, &base, std::slice::from_ref(&base)).unwrap(),
+                );
+            }
+            ImageFormat::Vhdx => virtdisk::create_vhdx_overlay(&child, &base, &[]).unwrap(),
+            ImageFormat::Raw => unreachable!(),
+        }
+        let own = std::fs::metadata(&child).unwrap().len();
+        let writer = ImageWriter::open_chain(&child, format, std::slice::from_ref(&base)).unwrap();
+        assert!(writer.inspection().has_parent);
+        assert_eq!(writer.inspection().container_size, Some(own));
+        assert_eq!(writer.inspection().container_set_size, Some(own));
+        drop(writer);
+        let reader = Image::open_chain(&child, Some(format), std::slice::from_ref(&base)).unwrap();
+        assert!(reader.inspection().has_parent);
+        assert_eq!(reader.inspection().container_size, Some(own));
+        assert_eq!(reader.inspection().container_set_size, Some(own));
+    }
 }

@@ -37,6 +37,51 @@ fn claim(owners: &mut BTreeMap<u64, u64>, start: u64, length: u64, file: u64) ->
     owners.insert(start, end);
     Ok(())
 }
+#[cfg(target_os = "linux")]
+#[path = "vmdk_pinned.rs"]
+mod pinned;
+#[cfg(target_os = "linux")]
+pub(crate) use pinned::{
+    DependencyExtent, DependencyExtentKind, DependencyNode, PinnedParentGraph,
+};
+struct OpenedSource {
+    source: Arc<dyn ReadAt>,
+    identity: Option<same_file::Handle>,
+}
+trait SourceFactory {
+    fn open(&mut self, path: &Path, budget: &ReadBudget) -> io::Result<OpenedSource>;
+    fn allow_pending(&self) -> bool {
+        false
+    }
+    fn node(&mut self, _path: &Path, _link: &Link, _hosted: bool) -> io::Result<()> {
+        Ok(())
+    }
+    fn parent(&mut self, _child: &Path, _parent: &Path) -> io::Result<()> {
+        Ok(())
+    }
+    fn extent(
+        &mut self,
+        _node: &Path,
+        _path: &Path,
+        _sparse: bool,
+        _start: u64,
+        _length: u64,
+        _offset: u64,
+    ) -> io::Result<()> {
+        Ok(())
+    }
+}
+struct OrdinaryFactory;
+impl SourceFactory for OrdinaryFactory {
+    fn open(&mut self, path: &Path, _budget: &ReadBudget) -> io::Result<OpenedSource> {
+        let raw = crate::RawDisk::open(path)?;
+        let identity = raw.identity()?;
+        Ok(OpenedSource {
+            source: Arc::new(raw),
+            identity: Some(identity),
+        })
+    }
+}
 struct Authorized {
     paths: BTreeSet<PathBuf>,
     _cache: Vec<CacheReservation>,
@@ -195,12 +240,13 @@ impl Link {
     }
 }
 
-/// Read-only hosted sparse VMDK v1 and authorized flat/sparse descriptors.
+/// Read-only uncompressed hosted sparse VMDK v1/v2 and authorized flat/sparse descriptors.
 ///
 /// Parent chains require `open_chain` and explicit ancestor/extent authorization.
 /// Compressed, footer and dirty native profiles fail closed.
 /// Underlying sources must remain immutable for this reader's lifetime.
 pub struct Vmdk {
+    container_set_size: u64,
     source: Arc<dyn ReadAt>,
     length: u64,
     grain: u64,
@@ -212,6 +258,10 @@ pub struct Vmdk {
     _identity_cache: Option<CacheReservation>,
 }
 impl Vmdk {
+    pub(crate) fn container_sizes(&self) -> (u64, u64) {
+        (self.source.len(), self.container_set_size)
+    }
+
     pub(crate) fn content_id(&self) -> Option<u32> {
         self.cid
     }
@@ -248,7 +298,14 @@ impl Vmdk {
             ));
         }
         let mut identities = vec![child_identity];
-        let parent = Self::chain_node(&parent_path, &authorized, &budget, &mut identities, 1)?;
+        let parent = Self::chain_node(
+            &parent_path,
+            &authorized,
+            &budget,
+            &mut identities,
+            1,
+            &mut OrdinaryFactory,
+        )?;
         if parent.cid != Some(link.parent_cid) {
             return Err(invalid("VMDK parent CID mismatch"));
         }
@@ -261,9 +318,10 @@ impl Vmdk {
             return Err(unsupported("VMDK writer requires hosted sparse child"));
         }
         let size = sector(u64le(&header, 36))?;
-        if size == 0 || size > budget.limits().attribute_bytes {
+        if size == 0 {
             return Err(invalid("VMDK chain requires bounded descriptor"));
         }
+        budget.attribute(size)?;
         budget.metadata(size)?;
         let _scratch = budget.cache(size)?;
         let mut bytes = vec![0; size as usize];
@@ -324,7 +382,13 @@ impl Vmdk {
         authorized_paths: &[PathBuf],
         limits: ParserLimits,
     ) -> io::Result<Self> {
-        let budget = ReadBudget::new(limits)?;
+        Self::open_chain_with_budget(path, authorized_paths, ReadBudget::new(limits)?)
+    }
+    pub(crate) fn open_chain_with_budget(
+        path: impl AsRef<Path>,
+        authorized_paths: &[PathBuf],
+        budget: ReadBudget,
+    ) -> io::Result<Self> {
         let authorized = authorize(authorized_paths, &budget)?;
         let mut identities = Vec::new();
         Self::chain_node(
@@ -333,6 +397,7 @@ impl Vmdk {
             &budget,
             &mut identities,
             0,
+            &mut OrdinaryFactory,
         )
     }
     fn chain_node(
@@ -341,16 +406,17 @@ impl Vmdk {
         budget: &ReadBudget,
         identities: &mut Vec<same_file::Handle>,
         depth: u64,
+        factory: &mut dyn SourceFactory,
     ) -> io::Result<Self> {
-        if depth >= budget.limits().recursion_depth.min(64) {
-            return Err(invalid("VMDK parent depth exceeds limit"));
-        }
+        budget.recursion(u128::from(depth) + 1, 64)?;
         if crate::transaction::pending(path)? {
             return Err(invalid("VMDK has a pending transaction"));
         }
         budget.work(1)?;
-        let raw = crate::RawDisk::open(path)?;
-        let identity = raw.identity()?;
+        let opened = factory.open(path, budget)?;
+        let identity = opened
+            .identity
+            .ok_or_else(|| invalid("missing VMDK discovery identity"))?;
         budget.work(identities.len() as u64)?;
         if identities.contains(&identity) {
             return Err(invalid("VMDK chain cycle or file alias"));
@@ -358,7 +424,7 @@ impl Vmdk {
         budget.metadata(128)?;
         let identity_cache = budget.cache(128)?;
         identities.push(identity);
-        let source = budget.reader(Arc::new(raw));
+        let source = budget.reader(opened.source);
         let mut header = [0; 512];
         source.read_exact_at(0, &mut header[..4])?;
         let hosted = &header[..4] == b"KDMV";
@@ -370,9 +436,10 @@ impl Vmdk {
         } else {
             (0, source.len())
         };
-        if size == 0 || size > budget.limits().attribute_bytes {
+        if size == 0 {
             return Err(invalid("VMDK chain requires bounded descriptor"));
         }
+        budget.attribute(size)?;
         check_range(offset, size, source.len())?;
         budget.metadata(size)?;
         let _scratch = budget.cache(size)?;
@@ -396,6 +463,7 @@ impl Vmdk {
                 "VMDK embedded descriptor capacity or profile mismatch",
             ));
         }
+        factory.node(path, &link, hosted)?;
         let parent: Option<Arc<dyn ReadAt>> = if link.parent_cid != u32::MAX {
             let hint = link
                 .hint
@@ -412,11 +480,18 @@ impl Vmdk {
                     "VMDK parent requires explicit authorization",
                 ));
             }
-            let ancestor =
-                Self::chain_node(&parent_path, authorized, budget, identities, depth + 1)?;
+            let ancestor = Self::chain_node(
+                &parent_path,
+                authorized,
+                budget,
+                identities,
+                depth + 1,
+                factory,
+            )?;
             if ancestor.cid != Some(link.parent_cid) {
                 return Err(invalid("VMDK parent CID mismatch"));
             }
+            factory.parent(path, &parent_path)?;
             Some(Arc::new(ancestor))
         } else {
             if link.hint.is_some() {
@@ -427,7 +502,15 @@ impl Vmdk {
         let mut disk = if hosted {
             Self::parse_mode(source, budget, true)?
         } else {
-            Self::parse_descriptor(source, path, budget, authorized, identities, parent.clone())?
+            Self::parse_descriptor(
+                source,
+                path,
+                budget,
+                authorized,
+                identities,
+                parent.clone(),
+                factory,
+            )?
         };
         if let Some(parent) = &parent
             && parent.len() != disk.length
@@ -501,7 +584,15 @@ impl Vmdk {
         let mut identities = vec![descriptor.identity()?];
         let source = budget.reader(Arc::new(descriptor));
         let authorized = authorize(authorized_extent_paths, &budget)?;
-        Self::parse_descriptor(source, &path, &budget, &authorized, &mut identities, None)
+        Self::parse_descriptor(
+            source,
+            &path,
+            &budget,
+            &authorized,
+            &mut identities,
+            None,
+            &mut OrdinaryFactory,
+        )
     }
     fn parse_descriptor(
         source: Arc<dyn ReadAt>,
@@ -510,14 +601,12 @@ impl Vmdk {
         authorized: &BTreeSet<PathBuf>,
         identities: &mut Vec<same_file::Handle>,
         backing: Option<Arc<dyn ReadAt>>,
+        factory: &mut dyn SourceFactory,
     ) -> io::Result<Self> {
-        let limits = budget.limits();
-        if crate::transaction::pending(path)? {
+        if !factory.allow_pending() && crate::transaction::pending(path)? {
             return Err(invalid("VMDK descriptor has a pending transaction"));
         }
-        if source.len() > limits.attribute_bytes {
-            return Err(invalid("VMDK descriptor exceeds limit"));
-        }
+        budget.attribute(source.len())?;
         budget.metadata(source.len())?;
         let _descriptor_cache = budget.cache(source.len())?;
         let mut bytes = vec![0; source.len() as usize];
@@ -529,6 +618,7 @@ impl Vmdk {
         let mut extent_scratch = Vec::new();
         let mut extents = Vec::new();
         let mut length = 0u64;
+        let mut container_set_size = source.len();
         let mut parent = false;
         let mut version = false;
         let mut cid = false;
@@ -639,19 +729,23 @@ impl Vmdk {
             if !used.insert(extent_path.clone()) {
                 return Err(unsupported("repeated VMDK extent file"));
             }
-            if crate::transaction::pending(&extent_path)? {
+            if !factory.allow_pending() && crate::transaction::pending(&extent_path)? {
                 return Err(invalid("VMDK extent has a pending transaction"));
             }
             budget.metadata(128)?;
             extent_scratch.push(budget.cache(128)?);
-            let extent = crate::RawDisk::open(extent_path)?;
-            let identity = extent.identity()?;
-            budget.work(identities.len() as u64)?;
-            if identities.contains(&identity) {
-                return Err(unsupported("VMDK extent aliases another opened file"));
+            let opened = factory.open(&extent_path, budget)?;
+            if let Some(identity) = opened.identity {
+                budget.work(identities.len() as u64)?;
+                if identities.contains(&identity) {
+                    return Err(unsupported("VMDK extent aliases another opened file"));
+                }
+                identities.push(identity);
             }
-            identities.push(identity);
-            let extent_source = budget.reader(Arc::new(extent));
+            let extent_source = budget.reader(opened.source);
+            container_set_size = container_set_size
+                .checked_add(extent_source.len())
+                .ok_or_else(|| invalid("VMDK container set size overflow"))?;
             let tail = line[end + 1..].trim();
             let reader: Arc<dyn ReadAt> = match fields[2] {
                 "FLAT" => {
@@ -680,6 +774,22 @@ impl Vmdk {
                 }
                 _ => return Err(unsupported("unsupported VMDK extent type")),
             };
+            let physical_offset = if fields[2] == "FLAT" {
+                sector(
+                    tail.parse()
+                        .map_err(|_| invalid("invalid flat extent offset"))?,
+                )?
+            } else {
+                0
+            };
+            factory.extent(
+                path,
+                &extent_path,
+                fields[2] == "SPARSE",
+                length,
+                size,
+                physical_offset,
+            )?;
             extents.push((length, reader));
             length = length
                 .checked_add(size)
@@ -701,6 +811,7 @@ impl Vmdk {
                 .ok_or_else(|| invalid("VMDK extent cache overflow"))?,
         )?;
         Ok(Self {
+            container_set_size,
             source,
             length,
             grain: 0,
@@ -724,6 +835,13 @@ impl Vmdk {
             .map(|e| if *e <= 1 { 0 } else { u64::from(*e) * 512 })
             .collect())
     }
+    #[cfg(target_os = "linux")]
+    pub(crate) fn open_with_budget(
+        source: Arc<dyn ReadAt>,
+        budget: &ReadBudget,
+    ) -> io::Result<Self> {
+        Self::parse(budget.reader(source), budget)
+    }
     fn parse(source: Arc<dyn ReadAt>, budget: &ReadBudget) -> io::Result<Self> {
         Self::parse_mode(source, budget, false)
     }
@@ -744,7 +862,7 @@ impl Vmdk {
             return Err(invalid("invalid VMDK magic"));
         }
         let flags = u32le(&h, 8);
-        if u32le(&h, 4) != 1 || flags & !7 != 0 || h[72] != 0 || h[77..79] != [0, 0] {
+        if ![1, 2].contains(&u32le(&h, 4)) || flags & !7 != 0 || h[72] != 0 || h[77..79] != [0, 0] {
             return Err(unsupported("unsupported VMDK profile"));
         }
         if flags & 1 != 0 && h[73..77] != [10, 32, 13, 10] {
@@ -792,9 +910,7 @@ impl Vmdk {
         }
         if desc_size != 0 {
             budget.metadata(desc_size)?;
-            if desc_size > budget.limits().attribute_bytes {
-                return Err(invalid("VMDK descriptor exceeds limit"));
-            }
+            budget.attribute(desc_size)?;
             claim(&mut owners, desc_offset, desc_size, overhead)?;
             let _descriptor_cache = budget.cache(desc_size)?;
             let mut desc = vec![0; desc_size as usize];
@@ -867,9 +983,7 @@ impl Vmdk {
                     .ok_or_else(|| invalid("VMDK table overflow"))?;
                 budget.metadata(bytes)?;
                 budget.work(gtes)?;
-                if bytes > budget.limits().attribute_bytes {
-                    return Err(invalid("VMDK grain table exceeds limit"));
-                }
+                budget.attribute(bytes)?;
                 claim(&mut owners, table, bytes, overhead)?;
                 let _table_cache = budget.cache(bytes)?;
                 let mut data = vec![0; bytes as usize];
@@ -903,6 +1017,7 @@ impl Vmdk {
             return Err(invalid("invalid VMDK overhead"));
         }
         Ok(Self {
+            container_set_size: source.len(),
             source,
             length,
             grain,

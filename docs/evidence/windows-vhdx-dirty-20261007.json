@@ -1,0 +1,270 @@
+{
+  "schema_version": 1,
+  "recorded_utc": "2026-10-07T17:19:58Z",
+  "scope": "native replay and library recovery of deterministically reconstructed durable redo before metadata publication; not captured OS power loss",
+  "executable": {
+    "source": "/data/cache/rust/x86_64-pc-windows-msvc/debug/virtdisk-windows-acceptance.exe",
+    "length": 1121792,
+    "sha256": "2891cbdf1e2150e4dac40e8ce843f2d768665a4d075ca3e6b4709d8306c4d203"
+  },
+  "full_receipt": "/data/cache/virtdisk-native-windows/receipts/20261007T171958Z.json",
+  "cases": {
+    "sector-4096\\library_recovery\\base.vhdx\\base.vhdx.json": {
+      "after": [
+        {
+          "path": "base.vhdx",
+          "sha256": "54de556ec38f7d71de6e6882e627152b6bdc1b1290374ac20326295e50c94c37"
+        }
+      ],
+      "before": [
+        {
+          "path": "base.vhdx",
+          "sha256": "54de556ec38f7d71de6e6882e627152b6bdc1b1290374ac20326295e50c94c37"
+        }
+      ],
+      "gate": "passed",
+      "manifest_sha256": "a2b9539fc06eb96020a748f6876feca4efa49ad2486cf5909c400ff65dc49351",
+      "mode": "library_recovery",
+      "native": {
+        "attach": 0,
+        "block_size": 1048576,
+        "capacity": 4194304,
+        "detach": 0,
+        "logical_sector": 4096,
+        "logical_sha256": "34e9cf1f3f40cd725fb26a6b5c21fc70235d91141841b871b2c7df28dc632cda",
+        "open": 0,
+        "physical_sector": 4096
+      },
+      "os_build": "Microsoft Windows [Version 10.0.26200.8037]"
+    },
+    "sector-4096\\library_recovery\\child.vhdx\\child.vhdx.json": {
+      "after": [
+        {
+          "path": "child.vhdx",
+          "sha256": "4a575eb4987d0f8ac8857415c2af1300e82ef77a7ad716e92f3250d6ef9b8a18"
+        },
+        {
+          "path": "base.vhdx",
+          "sha256": "ff8934d765d1b0459194261adb6d48ec52c3a1fead821b2e9180ce8a14e09f60"
+        }
+      ],
+      "before": [
+        {
+          "path": "child.vhdx",
+          "sha256": "4a575eb4987d0f8ac8857415c2af1300e82ef77a7ad716e92f3250d6ef9b8a18"
+        },
+        {
+          "path": "base.vhdx",
+          "sha256": "ff8934d765d1b0459194261adb6d48ec52c3a1fead821b2e9180ce8a14e09f60"
+        }
+      ],
+      "gate": "passed",
+      "manifest_sha256": "00daf08e3ed1c8004bb05a3d2f3b8599a9ff3b5be191222489eac5e0a7eacdf1",
+      "mode": "library_recovery",
+      "native": {
+        "attach": 0,
+        "block_size": 1048576,
+        "capacity": 4194304,
+        "detach": 0,
+        "logical_sector": 4096,
+        "logical_sha256": "7aae24c1be04facab3e2dd542222cae7b9bea17db5e99d3fed60d4c22d87a6b4",
+        "open": 0,
+        "physical_sector": 4096
+      },
+      "os_build": "Microsoft Windows [Version 10.0.26200.8037]"
+    },
+    "sector-4096\\native_replay\\base.vhdx\\base.vhdx.json": {
+      "after": [
+        {
+          "path": "base.vhdx",
+          "sha256": "83bb3b4eaf2a5b2c4af3c5f97d31148df3629804f14694fa3a6619798655fd08"
+        }
+      ],
+      "before": [
+        {
+          "path": "base.vhdx",
+          "sha256": "14f539dbf266d5af14de667002ecca484cedf817b4fbc80eef2f87797f0e1d6b"
+        }
+      ],
+      "gate": "passed",
+      "manifest_sha256": "5217f45af339970e64a8131c2a5fc8bb888f41caf8b5ab22b38ad8008f448471",
+      "mode": "native_replay",
+      "native": {
+        "attach": 0,
+        "block_size": 1048576,
+        "capacity": 4194304,
+        "detach": 0,
+        "logical_sector": 4096,
+        "logical_sha256": "34e9cf1f3f40cd725fb26a6b5c21fc70235d91141841b871b2c7df28dc632cda",
+        "open": 0,
+        "physical_sector": 4096
+      },
+      "os_build": "Microsoft Windows [Version 10.0.26200.8037]"
+    },
+    "sector-4096\\native_replay\\child.vhdx\\child.vhdx.json": {
+      "after": [
+        {
+          "path": "child.vhdx",
+          "sha256": "603fec9de8aad47079a3ccd93069dba7890c93518df31c40768c12d2644d3b8e"
+        },
+        {
+          "path": "base.vhdx",
+          "sha256": "ff8934d765d1b0459194261adb6d48ec52c3a1fead821b2e9180ce8a14e09f60"
+        }
+      ],
+      "before": [
+        {
+          "path": "child.vhdx",
+          "sha256": "760eb1bc8996fa56d9947a44d421c1f969b5f689e67c3b18090acd1b3615e151"
+        },
+        {
+          "path": "base.vhdx",
+          "sha256": "ff8934d765d1b0459194261adb6d48ec52c3a1fead821b2e9180ce8a14e09f60"
+        }
+      ],
+      "gate": "passed",
+      "manifest_sha256": "c4cdc30609b27e3803e61febb4b0a385a314faa464b0bd612f125cad2cf89eb3",
+      "mode": "native_replay",
+      "native": {
+        "attach": 0,
+        "block_size": 1048576,
+        "capacity": 4194304,
+        "detach": 0,
+        "logical_sector": 4096,
+        "logical_sha256": "7aae24c1be04facab3e2dd542222cae7b9bea17db5e99d3fed60d4c22d87a6b4",
+        "open": 0,
+        "physical_sector": 4096
+      },
+      "os_build": "Microsoft Windows [Version 10.0.26200.8037]"
+    },
+    "sector-512\\library_recovery\\base.vhdx\\base.vhdx.json": {
+      "after": [
+        {
+          "path": "base.vhdx",
+          "sha256": "14cba22b12225d3ba549f41d1ece3e584c5377ad1caa1d7a739a94d2f5b7c4d5"
+        }
+      ],
+      "before": [
+        {
+          "path": "base.vhdx",
+          "sha256": "14cba22b12225d3ba549f41d1ece3e584c5377ad1caa1d7a739a94d2f5b7c4d5"
+        }
+      ],
+      "gate": "passed",
+      "manifest_sha256": "2f31d0b9c4f733992eeb9dde467eb9567454b3dd91030f3c8d1e7f71ba5efe61",
+      "mode": "library_recovery",
+      "native": {
+        "attach": 0,
+        "block_size": 1048576,
+        "capacity": 4194304,
+        "detach": 0,
+        "logical_sector": 512,
+        "logical_sha256": "34e9cf1f3f40cd725fb26a6b5c21fc70235d91141841b871b2c7df28dc632cda",
+        "open": 0,
+        "physical_sector": 4096
+      },
+      "os_build": "Microsoft Windows [Version 10.0.26200.8037]"
+    },
+    "sector-512\\library_recovery\\child.vhdx\\child.vhdx.json": {
+      "after": [
+        {
+          "path": "child.vhdx",
+          "sha256": "2444dd28e5fd0ae00b897e80a52bf470869d5531d70a0c10dc963a81a0022d10"
+        },
+        {
+          "path": "base.vhdx",
+          "sha256": "2389ed6d21f2abe859064bdd12f9102b7f5819eb55975910c4553275d81902a0"
+        }
+      ],
+      "before": [
+        {
+          "path": "child.vhdx",
+          "sha256": "2444dd28e5fd0ae00b897e80a52bf470869d5531d70a0c10dc963a81a0022d10"
+        },
+        {
+          "path": "base.vhdx",
+          "sha256": "2389ed6d21f2abe859064bdd12f9102b7f5819eb55975910c4553275d81902a0"
+        }
+      ],
+      "gate": "passed",
+      "manifest_sha256": "728e1fa1514bbebe35513b42b8da10eacb0e7860a44a555cc16a5f94d8f99e78",
+      "mode": "library_recovery",
+      "native": {
+        "attach": 0,
+        "block_size": 1048576,
+        "capacity": 4194304,
+        "detach": 0,
+        "logical_sector": 512,
+        "logical_sha256": "ad7f03acc704c9d66df6323a4f1adfe8632fd8b2e4df89e16b010cc507290b18",
+        "open": 0,
+        "physical_sector": 4096
+      },
+      "os_build": "Microsoft Windows [Version 10.0.26200.8037]"
+    },
+    "sector-512\\native_replay\\base.vhdx\\base.vhdx.json": {
+      "after": [
+        {
+          "path": "base.vhdx",
+          "sha256": "abc4bc1e14f247d97632f8a2ca991f41f9ec4c9dbc519b0c72333001e71a5ff8"
+        }
+      ],
+      "before": [
+        {
+          "path": "base.vhdx",
+          "sha256": "49e3fb86754da08bfa3db3f505ddddb2b0f0d81c64f6df98b31e88c0994d7369"
+        }
+      ],
+      "gate": "passed",
+      "manifest_sha256": "78ec76458e7e07097126bc6222813ab5b7c23e064733d414f33435637be2af08",
+      "mode": "native_replay",
+      "native": {
+        "attach": 0,
+        "block_size": 1048576,
+        "capacity": 4194304,
+        "detach": 0,
+        "logical_sector": 512,
+        "logical_sha256": "34e9cf1f3f40cd725fb26a6b5c21fc70235d91141841b871b2c7df28dc632cda",
+        "open": 0,
+        "physical_sector": 4096
+      },
+      "os_build": "Microsoft Windows [Version 10.0.26200.8037]"
+    },
+    "sector-512\\native_replay\\child.vhdx\\child.vhdx.json": {
+      "after": [
+        {
+          "path": "child.vhdx",
+          "sha256": "71778564dd1ee1446ea97cc50dd328d5f74d835f9e28678c3025696cc6c35e63"
+        },
+        {
+          "path": "base.vhdx",
+          "sha256": "2389ed6d21f2abe859064bdd12f9102b7f5819eb55975910c4553275d81902a0"
+        }
+      ],
+      "before": [
+        {
+          "path": "child.vhdx",
+          "sha256": "cde236b39ae543d1deeb38d00833e199bcf00872166b73063dcc94a7dc15db8f"
+        },
+        {
+          "path": "base.vhdx",
+          "sha256": "2389ed6d21f2abe859064bdd12f9102b7f5819eb55975910c4553275d81902a0"
+        }
+      ],
+      "gate": "passed",
+      "manifest_sha256": "eef56a2dcf147848b090440f884b44a7e439d3388e3dfacf13e9a2ea25a2f447",
+      "mode": "native_replay",
+      "native": {
+        "attach": 0,
+        "block_size": 1048576,
+        "capacity": 4194304,
+        "detach": 0,
+        "logical_sector": 512,
+        "logical_sha256": "ad7f03acc704c9d66df6323a4f1adfe8632fd8b2e4df89e16b010cc507290b18",
+        "open": 0,
+        "physical_sector": 4096
+      },
+      "os_build": "Microsoft Windows [Version 10.0.26200.8037]"
+    }
+  },
+  "passed": true
+}
