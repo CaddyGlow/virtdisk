@@ -1,9 +1,9 @@
 //! Bounded hosted-image metadata transactions with old/proposed validation.
 
 use crate::ReadAt;
+use crate::io;
 use crate::source::LockedSource;
 use sha2::{Digest, Sha256};
-use std::io;
 
 const LIMIT: usize = 4 * 1024 * 1024;
 const PATCH_LIMIT: usize = 16;
@@ -293,18 +293,18 @@ pub(crate) fn pending(path: &std::path::Path) -> io::Result<bool> {
     match std::fs::symlink_metadata(sidecar(path)) {
         Ok(_) => Ok(true),
         Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(false),
-        Err(e) => Err(e),
+        Err(e) => Err(e.into()),
     }
 }
 fn sync_parent(path: &std::path::Path) -> io::Result<()> {
     #[cfg(target_os = "linux")]
     {
-        std::fs::File::open(
+        Ok(std::fs::File::open(
             path.parent()
                 .filter(|p| !p.as_os_str().is_empty())
                 .unwrap_or(std::path::Path::new(".")),
         )?
-        .sync_all()
+        .sync_all()?)
     }
     #[cfg(not(target_os = "linux"))]
     {
@@ -427,7 +427,7 @@ pub(crate) fn commit(
     cut: Option<usize>,
     validator: &dyn Fn(std::sync::Arc<dyn ReadAt>) -> io::Result<()>,
 ) -> io::Result<()> {
-    use std::io::Write;
+    use crate::io::Write;
     raw.require_single_link_for_journal()?;
     validate_states(raw.clone(), &record, validator)?;
     sync_parent(path)?; // Reject unsupported directory persistence before mutation.

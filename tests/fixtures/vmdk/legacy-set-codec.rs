@@ -1,7 +1,8 @@
 // Frozen standalone VDTXSET1 codec from the multiple-table checkpoint.
 use crate::transaction::Record;
 use sha2::{Digest, Sha256};
-use std::{io, path::{Path, PathBuf}};
+use crate::io;
+use std::{path::{Path, PathBuf}};
 use std::os::unix::ffi::{OsStrExt, OsStringExt};
 const MAGIC: &[u8; 8] = b"VDTXSET1";
 const MARKER: &[u8; 8] = b"VDTXPAR1";

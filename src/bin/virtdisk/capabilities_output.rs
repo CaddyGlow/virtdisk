@@ -1,5 +1,5 @@
 //! Current-handle capability reports without reopening an inspected image.
-use std::io::{self, Write};
+use virtdisk::io::{self, Write};
 use virtdisk::{Capability, ImageInspection, ImageOperation, ImageProfile, ValidationLevel};
 
 pub(super) fn write_json(output: &mut impl Write, inspection: ImageInspection) -> io::Result<()> {
@@ -58,5 +58,5 @@ pub(super) fn write_json(output: &mut impl Write, inspection: ImageInspection) -
         }
         write!(output, "}}")?;
     }
-    writeln!(output, "]}}")
+    Ok(writeln!(output, "]}}")?)
 }

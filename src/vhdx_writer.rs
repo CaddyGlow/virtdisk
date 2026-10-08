@@ -1,11 +1,11 @@
 //! Exclusive payload writes with native logged sparse allocation.
 #[path = "vhdx_allocate.rs"]
 mod allocator;
+use crate::io::{self, Read, Seek, SeekFrom, Write};
 use crate::source::FileSource;
 use crate::{CacheReservation, ReadAt, ReadBudget, Vhdx, check_range};
 use std::{
     fs::{File, OpenOptions},
-    io::{self, Read, Seek, SeekFrom, Write},
     path::Path,
     sync::{Arc, Mutex},
 };
@@ -568,7 +568,7 @@ impl VhdxWriter {
                 cursor += n as u64;
             }
         }
-        let result = (|| {
+        let result: io::Result<()> = (|| {
             Self::epoch(&mut state)?;
             if boundary_bytes != 0 {
                 let physical = state.map[(boundary / self.block) as usize];
@@ -659,6 +659,6 @@ impl VhdxWriter {
                 "VHDX metadata transaction failed; recover and reopen before flushing",
             ));
         }
-        state.file.sync_all()
+        Ok(state.file.sync_all()?)
     }
 }

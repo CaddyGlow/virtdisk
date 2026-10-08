@@ -1,10 +1,38 @@
 //! Bounded, fail-closed QCOW2 active-image and authorized backing-chain reader.
-use crate::{RawDisk, ReadAt, check_range};
+//!
+//! Host builds retain a bounded, synchronized hash cache of validated mapping
+//! words, reserving 128 bytes per entry and charging 128 metadata bytes and
+//! the underlying source read on cache misses. Cache hits charge neither an
+//! additional source read nor materialized mapping metadata. Hash capacity is
+//! reserved fallibly before reading; refused/invalid entries release their live
+//! reservation while cumulative charges remain consumed.
+//! Portable builds retain no mapping cache: each lookup charges eight metadata
+//! bytes, one work item, and the actual underlying read. Repeated portable reads
+//! can therefore exhaust cumulative ceilings earlier. Decoder input, output,
+//! and scratch storage are reserved until the decoded cluster is consumed.
+//! Zstd additionally reserves twice the history window, sixteen times the
+//! maximum block size (min(window, 128 KiB)), and 64 KiB for entropy/state storage.
+//! The private decoder checks block, literal, sequence-count and regenerated
+//! output limits before internal growth. Its bounded internal table/buffer
+//! allocations remain infallible; input/output allocation failures are typed.
+//! Snapshot identifiers are checked against the fallibly reserved directory
+//! vector, charging linear comparison work without a second identifier set.
+//! Refcount ownership uses a fallibly reserved sorted vector, charging linear
+//! insertion work and key storage. Host path authorization uses host hash sets.
+
+#[cfg(feature = "std")]
+use crate::RawDisk;
+#[cfg(not(feature = "std"))]
+use crate::zstd_decoder::io_nostd::Read;
+use crate::{ReadAt, check_range, io};
+use alloc::{string::String, sync::Arc, vec::Vec};
+#[cfg(feature = "std")]
+use std::io::Read;
+#[cfg(feature = "std")]
 use std::{
     collections::{HashMap, HashSet},
-    io::{self, Read},
     path::{Path, PathBuf},
-    sync::{Arc, Mutex},
+    sync::Mutex,
 };
 
 mod snapshots;
@@ -21,6 +49,14 @@ fn invalid(message: &'static str) -> io::Error {
 }
 fn unsupported(message: &'static str) -> io::Error {
     io::Error::new(io::ErrorKind::Unsupported, message)
+}
+fn zeroed_bytes(length: usize) -> io::Result<Vec<u8>> {
+    let mut bytes = Vec::new();
+    bytes.try_reserve_exact(length).map_err(|_| {
+        io::Error::new(io::ErrorKind::OutOfMemory, "QCOW2 buffer allocation failed")
+    })?;
+    bytes.resize(length, 0);
+    Ok(bytes)
 }
 fn be32(bytes: &[u8]) -> u32 {
     u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]])
@@ -43,6 +79,7 @@ fn be64(bytes: &[u8]) -> u64 {
 /// after explicit authorization through [`Self::open_chain`].
 pub struct Qcow2 {
     source: Arc<dyn ReadAt>,
+    #[cfg(feature = "std")]
     entry_cache: Mutex<HashMap<u64, (u64, crate::CacheReservation)>>,
     version: u32,
     size: u64,
@@ -64,15 +101,18 @@ pub struct Qcow2 {
 }
 
 impl Qcow2 {
+    #[cfg(feature = "std")]
     pub(crate) fn container_size(&self) -> u64 {
         self.source.len()
     }
 
+    #[cfg(feature = "std")]
     pub(crate) fn declared_backing(&self) -> Option<(&str, Option<&str>)> {
         self.backing_name
             .as_deref()
             .map(|name| (name, self.backing_format.as_deref()))
     }
+    #[cfg(feature = "std")]
     pub(crate) fn resolved_backing_format(&self) -> Option<crate::ImageFormat> {
         self.backing.as_ref().map(|_| {
             if self.backing_qcow.is_some() {
@@ -82,6 +122,7 @@ impl Qcow2 {
             }
         })
     }
+    #[cfg(feature = "std")]
     pub(crate) fn info_profile(&self) -> (u32, u64, bool, u32) {
         (
             self.version,
@@ -93,7 +134,7 @@ impl Qcow2 {
     /// Parse a bounded header and retain its container reader.
     ///
     /// Embedded backing paths are never opened by this constructor. Images
-    /// declaring a backing file require [`Self::open_chain`].
+    /// declaring a backing file require an explicitly supplied parent or a host chain opener.
     pub fn open(source: Arc<dyn ReadAt>) -> io::Result<Self> {
         Self::open_with_limits(source, crate::ParserLimits::default())
     }
@@ -115,13 +156,76 @@ impl Qcow2 {
         Ok(disk)
     }
 
+    /// Open an image using explicitly supplied immutable raw backing storage.
+    /// An existing parent budget is reused and requires identical limits;
+    /// otherwise this constructor creates one shared budget for both sources.
+    pub fn open_with_raw_parent(
+        source: Arc<dyn ReadAt>,
+        parent: Arc<dyn ReadAt>,
+        limits: crate::ParserLimits,
+    ) -> io::Result<Self> {
+        Self::open_supplied_parent(source, parent, None, limits)
+    }
+    /// Open an image using an explicitly supplied parsed QCOW2 parent.
+    /// The child retains the parent's cumulative budget; limits must match.
+    pub fn open_with_parent(
+        source: Arc<dyn ReadAt>,
+        parent: Arc<Qcow2>,
+        limits: crate::ParserLimits,
+    ) -> io::Result<Self> {
+        Self::open_supplied_parent(source, parent.clone(), Some(parent), limits)
+    }
+    fn open_supplied_parent(
+        source: Arc<dyn ReadAt>,
+        parent: Arc<dyn ReadAt>,
+        qcow: Option<Arc<Qcow2>>,
+        limits: crate::ParserLimits,
+    ) -> io::Result<Self> {
+        let retained_budget = parent.budget();
+        let budget = match &retained_budget {
+            Some(budget) if budget.limits() == limits => budget.clone(),
+            Some(_) => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "supplied QCOW2 parent parser limits differ from child limits",
+                ));
+            }
+            None => crate::ReadBudget::new(limits)?,
+        };
+        crate::portable::validate_parent_identity(&*source, &*parent, &budget, 32)?;
+        let mut disk = Self::parse(budget.reader(source))?;
+        if disk.backing_name.is_none() {
+            return Err(invalid("QCOW2 has no declared backing image"));
+        }
+        let format = if qcow.is_some() { "qcow2" } else { "raw" };
+        if disk
+            .backing_format
+            .as_deref()
+            .is_some_and(|declared| declared != format)
+        {
+            return Err(unsupported("QCOW2 supplied backing format mismatch"));
+        }
+        disk.backing = Some(if retained_budget.is_some() {
+            parent
+        } else {
+            budget.reader(parent)
+        });
+        disk.backing_qcow = qcow;
+        Ok(disk)
+    }
+
     fn parse(source: Arc<dyn ReadAt>) -> io::Result<Self> {
         // Fixed header bytes are materialized metadata even without extensions
         // or backing names. Charge them before reading image-controlled bytes.
         if let Some(budget) = source.budget() {
             budget.metadata(104)?;
         }
-        if let Some(path) = source.context().container {
+        #[cfg(feature = "std")]
+        if let Some(path) = source
+            .host_context()
+            .and_then(|context| context.downcast_ref::<crate::HostSourceContext>())
+            .map(|context| context.path.clone())
+        {
             match std::fs::symlink_metadata(crate::qcow2_writer::journal_path(&path)) {
                 Ok(_) => {
                     return Err(io::Error::new(
@@ -129,8 +233,8 @@ impl Qcow2 {
                         "QCOW2 transaction journal requires writer recovery before read-only access",
                     ));
                 }
-                Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-                Err(error) => return Err(error),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error.into()),
             }
         }
         let mut header = [0; 104];
@@ -221,6 +325,7 @@ impl Qcow2 {
         )?;
         Ok(Self {
             source,
+            #[cfg(feature = "std")]
             entry_cache: Mutex::new(HashMap::new()),
             version,
             size,
@@ -254,6 +359,7 @@ impl Qcow2 {
     /// canonical paths (and repeated device/inode identities on Unix) are rejected.
     /// The retained read-only handles do not provide snapshots: every source must
     /// remain immutable for the full capture and deferred WIM write.
+    #[cfg(feature = "std")]
     pub fn open_chain(
         path: impl AsRef<Path>,
         authorized_backing_paths: &[PathBuf],
@@ -266,6 +372,7 @@ impl Qcow2 {
     }
 
     /// Open an explicitly authorized backing chain with a shared parser budget.
+    #[cfg(feature = "std")]
     pub fn open_chain_with_limits(
         path: impl AsRef<Path>,
         authorized_backing_paths: &[PathBuf],
@@ -277,6 +384,7 @@ impl Qcow2 {
             crate::ReadBudget::new(limits)?,
         )
     }
+    #[cfg(feature = "std")]
     pub(crate) fn open_chain_with_budget(
         path: impl AsRef<Path>,
         authorized_backing_paths: &[PathBuf],
@@ -293,7 +401,7 @@ impl Qcow2 {
                 )?;
                 std::fs::canonicalize(path).map_err(|e| {
                     crate::ReadContext {
-                        container: Some(path.clone()),
+                        container: Some(path.display().to_string()),
                         ..Default::default()
                     }
                     .error("authorize QCOW2 backing path", e)
@@ -312,6 +420,7 @@ impl Qcow2 {
         )
     }
 
+    #[cfg(feature = "std")]
     fn open_chain_inner(
         path: &Path,
         approved: &HashSet<PathBuf>,
@@ -323,13 +432,14 @@ impl Qcow2 {
         Self::open_chain_inner_unannotated(path, approved, paths, identities, depth, budget)
             .map_err(|e| {
                 crate::ReadContext {
-                    container: Some(path.to_path_buf()),
+                    container: Some(path.display().to_string()),
                     ..Default::default()
                 }
                 .error("open QCOW2 backing chain", e)
             })
     }
 
+    #[cfg(feature = "std")]
     fn open_chain_inner_unannotated(
         path: &Path,
         approved: &HashSet<PathBuf>,
@@ -361,6 +471,7 @@ impl Qcow2 {
         Self::attach_backing(disk, path, approved, paths, identities, depth, budget)
     }
 
+    #[cfg(feature = "std")]
     pub(crate) fn open_locked_chain(
         source: Arc<dyn ReadAt>,
         path: &Path,
@@ -394,10 +505,12 @@ impl Qcow2 {
         )
     }
 
+    #[cfg(feature = "std")]
     pub(crate) fn backing_reader(&self) -> Option<Arc<dyn ReadAt>> {
         self.backing.clone()
     }
 
+    #[cfg(feature = "std")]
     fn attach_backing(
         mut disk: Self,
         path: &Path,
@@ -496,7 +609,7 @@ impl Qcow2 {
             if let Some(budget) = source.budget() {
                 budget.metadata(length)?;
             }
-            let mut bytes = vec![0; length as usize];
+            let mut bytes = zeroed_bytes(length as usize)?;
             source.read_exact_at(offset, &mut bytes)?;
             if bytes.contains(&0) {
                 return Err(invalid("QCOW2 backing filename contains NUL"));
@@ -537,7 +650,7 @@ impl Qcow2 {
                 if format.is_some() || length == 0 || length > 32 {
                     return Err(invalid("invalid QCOW2 backing format extension"));
                 }
-                let mut bytes = vec![0; length as usize];
+                let mut bytes = zeroed_bytes(length as usize)?;
                 source.read_exact_at(cursor + 8, &mut bytes)?;
                 let value = String::from_utf8(bytes)
                     .map_err(|_| invalid("invalid QCOW2 backing format"))?;
@@ -554,7 +667,20 @@ impl Qcow2 {
         Ok((name, format, extra_metadata))
     }
 
-    fn decompress(&self, offset: u64, length: usize) -> io::Result<Vec<u8>> {
+    fn decompress(&self, offset: u64, length: usize) -> io::Result<DecodedCluster> {
+        let budget = self
+            .source
+            .budget()
+            .ok_or_else(|| invalid("QCOW2 reader lacks parser budget"))?;
+        // Zstd keeps a history window and at most one bounded block live.
+        // Include geometric Vec/VecDeque growth, literal/block/sequence storage,
+        // raw-block read temporary, fixed entropy tables and decoder state.
+        let decoder_storage = if self.compression == 0 {
+            core::mem::size_of::<miniz_oxide::inflate::core::DecompressorOxide>() as u64
+        } else {
+            2 * self.cluster_size + 16 * self.cluster_size.min(128 * 1024) + 64 * 1024
+        };
+        let reservation = budget.cache(length as u64 + self.cluster_size + decoder_storage)?;
         if let Some(budget) = self.source.budget() {
             budget.decode(self.cluster_size)?;
             if length as u64 > budget.limits().decompression_buffer_bytes {
@@ -563,27 +689,42 @@ impl Qcow2 {
                 ));
             }
         }
-        let mut input = vec![0; length];
+        let mut input = zeroed_bytes(length)?;
         self.source.read_exact_at(offset, &mut input)?;
-        let mut output = vec![0; self.cluster_size as usize];
+        let mut output = zeroed_bytes(self.cluster_size as usize)?;
         if self.compression == 0 {
-            let mut decoder = flate2::Decompress::new(false);
-            let status = decoder
-                .decompress(&input, &mut output, flate2::FlushDecompress::Finish)
-                .map_err(|_| invalid("invalid QCOW2 deflate cluster"))?;
-            if status != flate2::Status::StreamEnd || decoder.total_out() != self.cluster_size {
+            use miniz_oxide::inflate::{
+                TINFLStatus,
+                core::{DecompressorOxide, decompress, inflate_flags},
+            };
+            let mut decoder = DecompressorOxide::new();
+            let (status, _, written) = decompress(
+                &mut decoder,
+                &input,
+                &mut output,
+                0,
+                inflate_flags::TINFL_FLAG_USING_NON_WRAPPING_OUTPUT_BUF,
+            );
+            if status != TINFLStatus::Done || written != self.cluster_size as usize {
                 return Err(invalid(
                     "QCOW2 deflate cluster has incorrect decoded length",
                 ));
             }
         } else {
-            let mut decoder = ruzstd::decoding::StreamingDecoder::new_with_max_window_size(
-                input.as_slice(),
-                self.cluster_size,
-            )
-            .map_err(|_| invalid("invalid QCOW2 zstd frame or excessive window"))?;
-            decoder.read_exact(&mut output)?;
-            if decoder.read(&mut [0])? != 0 {
+            let mut decoder =
+                crate::zstd_decoder::decoding::StreamingDecoder::new_with_max_window_size(
+                    input.as_slice(),
+                    self.cluster_size,
+                )
+                .map_err(|_| invalid("invalid QCOW2 zstd frame or excessive window"))?;
+            decoder
+                .read_exact(&mut output)
+                .map_err(|_| invalid("invalid or truncated QCOW2 zstd cluster"))?;
+            if decoder
+                .read(&mut [0])
+                .map_err(|_| invalid("invalid QCOW2 zstd cluster"))?
+                != 0
+            {
                 return Err(invalid("QCOW2 zstd cluster exceeds cluster size"));
             }
             let frame = decoder.into_frame_decoder();
@@ -596,7 +737,10 @@ impl Qcow2 {
                 return Err(invalid("QCOW2 zstd checksum mismatch"));
             }
         }
-        Ok(output)
+        Ok(DecodedCluster {
+            bytes: output,
+            _reservation: reservation,
+        })
     }
 
     fn cluster_range(
@@ -612,13 +756,16 @@ impl Qcow2 {
     }
 
     fn entry(&self, offset: u64) -> io::Result<u64> {
+        #[cfg(feature = "std")]
         let mut cache = self
             .entry_cache
             .lock()
             .map_err(|_| io::Error::other("QCOW2 entry cache poisoned"))?;
+        #[cfg(feature = "std")]
         if let Some((entry, _)) = cache.get(&offset) {
             return Ok(*entry);
         }
+        #[cfg(feature = "std")]
         if cache.len() >= 1_048_576 {
             return Err(unsupported("QCOW2 entry cache exceeds bounded entry count"));
         }
@@ -628,8 +775,19 @@ impl Qcow2 {
             .ok_or_else(|| invalid("QCOW2 reader lacks parser budget"))?;
         // Charge conservative HashMap/node/lease overhead before insertion. Each
         // entry is immutable for the retained source's entire reader lifetime.
+        #[cfg(feature = "std")]
         let reservation = budget.cache(128)?;
+        #[cfg(feature = "std")]
         budget.metadata(128)?;
+        #[cfg(feature = "std")]
+        cache
+            .try_reserve(1)
+            .map_err(|error| io::Error::new(io::ErrorKind::OutOfMemory, error))?;
+        #[cfg(not(feature = "std"))]
+        {
+            budget.metadata(8)?;
+            budget.work(1)?;
+        }
         let mut entry = [0; 8];
         self.source.read_exact_at(offset, &mut entry)?;
         let entry = be64(&entry)
@@ -655,6 +813,7 @@ impl Qcow2 {
         } else {
             self.mapping_descriptor(entry)?;
         }
+        #[cfg(feature = "std")]
         cache.insert(offset, (entry, reservation));
         Ok(entry)
     }
@@ -728,6 +887,17 @@ impl Qcow2 {
     }
 }
 
+struct DecodedCluster {
+    bytes: Vec<u8>,
+    _reservation: crate::CacheReservation,
+}
+impl core::ops::Deref for DecodedCluster {
+    type Target = [u8];
+    fn deref(&self) -> &[u8] {
+        &self.bytes
+    }
+}
+
 enum Mapping {
     Allocated(u64),
     Zero,
@@ -736,6 +906,9 @@ enum Mapping {
 }
 
 impl ReadAt for Qcow2 {
+    fn host_context(&self) -> Option<&dyn core::any::Any> {
+        self.source.host_context()
+    }
     fn visit_extents(
         &self,
         visitor: &mut dyn FnMut(crate::DiskExtent) -> io::Result<()>,
@@ -781,6 +954,23 @@ impl ReadAt for Qcow2 {
         }
         Ok(())
     }
+    fn source_identity(&self) -> Option<crate::SourceIdentity> {
+        self.source.source_identity()
+    }
+    fn ancestor_identities(&self) -> Vec<crate::SourceIdentity> {
+        let mut ancestors = self
+            .backing
+            .as_ref()
+            .map_or_else(Vec::new, |parent| parent.ancestor_identities());
+        if let Some(identity) = self
+            .backing
+            .as_ref()
+            .and_then(|parent| parent.source_identity())
+        {
+            ancestors.push(identity);
+        }
+        ancestors
+    }
     fn context(&self) -> crate::ReadContext {
         self.source.context()
     }
@@ -794,7 +984,7 @@ impl ReadAt for Qcow2 {
     fn read_exact_at(&self, offset: u64, destination: &mut [u8]) -> io::Result<()> {
         let mut context = self.context();
         context.offset = Some(offset);
-        (move || {
+        (move || -> io::Result<()> {
             let mut offset = offset;
             let mut destination = destination;
             check_range(offset, destination.len() as u64, self.size)?;

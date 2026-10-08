@@ -1,7 +1,8 @@
 //! Atomic publication of fresh external snapshot and rebase generations.
 use super::ImageGraph;
+use crate::io;
 use crate::{GraphManifest, ImageFormat, OperationContext};
-use std::{io, path::Path};
+use std::path::Path;
 
 impl ImageGraph {
     /// Publish a fresh directory containing `image` and `graph.manifest`.
@@ -52,7 +53,7 @@ impl ImageGraph {
                 directory.as_ref(),
                 GenerationImage::Snapshot(format),
                 context,
-                std::fs::File::sync_all,
+                |file| Ok(file.sync_all()?),
             )
         }
         #[cfg(not(target_os = "linux"))]
@@ -100,7 +101,7 @@ impl ImageGraph {
                 directory.as_ref(),
                 GenerationImage::Rebase(source.as_ref()),
                 context,
-                std::fs::File::sync_all,
+                |file| Ok(file.sync_all()?),
             )
         }
         #[cfg(not(target_os = "linux"))]
@@ -160,7 +161,7 @@ impl ImageGraph {
                 ));
             }
             Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-            Err(error) => return Err(error),
+            Err(error) => return Err(error.into()),
         }
         self.nodes.try_reserve(1).map_err(io::Error::other)?;
         let declaration = self.manifest(None)?;

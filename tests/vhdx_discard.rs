@@ -1,3 +1,4 @@
+#![cfg(feature = "std")]
 #![cfg(target_os = "linux")]
 use virtdisk::{DiscardPolicy, DiscardResult, ReadAt, Vhdx, VhdxWriter};
 const M: u64 = 1 << 20;
@@ -100,7 +101,7 @@ fn qemu_reads_standalone_zero_bat_discard() {
 
 #[test]
 fn fixed_leave_blocks_allocated_profile_refuses_native_release_before_mutation() {
-    use std::io::{Seek, SeekFrom, Write};
+    use virtdisk::io::{Seek, SeekFrom, Write};
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("fixed.vhdx");
     let w = VhdxWriter::create(&path, M).unwrap();
@@ -117,7 +118,7 @@ fn fixed_leave_blocks_allocated_profile_refuses_native_release_before_mutation()
         w.discard(0, M, DiscardPolicy::RequireDeallocation)
             .unwrap_err()
             .kind(),
-        std::io::ErrorKind::Unsupported
+        virtdisk::io::ErrorKind::Unsupported
     );
     assert_eq!(std::fs::read(&path).unwrap(), before);
 }

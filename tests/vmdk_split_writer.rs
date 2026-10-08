@@ -1,5 +1,7 @@
-use std::{fs, io, process::Command};
+#![cfg(feature = "std")]
+use std::{fs, process::Command};
 use virtdisk::VmdkWriter;
+use virtdisk::io;
 static SERIAL: std::sync::Mutex<()> = std::sync::Mutex::new(());
 fn descriptor() -> &'static str {
     "version=1\nCID=12345678\nparentCID=ffffffff\ncreateType=\"twoGbMaxExtentFlat\"\nRW 1 FLAT \"first.vmdk\" 1\nRW 2 FLAT \"second.vmdk\" 2\n"
@@ -82,7 +84,7 @@ fn repeated_paths_hardlinks_zero_lengths_and_wrong_profiles_are_rejected() {
 #[test]
 #[ignore = "requires independent qemu-img split-flat oracle"]
 fn qemu_split_flat_fixture_cross_boundary_writes_convert_to_exact_raw_ranges() {
-    use std::io::{Read, Seek, SeekFrom};
+    use virtdisk::io::{Read, Seek, SeekFrom};
     let _serial = SERIAL.lock().unwrap();
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("disk.vmdk");

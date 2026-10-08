@@ -1,8 +1,9 @@
 //! Bounded native VHDX readers and explicitly authorized differencing chains.
 pub(crate) mod log;
 pub(crate) mod parent;
+use crate::io;
 use crate::{CacheReservation, ParserLimits, ReadAt, ReadBudget, ReadContext, check_range};
-use std::{collections::BTreeSet, io, sync::Arc};
+use alloc::{collections::BTreeSet, sync::Arc, vec, vec::Vec};
 const M: u64 = 1 << 20;
 pub(crate) const BAT: [u8; 16] = [
     0x66, 0x77, 0xc2, 0x2d, 0x23, 0xf6, 0, 0x42, 0x9d, 0x64, 0x11, 0x5e, 0x9b, 0xfd, 0x4a, 8,
@@ -25,6 +26,14 @@ pub(crate) const LOGICAL: [u8; 16] = [
 pub(crate) const PHYSICAL: [u8; 16] = [
     0xc7, 0x48, 0xa3, 0xcd, 0x5d, 0x44, 0x71, 0x44, 0x9c, 0xc9, 0xe9, 0x88, 0x52, 0x51, 0xc5, 0x56,
 ];
+fn repeated<T: Clone>(value: T, count: usize) -> io::Result<Vec<T>> {
+    let mut values = Vec::new();
+    values
+        .try_reserve_exact(count)
+        .map_err(|_| io::Error::new(io::ErrorKind::OutOfMemory, "format allocation failed"))?;
+    values.resize(count, value);
+    Ok(values)
+}
 fn invalid(s: &str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, s)
 }
@@ -49,7 +58,7 @@ pub(crate) fn checksum(b: &[u8]) -> bool {
 }
 fn read(source: &dyn ReadAt, budget: &ReadBudget, o: u64, n: usize) -> io::Result<Vec<u8>> {
     budget.metadata(n as u64)?;
-    let mut b = vec![0; n];
+    let mut b = repeated(0, n)?;
     source.read_exact_at(o, &mut b)?;
     Ok(b)
 }
@@ -68,8 +77,10 @@ pub struct Vhdx {
     source: Arc<dyn ReadAt>,
     length: u64,
     block: u64,
+    #[cfg_attr(not(feature = "std"), allow(dead_code))]
     bat_offset: u64,
     logical_sector: u32,
+    #[cfg_attr(not(feature = "std"), allow(dead_code))]
     physical_sector: u32,
     map: Vec<u64>,
     states: Vec<u8>,
@@ -77,14 +88,20 @@ pub struct Vhdx {
     parent: Option<Arc<Vhdx>>,
     locator: Option<parent::Locator>,
     data_guid: [u8; 16],
+    #[cfg_attr(not(feature = "std"), allow(dead_code))]
     metadata_offset: u64,
+    #[cfg_attr(not(feature = "std"), allow(dead_code))]
     bat_length: u64,
+    #[cfg_attr(not(feature = "std"), allow(dead_code))]
     size_offset: u64,
+    #[cfg_attr(not(feature = "std"), allow(dead_code))]
     leave_blocks_allocated: bool,
     budget: ReadBudget,
     _cache: CacheReservation,
 }
+#[cfg(feature = "std")]
 pub(crate) type MetadataItem = ([u8; 16], u32, Vec<u8>);
+#[cfg(feature = "std")]
 type WriterParts = (
     u64,
     u64,
@@ -94,6 +111,7 @@ type WriterParts = (
     Option<Vhdx>,
 );
 impl Vhdx {
+    #[cfg(feature = "std")]
     pub(crate) fn container_size(&self) -> u64 {
         self.source.len()
     }
@@ -103,9 +121,15 @@ impl Vhdx {
         self.locator.is_some()
     }
     /// Canonical direct parent path retained by an explicitly authorized chain open.
+    #[cfg(feature = "std")]
     pub fn resolved_parent_path(&self) -> Option<std::path::PathBuf> {
-        self.parent.as_ref().and_then(|p| p.context().container)
+        self.parent
+            .as_ref()
+            .and_then(|parent| parent.host_context())
+            .and_then(|context| context.downcast_ref::<crate::HostSourceContext>())
+            .map(|host| host.path.clone())
     }
+    #[cfg(feature = "std")]
     pub(crate) fn child_metadata(&self) -> io::Result<(Vec<MetadataItem>, [u8; 16])> {
         let _temporary = self.budget.cache(2 * M)?;
         let metadata = read(
@@ -143,12 +167,15 @@ impl Vhdx {
         }
         Ok((copied, self.data_guid))
     }
+    #[cfg(feature = "std")]
     pub(crate) fn bitmap_state(&self) -> (&[u8], &[u64]) {
         (&self.states, &self.bitmaps)
     }
+    #[cfg(feature = "std")]
     pub(crate) fn direct_parent(&self) -> Option<Arc<Vhdx>> {
         self.parent.clone()
     }
+    #[cfg(feature = "std")]
     pub(crate) fn validate_writable_view(
         source: Arc<dyn ReadAt>,
         budget: ReadBudget,
@@ -170,19 +197,24 @@ impl Vhdx {
         }
         Ok(())
     }
+    #[cfg(feature = "std")]
     pub(crate) fn requires_copy(&self, index: usize, physical: u64) -> bool {
         self.map[index] == physical
             && (self.states[index] == 7 || (self.states[index] == 0 && self.parent.is_some()))
     }
+    #[cfg(feature = "std")]
     pub(crate) fn leave_blocks_allocated(&self) -> bool {
         self.leave_blocks_allocated
     }
+    #[cfg(feature = "std")]
     pub(crate) fn bat_offset(&self) -> u64 {
         self.bat_offset
     }
+    #[cfg(feature = "std")]
     pub(crate) fn resize_geometry(&self) -> (u64, u64) {
         (self.bat_length, self.size_offset)
     }
+    #[cfg(feature = "std")]
     pub(crate) fn geometry(&self) -> (u64, u32, u32, u64) {
         (
             self.length,
@@ -191,6 +223,7 @@ impl Vhdx {
             self.block,
         )
     }
+    #[cfg(feature = "std")]
     pub(crate) fn into_writable_parts(self) -> io::Result<WriterParts> {
         if self.parent.is_some() {
             let cache = self.budget.cache(self.map.len() as u64 * 8)?;
@@ -233,6 +266,32 @@ impl Vhdx {
         limits: ParserLimits,
     ) -> io::Result<Self> {
         let (image, _) = Self::recovered_parts(source, limits)?;
+        Ok(image)
+    }
+    /// Open a clean differencing image using an explicitly supplied parent handle.
+    /// Locator strings remain metadata hints; native linkage and storage identity are validated.
+    pub fn open_parented(source: Arc<dyn ReadAt>, parent: Arc<Vhdx>) -> io::Result<Self> {
+        let budget = parent.budget.clone();
+        crate::portable::validate_parent_identity(source.as_ref(), parent.as_ref(), &budget, 64)?;
+        let mut image = Self::parse(source, budget, true)?;
+        let locator = image
+            .locator
+            .as_ref()
+            .ok_or_else(|| invalid("missing VHDX parent locator"))?;
+        if !locator.linkage.contains(&parent.data_guid)
+            || image.length != parent.length
+            || image.logical_sector != parent.logical_sector
+        {
+            return Err(invalid("VHDX parent linkage or geometry mismatch"));
+        }
+        image.parent = Some(parent);
+        Ok(image)
+    }
+    /// Replay a child's native log and attach an explicitly supplied clean parent.
+    pub fn open_recovered_parented(source: Arc<dyn ReadAt>, parent: Arc<Vhdx>) -> io::Result<Self> {
+        let overlay = log::recover(source, parent.budget.clone())?;
+        let image = Self::open_parented(overlay.clone(), parent)?;
+        overlay.reject_payload_updates(&image.map, image.block)?;
         Ok(image)
     }
     pub(crate) fn recovered_parts(
@@ -312,12 +371,14 @@ impl Vhdx {
         };
         let mut bat = None;
         let mut meta = None;
+        // B-tree node allocation is infallible; reserve conservative node overhead first.
+        let _ids = budget.cache(u32le(table, 8) as u64 * 128)?;
         let mut ids = BTreeSet::new();
         for e in table[16..16 + u32le(table, 8) as usize * 32]
             .as_chunks::<32>()
             .0
         {
-            budget.work(1)?;
+            budget.work(16)?;
             let guid: [u8; 16] = e[..16].try_into().unwrap();
             if !ids.insert(guid) {
                 return Err(invalid("duplicate VHDX region"));
@@ -362,13 +423,14 @@ impl Vhdx {
         let mut locator = None;
         let guids = [PARAM, SIZE, ID, LOGICAL, PHYSICAL];
         let sizes = [8, 8, 16, 4, 4];
+        let _seen = budget.cache(u16le(&metadata, 10) as u64 * 128)?;
         let mut seen = BTreeSet::new();
         let mut extents = Vec::new();
         for e in metadata[32..32 + u16le(&metadata, 10) as usize * 32]
             .as_chunks::<32>()
             .0
         {
-            budget.work(1)?;
+            budget.work(16)?;
             let guid: [u8; 16] = e[..16].try_into().unwrap();
             let flags = u32le(e, 24);
             let start = u32le(e, 16) as u64;
@@ -472,10 +534,24 @@ impl Vhdx {
             bat.0,
             usize::try_from(bytes).map_err(|_| invalid("VHDX BAT too large"))?,
         )?;
-        let mut map = Vec::with_capacity(count as usize);
+        let mut map = Vec::new();
+        map.try_reserve_exact(count as usize).map_err(|_| {
+            io::Error::new(io::ErrorKind::OutOfMemory, "VHDX mapping allocation failed")
+        })?;
         let mut allocated = Vec::new();
-        let mut states = Vec::with_capacity(count as usize);
-        let mut bitmaps = vec![0; chunks as usize];
+        allocated
+            .try_reserve_exact((count + chunks) as usize)
+            .map_err(|_| {
+                io::Error::new(
+                    io::ErrorKind::OutOfMemory,
+                    "VHDX ownership allocation failed",
+                )
+            })?;
+        let mut states = Vec::new();
+        states.try_reserve_exact(count as usize).map_err(|_| {
+            io::Error::new(io::ErrorKind::OutOfMemory, "VHDX states allocation failed")
+        })?;
+        let mut bitmaps = repeated(0, chunks as usize)?;
         for (index, e) in encoded.as_chunks::<8>().0.iter().enumerate() {
             let entry = u64::from_le_bytes(*e);
             if entry & 0xffff8 != 0 {
@@ -565,11 +641,25 @@ impl Vhdx {
     }
 }
 impl ReadAt for Vhdx {
+    #[cfg(feature = "std")]
+    fn host_context(&self) -> Option<&dyn core::any::Any> {
+        self.source.host_context()
+    }
+    fn source_identity(&self) -> Option<crate::SourceIdentity> {
+        self.source.source_identity()
+    }
+    fn ancestor_identities(&self) -> Vec<crate::SourceIdentity> {
+        let mut identities = self.source.ancestor_identities();
+        if let Some(parent) = &self.parent {
+            identities.extend(parent.ancestor_identities());
+        }
+        identities
+    }
     fn visit_extents(
         &self,
         visitor: &mut dyn FnMut(crate::DiskExtent) -> io::Result<()>,
     ) -> io::Result<()> {
-        let result = (|| {
+        let result: io::Result<()> = (|| {
             let mut pending: Option<crate::DiskExtent> = None;
             let mut offset = 0;
             while offset < self.length {
@@ -631,7 +721,7 @@ impl ReadAt for Vhdx {
         Some(self.budget.clone())
     }
     fn read_exact_at(&self, offset: u64, destination: &mut [u8]) -> io::Result<()> {
-        let result = (|| {
+        let result: io::Result<()> = (|| {
             check_range(offset, destination.len() as u64, self.length)?;
             let mut at = offset;
             let mut remaining = destination;

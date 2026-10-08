@@ -1,3 +1,4 @@
+#![cfg(feature = "std")]
 //! Backed split sparse writes retain authorized immutable parent graphs.
 #![cfg(target_os = "linux")]
 use std::{fs, path::PathBuf};
@@ -19,7 +20,7 @@ fn common_writer_dispatches_backed_split_cow_and_retains_parent_locks() {
     for path in &f.parent {
         assert_eq!(
             virtdisk::RawWriter::open(path).err().unwrap().kind(),
-            std::io::ErrorKind::WouldBlock
+            virtdisk::io::ErrorKind::WouldBlock
         );
     }
     let mut actual = vec![0; f.expected.len()];
@@ -150,7 +151,7 @@ fn authorized_split_child_cows_across_extents_and_final_partial_grain() {
     for parent in &f.parent {
         assert_eq!(
             virtdisk::RawWriter::open(parent).err().unwrap().kind(),
-            std::io::ErrorKind::WouldBlock,
+            virtdisk::io::ErrorKind::WouldBlock,
             "retained parent lock must exclude cooperating writers"
         );
     }

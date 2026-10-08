@@ -1,6 +1,7 @@
 //! Structured provenance for common image operations.
+use crate::io;
 use crate::{ImageFormat, ImageOperation};
-use std::{fmt, io};
+use core::fmt;
 
 /// Operation provenance carried inside an `io::Error` without changing its kind.
 ///

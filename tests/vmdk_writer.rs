@@ -1,3 +1,4 @@
+#![cfg(feature = "std")]
 // Serialize process-spawning oracle tests with lock-release assertions: a forked
 // child can briefly retain an inherited locked descriptor before exec closes it.
 static TEST_SERIAL: std::sync::Mutex<()> = std::sync::Mutex::new(());
@@ -279,7 +280,7 @@ fn hosted_overlay_partial_writes_preserve_parent_and_zero_masks() {
         virtdisk::VmdkWriter::create_overlay(&child, &base, std::slice::from_ref(&base)).unwrap();
     assert_eq!(
         virtdisk::RawWriter::open(&child).err().unwrap().kind(),
-        std::io::ErrorKind::WouldBlock
+        virtdisk::io::ErrorKind::WouldBlock
     );
     let mut out = [0; 32];
     writer.read_exact_at(65524, &mut out).unwrap();
@@ -293,7 +294,7 @@ fn hosted_overlay_partial_writes_preserve_parent_and_zero_masks() {
     let writer = virtdisk::VmdkWriter::open_chain(&child, std::slice::from_ref(&base)).unwrap();
     assert_eq!(
         virtdisk::RawWriter::open(&child).err().unwrap().kind(),
-        std::io::ErrorKind::WouldBlock
+        virtdisk::io::ErrorKind::WouldBlock
     );
     writer.read_exact_at(65524, &mut out).unwrap();
     assert_eq!(&out[..6], &[23; 6]);

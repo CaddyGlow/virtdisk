@@ -1,4 +1,5 @@
-use std::{io, sync::Arc};
+use std::sync::Arc;
+use virtdisk::io;
 use virtdisk::{ParserLimits, ReadAt, Vhdx};
 #[path = "support/bytes.rs"]
 mod bytes;
@@ -65,6 +66,7 @@ fn metadata_and_cache_budgets_are_enforced() {
         assert!(Vhdx::open_with_limits(Arc::new(Bytes(fixture())), l).is_err());
     }
 }
+#[cfg(feature = "std")]
 #[test]
 #[ignore = "requires independent qemu-img"]
 fn qemu_fixed_and_dynamic_images_match_raw() {

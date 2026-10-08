@@ -1,3 +1,4 @@
+#![cfg(feature = "std")]
 use std::fs;
 use virtdisk::{Vmdk, VmdkWriter};
 

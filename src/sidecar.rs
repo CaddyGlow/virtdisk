@@ -1,8 +1,6 @@
 //! Bounded reads of transaction sidecars, without following links or blocking on FIFOs.
-use std::{
-    io::{self, Read},
-    path::Path,
-};
+use crate::io::{self, Read};
+use std::path::Path;
 
 pub(crate) fn read_bounded(
     path: &Path,
@@ -20,7 +18,7 @@ pub(crate) fn read_bounded(
     let mut file = match options.open(path) {
         Ok(file) => file,
         Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
-        Err(error) => return Err(error),
+        Err(error) => return Err(error.into()),
     };
     let metadata = file.metadata()?;
     if !metadata.is_file() || metadata.len() > limit as u64 {

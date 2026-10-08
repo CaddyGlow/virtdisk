@@ -1,3 +1,4 @@
+#![cfg(feature = "std")]
 use virtdisk::{
     Capability, DiscardPolicy, DiscardResult, ImageFormat, ImageOperation, ImageWriter,
     InspectImage, WriteAt,
@@ -108,14 +109,14 @@ fn common_split_sparse_writer_preserves_cross_extent_bytes_and_reports_managemen
             .discard(0, 65536, DiscardPolicy::RequireDeallocation)
             .unwrap_err()
             .kind(),
-        std::io::ErrorKind::Unsupported
+        virtdisk::io::ErrorKind::Unsupported
     );
     assert_eq!(
         writer
             .resize(131584, ShrinkPolicy::Reject)
             .unwrap_err()
             .kind(),
-        std::io::ErrorKind::Unsupported
+        virtdisk::io::ErrorKind::Unsupported
     );
     for (file, original) in std::iter::once(&path).chain(&extents).zip(originals) {
         assert_eq!(fs::read(file).unwrap(), original);
@@ -177,11 +178,11 @@ fn common_writer_reverts_and_deletes_native_snapshot_without_losing_survivors() 
     let original = std::fs::read(&raw).unwrap();
     assert_eq!(
         writer.delete_snapshot(b"x").unwrap_err().kind(),
-        std::io::ErrorKind::Unsupported
+        virtdisk::io::ErrorKind::Unsupported
     );
     assert_eq!(
         writer.revert_snapshot(b"x").unwrap_err().kind(),
-        std::io::ErrorKind::Unsupported
+        virtdisk::io::ErrorKind::Unsupported
     );
     assert_eq!(std::fs::read(&raw).unwrap(), original);
 }
@@ -304,7 +305,7 @@ fn all_native_parent_writers_report_parent_retain_lock_and_preserve_cow_bytes() 
         assert_eq!(writer.len(), capacity as u64);
         assert_eq!(
             virtdisk::RawWriter::open(&child).err().unwrap().kind(),
-            std::io::ErrorKind::WouldBlock,
+            virtdisk::io::ErrorKind::WouldBlock,
             "{format:?} dropped child lock during parent inspection"
         );
         assert!(ImageWriter::open_chain(&child, format, std::slice::from_ref(&base)).is_err());
@@ -422,7 +423,7 @@ fn native_writer_inspection_and_cow_resolve_two_authorized_ancestors() {
         assert_eq!(writer.inspection().geometry.virtual_size, capacity as u64);
         assert_eq!(
             virtdisk::RawWriter::open(&child).err().unwrap().kind(),
-            std::io::ErrorKind::WouldBlock,
+            virtdisk::io::ErrorKind::WouldBlock,
             "{format:?} nested child lock"
         );
         let mut observed = vec![0; capacity];
@@ -470,7 +471,7 @@ fn common_writer_snapshot_creation_preserves_saved_bytes_and_rejects_other_forma
     let before = std::fs::read(&raw).unwrap();
     assert_eq!(
         writer.create_snapshot(b"1", b"saved").unwrap_err().kind(),
-        std::io::ErrorKind::Unsupported
+        virtdisk::io::ErrorKind::Unsupported
     );
     assert_eq!(std::fs::read(&raw).unwrap(), before);
 }

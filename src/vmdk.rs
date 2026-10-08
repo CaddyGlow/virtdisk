@@ -1,11 +1,21 @@
 //! Bounded hosted sparse VMDK reader with explicitly authorized parent chains.
+use crate::io;
 use crate::{CacheReservation, ParserLimits, ReadAt, ReadBudget, ReadContext, check_range};
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    io,
-    path::{Path, PathBuf},
-    sync::Arc,
-};
+#[cfg(feature = "std")]
+use alloc::collections::BTreeSet;
+#[cfg(feature = "std")]
+use alloc::vec;
+use alloc::{borrow::ToOwned, collections::BTreeMap, string::String, sync::Arc, vec::Vec};
+#[cfg(feature = "std")]
+use std::path::{Path, PathBuf};
+fn repeated<T: Clone>(value: T, count: usize) -> io::Result<Vec<T>> {
+    let mut values = Vec::new();
+    values
+        .try_reserve_exact(count)
+        .map_err(|_| io::Error::new(io::ErrorKind::OutOfMemory, "format allocation failed"))?;
+    values.resize(count, value);
+    Ok(values)
+}
 fn invalid(s: &'static str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, s)
 }
@@ -22,7 +32,14 @@ fn sector(v: u64) -> io::Result<u64> {
     v.checked_mul(512)
         .ok_or_else(|| invalid("VMDK sector overflow"))
 }
-fn claim(owners: &mut BTreeMap<u64, u64>, start: u64, length: u64, file: u64) -> io::Result<()> {
+fn claim(
+    budget: &ReadBudget,
+    owners: &mut BTreeMap<u64, u64>,
+    start: u64,
+    length: u64,
+    file: u64,
+) -> io::Result<()> {
+    budget.work(u64::from(owners.len().max(1).ilog2()) + 1)?;
     check_range(start, length, file)?;
     let end = start
         .checked_add(length)
@@ -37,17 +54,19 @@ fn claim(owners: &mut BTreeMap<u64, u64>, start: u64, length: u64, file: u64) ->
     owners.insert(start, end);
     Ok(())
 }
-#[cfg(target_os = "linux")]
+#[cfg(all(feature = "std", target_os = "linux"))]
 #[path = "vmdk_pinned.rs"]
 mod pinned;
-#[cfg(target_os = "linux")]
+#[cfg(all(feature = "std", target_os = "linux"))]
 pub(crate) use pinned::{
     DependencyExtent, DependencyExtentKind, DependencyNode, PinnedParentGraph,
 };
+#[cfg(feature = "std")]
 struct OpenedSource {
     source: Arc<dyn ReadAt>,
     identity: Option<same_file::Handle>,
 }
+#[cfg(feature = "std")]
 trait SourceFactory {
     fn open(&mut self, path: &Path, budget: &ReadBudget) -> io::Result<OpenedSource>;
     fn allow_pending(&self) -> bool {
@@ -71,7 +90,9 @@ trait SourceFactory {
         Ok(())
     }
 }
+#[cfg(feature = "std")]
 struct OrdinaryFactory;
+#[cfg(feature = "std")]
 impl SourceFactory for OrdinaryFactory {
     fn open(&mut self, path: &Path, _budget: &ReadBudget) -> io::Result<OpenedSource> {
         let raw = crate::RawDisk::open(path)?;
@@ -82,16 +103,19 @@ impl SourceFactory for OrdinaryFactory {
         })
     }
 }
+#[cfg(feature = "std")]
 struct Authorized {
     paths: BTreeSet<PathBuf>,
     _cache: Vec<CacheReservation>,
 }
+#[cfg(feature = "std")]
 impl std::ops::Deref for Authorized {
     type Target = BTreeSet<PathBuf>;
     fn deref(&self) -> &Self::Target {
         &self.paths
     }
 }
+#[cfg(feature = "std")]
 fn authorize(paths: &[PathBuf], budget: &ReadBudget) -> io::Result<Authorized> {
     let mut authorized = BTreeSet::new();
     let mut cache = Vec::new();
@@ -227,7 +251,16 @@ impl Link {
 /// Parent chains require `open_chain` and explicit ancestor/extent authorization.
 /// Compressed, footer and dirty native profiles fail closed.
 /// Underlying sources must remain immutable for this reader's lifetime.
+/// Explicit binding for one descriptor extent name.
+pub struct VmdkExtentBinding {
+    /// Exact parsed descriptor extent name.
+    pub name: String,
+    /// Retained immutable storage with provider identity.
+    pub source: Arc<dyn ReadAt>,
+}
+/// Bounded immutable hosted sparse or explicitly bound descriptor VMDK reader.
 pub struct Vmdk {
+    #[cfg_attr(not(feature = "std"), allow(dead_code))]
     container_set_size: u64,
     source: Arc<dyn ReadAt>,
     length: u64,
@@ -235,21 +268,26 @@ pub struct Vmdk {
     entries: Vec<u32>,
     _cache: CacheReservation,
     extents: Vec<(u64, Arc<dyn ReadAt>)>,
+    dependencies: Vec<crate::SourceIdentity>,
     parent: Option<Arc<dyn ReadAt>>,
     cid: Option<u32>,
     _identity_cache: Option<CacheReservation>,
 }
 impl Vmdk {
+    #[cfg(feature = "std")]
     pub(crate) fn container_sizes(&self) -> (u64, u64) {
         (self.source.len(), self.container_set_size)
     }
 
+    #[cfg(feature = "std")]
     pub(crate) fn content_id(&self) -> Option<u32> {
         self.cid
     }
+    #[cfg(feature = "std")]
     pub(crate) fn writer_zero_mask(&self) -> Vec<bool> {
         self.entries.iter().map(|e| *e == 1).collect()
     }
+    #[cfg(feature = "std")]
     pub(crate) fn resolve_writer_parent(
         source: Arc<dyn ReadAt>,
         path: &Path,
@@ -306,7 +344,7 @@ impl Vmdk {
         budget.attribute(size)?;
         budget.metadata(size)?;
         let _scratch = budget.cache(size)?;
-        let mut bytes = vec![0; size as usize];
+        let mut bytes = repeated(0, size as usize)?;
         source.read_exact_at(sector(u64le(&header, 28))?, &mut bytes)?;
         let link = Link::parse(crate::vmdk_descriptor::text(&bytes)?, budget)?;
         if link.sectors != u64le(&header, 12)
@@ -319,6 +357,14 @@ impl Vmdk {
             ));
         }
         Ok(link)
+    }
+    /// Open a hosted sparse child using an explicitly supplied parent.
+    pub fn open_with_parent(source: Arc<dyn ReadAt>, parent: Arc<Vmdk>) -> io::Result<Self> {
+        let budget = parent
+            .budget()
+            .ok_or_else(|| invalid("parent lacks shared budget"))?;
+        Self::validate_parent_identity(source.as_ref(), parent.as_ref(), &budget)?;
+        Self::open_parented(source, Some(parent))
     }
     pub(crate) fn open_parented(
         source: Arc<dyn ReadAt>,
@@ -347,10 +393,12 @@ impl Vmdk {
 
     /// Open a hosted VMDK chain using only explicitly authorized ancestors and extents.
     /// Parent CIDs and capacities must match. All opened files must remain immutable.
+    #[cfg(feature = "std")]
     pub fn open_chain(path: impl AsRef<Path>, authorized_paths: &[PathBuf]) -> io::Result<Self> {
         Self::open_chain_with_limits(path, authorized_paths, ParserLimits::default())
     }
     /// Open a chain with one shared metadata, cache, work and depth budget.
+    #[cfg(feature = "std")]
     pub fn open_chain_with_limits(
         path: impl AsRef<Path>,
         authorized_paths: &[PathBuf],
@@ -358,6 +406,7 @@ impl Vmdk {
     ) -> io::Result<Self> {
         Self::open_chain_with_budget(path, authorized_paths, ReadBudget::new(limits)?)
     }
+    #[cfg(feature = "std")]
     pub(crate) fn open_chain_with_budget(
         path: impl AsRef<Path>,
         authorized_paths: &[PathBuf],
@@ -374,6 +423,7 @@ impl Vmdk {
             &mut OrdinaryFactory,
         )
     }
+    #[cfg(feature = "std")]
     fn chain_node(
         path: &Path,
         authorized: &BTreeSet<PathBuf>,
@@ -417,8 +467,10 @@ impl Vmdk {
         check_range(offset, size, source.len())?;
         budget.metadata(size)?;
         let _scratch = budget.cache(size)?;
-        let mut bytes =
-            vec![0; usize::try_from(size).map_err(|_| invalid("VMDK descriptor too large"))?];
+        let mut bytes = repeated(
+            0,
+            usize::try_from(size).map_err(|_| invalid("VMDK descriptor too large"))?,
+        )?;
         source.read_exact_at(offset, &mut bytes)?;
         let text = crate::vmdk_descriptor::text(&bytes)?;
         let link = Link::parse(text, budget)?;
@@ -433,7 +485,7 @@ impl Vmdk {
             ));
         }
         factory.node(path, &link, hosted)?;
-        let parent: Option<Arc<dyn ReadAt>> = if link.parent_cid != u32::MAX {
+        let parent: Option<Arc<Vmdk>> = if link.parent_cid != u32::MAX {
             let hint = link
                 .hint
                 .as_ref()
@@ -477,7 +529,7 @@ impl Vmdk {
                 budget,
                 authorized,
                 identities,
-                parent.clone(),
+                parent.clone().map(|parent| parent as Arc<dyn ReadAt>),
                 factory,
             )?
         };
@@ -487,21 +539,40 @@ impl Vmdk {
             return Err(invalid("VMDK parent capacity mismatch"));
         }
         disk.cid = Some(link.cid);
-        disk._identity_cache = Some(identity_cache);
-        disk.parent = parent;
+        if let Some(parent) = &parent {
+            budget.metadata(parent.dependencies.len() as u64 * 64)?;
+            let dependency_cache = budget.cache(parent.dependencies.len() as u64 * 64 + 128)?;
+            disk.dependencies
+                .try_reserve_exact(parent.dependencies.len())
+                .map_err(|_| {
+                    io::Error::new(
+                        io::ErrorKind::OutOfMemory,
+                        "VMDK ancestor dependencies allocation failed",
+                    )
+                })?;
+            disk.dependencies.extend_from_slice(&parent.dependencies);
+            disk._identity_cache = Some(dependency_cache);
+        } else {
+            disk._identity_cache = Some(identity_cache);
+        }
+        disk.parent = parent.map(|parent| parent as Arc<dyn ReadAt>);
         Ok(disk)
     }
     /// Canonical direct parent path retained by an explicitly authorized chain open.
+    #[cfg(feature = "std")]
     pub fn resolved_parent_path(&self) -> Option<PathBuf> {
         self.parent
             .as_ref()
-            .and_then(|parent| parent.context().container)
+            .and_then(|parent| parent.host_context())
+            .and_then(|context| context.downcast_ref::<crate::HostSourceContext>())
+            .map(|host| host.path.clone())
     }
     /// Whether this opened image resolves an authorized parent.
     pub fn has_parent(&self) -> bool {
         self.parent.is_some()
     }
 
+    #[cfg(feature = "std")]
     pub(crate) fn info_profile(&self) -> (Option<u64>, bool) {
         (
             if self.extents.is_empty() {
@@ -518,8 +589,11 @@ impl Vmdk {
     }
     /// Open with caller-tightened parser limits.
     pub fn open_with_limits(source: Arc<dyn ReadAt>, limits: ParserLimits) -> io::Result<Self> {
-        if let Some(path) = source.context().container
-            && crate::transaction::pending(&path)?
+        #[cfg(feature = "std")]
+        if let Some(host) = source
+            .host_context()
+            .and_then(|context| context.downcast_ref::<crate::HostSourceContext>())
+            && crate::transaction::pending(&host.path)?
         {
             return Err(invalid(
                 "VMDK has a pending transaction; reopen with VmdkWriter to recover",
@@ -535,6 +609,7 @@ impl Vmdk {
     /// Relative extent names resolve against the descriptor directory. Canonical
     /// identities must appear in `authorized_extent_paths`. Repeated extent files,
     /// parents, devices and network names are rejected. Sources must stay immutable.
+    #[cfg(feature = "std")]
     pub fn open_descriptor(
         path: impl AsRef<Path>,
         authorized_extent_paths: &[PathBuf],
@@ -542,6 +617,7 @@ impl Vmdk {
         Self::open_descriptor_with_limits(path, authorized_extent_paths, ParserLimits::default())
     }
     /// Open an authorized flat/sparse descriptor with caller-tightened budgets.
+    #[cfg(feature = "std")]
     pub fn open_descriptor_with_limits(
         path: impl AsRef<Path>,
         authorized_extent_paths: &[PathBuf],
@@ -563,6 +639,7 @@ impl Vmdk {
             &mut OrdinaryFactory,
         )
     }
+    #[cfg(feature = "std")]
     fn parse_descriptor(
         source: Arc<dyn ReadAt>,
         path: &Path,
@@ -578,7 +655,7 @@ impl Vmdk {
         budget.attribute(source.len())?;
         budget.metadata(source.len())?;
         let _descriptor_cache = budget.cache(source.len())?;
-        let mut bytes = vec![0; source.len() as usize];
+        let mut bytes = repeated(0, source.len() as usize)?;
         source.read_exact_at(0, &mut bytes)?;
         let text = crate::vmdk_descriptor::text(&bytes)?;
         let mut used = BTreeSet::new();
@@ -768,6 +845,21 @@ impl Vmdk {
                 .checked_mul(128)
                 .ok_or_else(|| invalid("VMDK extent cache overflow"))?,
         )?;
+        let mut dependencies = Vec::new();
+        dependencies
+            .try_reserve_exact(extents.len() + 1)
+            .map_err(|_| {
+                io::Error::new(
+                    io::ErrorKind::OutOfMemory,
+                    "VMDK dependency identities allocation failed",
+                )
+            })?;
+        dependencies.extend(source.source_identity());
+        dependencies.extend(
+            extents
+                .iter()
+                .filter_map(|(_, source)| source.source_identity()),
+        );
         Ok(Self {
             container_set_size,
             source,
@@ -775,12 +867,325 @@ impl Vmdk {
             grain: 0,
             entries: Vec::new(),
             _cache: cache,
+            dependencies,
             extents,
             parent: backing,
             cid: None,
             _identity_cache: None,
         })
     }
+    /// Parse a descriptor using explicit named storage bindings. Names grant no authority.
+    /// Every participating source must retain a trustworthy provider identity.
+    /// With a parent, limits must match its retained shared budget exactly.
+    pub fn open_descriptor_bound(
+        source: Arc<dyn ReadAt>,
+        bindings: &[VmdkExtentBinding],
+        parent: Option<Arc<Vmdk>>,
+        limits: ParserLimits,
+    ) -> io::Result<Self> {
+        limits.validate()?;
+        let budget = match &parent {
+            Some(parent) => parent
+                .budget()
+                .ok_or_else(|| invalid("parent lacks budget"))?,
+            None => ReadBudget::new(limits)?,
+        };
+        if budget.limits() != limits {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "descriptor limits must match supplied parent shared limits",
+            ));
+        }
+        budget.work((bindings.len() as u64).saturating_mul(bindings.len() as u64))?;
+        budget.metadata((bindings.len() as u64).saturating_mul(192))?;
+        let _binding_scratch = budget.cache((bindings.len() as u64).saturating_mul(192))?;
+        if bindings
+            .iter()
+            .enumerate()
+            .any(|(i, binding)| bindings[..i].iter().any(|other| other.name == binding.name))
+        {
+            return Err(invalid("duplicate VMDK extent binding"));
+        }
+        let source = budget.reader(source);
+        let link = Self::descriptor_link(source.clone(), &budget)?;
+        if let Some(parent) = &parent {
+            Self::validate_parent_identity(source.as_ref(), parent.as_ref(), &budget)?;
+            if Some(link.parent_cid) != parent.cid
+                || link.parent_cid == u32::MAX
+                || link.hint.is_none()
+            {
+                return Err(invalid("VMDK parent CID mismatch"));
+            }
+        } else if link.parent_cid != u32::MAX {
+            return Err(unsupported("VMDK parent requires supplied handle"));
+        }
+        let inherited_count = parent
+            .as_ref()
+            .map_or(0, |parent| parent.dependencies.len());
+        budget.metadata(inherited_count as u64 * 64)?;
+        let _inherited_scratch = budget.cache(inherited_count as u64 * 64)?;
+        let mut inherited_dependencies = Vec::new();
+        if let Some(parent) = &parent {
+            inherited_dependencies
+                .try_reserve_exact(parent.dependencies.len())
+                .map_err(|_| {
+                    io::Error::new(
+                        io::ErrorKind::OutOfMemory,
+                        "VMDK inherited identities allocation failed",
+                    )
+                })?;
+            inherited_dependencies.extend_from_slice(&parent.dependencies);
+        }
+        let backing: Option<Arc<dyn ReadAt>> = parent.map(|parent| parent as Arc<dyn ReadAt>);
+        budget.attribute(source.len())?;
+        budget.metadata(source.len())?;
+        let _descriptor_cache = budget.cache(source.len())?;
+        let mut bytes = repeated(0, source.len() as usize)?;
+        source.read_exact_at(0, &mut bytes)?;
+        let text = crate::vmdk_descriptor::text(&bytes)?;
+        let mut used = repeated(false, bindings.len())?;
+        let identity = source.source_identity().ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::MissingIdentity,
+                "descriptor requires storage identity",
+            )
+        })?;
+        let mut identities = repeated(identity, 1)?;
+        let ancestors = backing
+            .as_ref()
+            .map(|parent| parent.ancestor_identities())
+            .unwrap_or_default();
+        let identity_count = ancestors
+            .len()
+            .checked_add(inherited_dependencies.len())
+            .and_then(|count| count.checked_add(bindings.len()))
+            .ok_or_else(|| invalid("VMDK identity count overflow"))?;
+        budget.metadata(identity_count as u64 * 64)?;
+        let identity_cache = budget.cache(identity_count as u64 * 64)?;
+        identities.try_reserve_exact(identity_count).map_err(|_| {
+            io::Error::new(
+                io::ErrorKind::OutOfMemory,
+                "VMDK identities allocation failed",
+            )
+        })?;
+        identities.extend(ancestors);
+        identities.extend(inherited_dependencies);
+        let mut extent_scratch = Vec::new();
+        extent_scratch
+            .try_reserve_exact(bindings.len())
+            .map_err(|_| {
+                io::Error::new(
+                    io::ErrorKind::OutOfMemory,
+                    "VMDK reservations allocation failed",
+                )
+            })?;
+        let mut extents = Vec::new();
+        extents.try_reserve_exact(bindings.len()).map_err(|_| {
+            io::Error::new(io::ErrorKind::OutOfMemory, "VMDK extents allocation failed")
+        })?;
+        let mut length = 0u64;
+        let mut container_set_size = source.len();
+        let mut properties = crate::vmdk_descriptor::Properties::default();
+        let mut parent = false;
+        let mut version = false;
+        let mut cid = false;
+        let mut create_type = false;
+        let mut profile = "";
+        let mut extent_kind = "";
+        for line in text.lines() {
+            budget.work(1)?;
+            let line = line.trim();
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+            if let Some((key, field)) = crate::vmdk_descriptor::property(line, 0) {
+                let duplicate = properties.duplicate(key);
+                let value = field.text;
+                match key {
+                    "version" => {
+                        if duplicate || value != "1" {
+                            return Err(unsupported("unsupported VMDK descriptor version"));
+                        }
+                        version = true;
+                    }
+                    "CID" => {
+                        if duplicate
+                            || value.is_empty()
+                            || value.len() > 8
+                            || crate::vmdk_descriptor::hexadecimal(value).is_err()
+                        {
+                            return Err(invalid("invalid VMDK CID"));
+                        }
+                        cid = true;
+                    }
+                    "parentCID" => {
+                        if duplicate || (value != "ffffffff" && backing.is_none()) {
+                            return Err(unsupported("VMDK parent requires authorization"));
+                        }
+                        parent = true;
+                    }
+                    "parentFileNameHint" => {
+                        if backing.is_none() {
+                            return Err(unsupported("VMDK parent requires authorization"));
+                        }
+                    }
+                    "createType" => {
+                        if duplicate {
+                            return Err(invalid("duplicate VMDK createType"));
+                        }
+                        create_type = true;
+                        profile = value;
+                        if ![
+                            "\"monolithicFlat\"",
+                            "\"twoGbMaxExtentFlat\"",
+                            "\"twoGbMaxExtentSparse\"",
+                            "\"monolithicSparse\"",
+                        ]
+                        .contains(&value)
+                        {
+                            return Err(unsupported("unsupported VMDK extent profile"));
+                        }
+                    }
+                    k if k.starts_with("ddb.") => {}
+                    _ => return Err(unsupported("unsupported VMDK descriptor property")),
+                }
+                continue;
+            }
+            let extent = crate::vmdk_descriptor::extent(line, 0)?;
+            if extent.access != "RW" {
+                return Err(unsupported("unsupported VMDK extent access"));
+            }
+            if extent_kind.is_empty() {
+                extent_kind = extent.kind;
+            } else if extent_kind != extent.kind {
+                return Err(unsupported("mixed VMDK extent profiles"));
+            }
+            let size = crate::vmdk_descriptor::sectors(extent.count.text)?;
+            if size == 0 {
+                return Err(invalid("empty VMDK extent"));
+            }
+            let name = extent.name;
+            if name.is_empty()
+                || name.contains(':')
+                || name.contains('\\')
+                || name.chars().any(char::is_control)
+            {
+                return Err(unsupported("unsupported VMDK extent name"));
+            }
+            let index = bindings
+                .iter()
+                .position(|binding| binding.name == name)
+                .ok_or_else(|| invalid("missing VMDK extent binding"))?;
+            if used[index] {
+                return Err(invalid("repeated VMDK extent binding"));
+            }
+            used[index] = true;
+            let identity = bindings[index].source.source_identity().ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::MissingIdentity,
+                    "extent requires storage identity",
+                )
+            })?;
+            budget.work(identities.len() as u64)?;
+            if identities.iter().any(|other| other.same_storage(identity)) {
+                return Err(invalid("VMDK extent aliases another opened source"));
+            }
+            identities.push(identity);
+            budget.metadata(128)?;
+            extent_scratch.push(budget.cache(128)?);
+            let extent_source = budget.reader(bindings[index].source.clone());
+            container_set_size = container_set_size
+                .checked_add(extent_source.len())
+                .ok_or_else(|| invalid("VMDK container set size overflow"))?;
+            let tail = extent.tail;
+            let reader: Arc<dyn ReadAt> = match extent.kind {
+                "FLAT" => {
+                    let offset = sector(
+                        tail.parse()
+                            .map_err(|_| invalid("invalid flat extent offset"))?,
+                    )?;
+                    Arc::new(crate::DiskView::new(extent_source, offset, size)?)
+                }
+                "SPARSE" => {
+                    if !tail.is_empty() {
+                        return Err(invalid("unexpected sparse extent offset"));
+                    }
+                    let mut disk = Self::parse(extent_source, &budget)?;
+                    if let Some(parent) = &backing {
+                        disk.parent = Some(Arc::new(crate::DiskView::new(
+                            parent.clone(),
+                            length,
+                            size,
+                        )?));
+                    }
+                    if disk.len() != size {
+                        return Err(invalid("sparse extent capacity mismatch"));
+                    }
+                    Arc::new(disk)
+                }
+                _ => return Err(unsupported("unsupported VMDK extent type")),
+            };
+            extents.push((length, reader));
+            length = length
+                .checked_add(size)
+                .ok_or_else(|| invalid("VMDK descriptor capacity overflow"))?;
+        }
+        if !parent || !version || !cid || !create_type || extents.is_empty() {
+            return Err(invalid("incomplete VMDK descriptor"));
+        }
+        let flat = profile.ends_with("Flat\"");
+        if (flat && extent_kind != "FLAT")
+            || (!flat && extent_kind != "SPARSE")
+            || (profile.starts_with("\"monolithic") && extents.len() != 1)
+        {
+            return Err(invalid("VMDK createType does not match extents"));
+        }
+        if used.iter().any(|used| !used) {
+            return Err(invalid("unused VMDK extent binding"));
+        }
+        let cache = budget.cache(
+            (extents.len() as u64)
+                .checked_mul(128)
+                .ok_or_else(|| invalid("VMDK extent cache overflow"))?,
+        )?;
+        let disk = Self {
+            container_set_size,
+            source,
+            length,
+            grain: 0,
+            entries: Vec::new(),
+            _cache: cache,
+            dependencies: identities,
+            extents,
+            parent: backing,
+            cid: Some(link.cid),
+            _identity_cache: Some(identity_cache),
+        };
+        if disk
+            .parent
+            .as_ref()
+            .is_some_and(|parent| parent.len() != disk.length)
+        {
+            return Err(invalid("VMDK parent capacity mismatch"));
+        }
+        Ok(disk)
+    }
+    fn descriptor_link(source: Arc<dyn ReadAt>, budget: &ReadBudget) -> io::Result<Link> {
+        budget.attribute(source.len())?;
+        budget.metadata(source.len())?;
+        let _scratch = budget.cache(source.len())?;
+        let mut bytes = repeated(0, source.len() as usize)?;
+        source.read_exact_at(0, &mut bytes)?;
+        Link::parse(crate::vmdk_descriptor::text(&bytes)?, budget)
+    }
+    fn validate_parent_identity(
+        source: &dyn ReadAt,
+        parent: &dyn ReadAt,
+        budget: &ReadBudget,
+    ) -> io::Result<()> {
+        crate::portable::validate_parent_identity(source, parent, budget, 64)
+    }
+    #[cfg(feature = "std")]
     pub(crate) fn writer_mappings(&self) -> io::Result<Vec<u64>> {
         if self.grain != 65536 || !self.extents.is_empty() {
             return Err(unsupported(
@@ -793,7 +1198,7 @@ impl Vmdk {
             .map(|e| if *e <= 1 { 0 } else { u64::from(*e) * 512 })
             .collect())
     }
-    #[cfg(target_os = "linux")]
+    #[cfg(all(feature = "std", target_os = "linux"))]
     pub(crate) fn open_with_budget(
         source: Arc<dyn ReadAt>,
         budget: &ReadBudget,
@@ -808,8 +1213,11 @@ impl Vmdk {
         budget: &ReadBudget,
         allow_parent: bool,
     ) -> io::Result<Self> {
-        if let Some(path) = source.context().container
-            && crate::transaction::pending(&path)?
+        #[cfg(feature = "std")]
+        if let Some(host) = source
+            .host_context()
+            .and_then(|context| context.downcast_ref::<crate::HostSourceContext>())
+            && crate::transaction::pending(&host.path)?
         {
             return Err(invalid("VMDK extent has a pending transaction"));
         }
@@ -853,25 +1261,29 @@ impl Vmdk {
                 .checked_mul(128)
                 .ok_or_else(|| invalid("VMDK cache overflow"))?,
         )?;
+        // Infallible B-tree nodes share the conservative mapping reservation.
+        let _ownership =
+            budget.cache((directories.saturating_mul(2).saturating_add(4)).saturating_mul(128))?;
         let mut entries = Vec::new();
         entries
             .try_reserve_exact(
                 usize::try_from(count).map_err(|_| invalid("VMDK mapping too large"))?,
             )
-            .map_err(|_| invalid("VMDK allocation failed"))?;
+            .map_err(|_| io::Error::new(io::ErrorKind::OutOfMemory, "VMDK allocation failed"))?;
         let mut owners = BTreeMap::new();
-        claim(&mut owners, 0, 512, source.len())?;
+        claim(budget, &mut owners, 0, 512, source.len())?;
         let desc_offset = sector(u64le(&h, 28))?;
         let desc_size = sector(u64le(&h, 36))?;
         if (desc_offset == 0) != (desc_size == 0) {
             return Err(invalid("invalid VMDK descriptor range"));
         }
+        let mut content_id = None;
         if desc_size != 0 {
             budget.metadata(desc_size)?;
             budget.attribute(desc_size)?;
-            claim(&mut owners, desc_offset, desc_size, overhead)?;
+            claim(budget, &mut owners, desc_offset, desc_size, overhead)?;
             let _descriptor_cache = budget.cache(desc_size)?;
-            let mut desc = vec![0; desc_size as usize];
+            let mut desc = repeated(0, desc_size as usize)?;
             source.read_exact_at(desc_offset, &mut desc)?;
             let desc = crate::vmdk_descriptor::text(&desc)?;
             // QEMU split sparse extents reserve an entirely zero descriptor area.
@@ -885,6 +1297,9 @@ impl Vmdk {
                 if let Some((key, field)) = crate::vmdk_descriptor::property(line, 0) {
                     let value = field.text;
                     match key {
+                        "CID" => {
+                            content_id = Some(crate::vmdk_descriptor::hexadecimal(value)?);
+                        }
                         "parentCID" => {
                             if value.trim() != "ffffffff" && !allow_parent {
                                 return Err(unsupported("VMDK parent requires authorization"));
@@ -916,17 +1331,17 @@ impl Vmdk {
             let gd_bytes = directories
                 .checked_mul(4)
                 .ok_or_else(|| invalid("VMDK directory overflow"))?;
-            claim(&mut owners, gd, gd_bytes, overhead)?;
+            claim(budget, &mut owners, gd, gd_bytes, overhead)?;
             budget.metadata(gd_bytes)?;
             let _directory_cache = budget.cache(gd_bytes)?;
-            let mut directory = vec![0; gd_bytes as usize];
+            let mut directory = repeated(0, gd_bytes as usize)?;
             source.read_exact_at(gd, &mut directory)?;
             for d in 0..directories {
                 let table_sector = u64::from(u32le(&directory, d as usize * 4));
                 let remaining = (count - d * gtes).min(gtes);
                 if table_sector == 0 {
                     if pass == 0 {
-                        entries.extend(std::iter::repeat_n(0, remaining as usize));
+                        entries.extend(core::iter::repeat_n(0, remaining as usize));
                     } else if entries[(d * gtes) as usize..(d * gtes + remaining) as usize]
                         .iter()
                         .any(|e| *e != 0)
@@ -942,9 +1357,9 @@ impl Vmdk {
                 budget.metadata(bytes)?;
                 budget.work(gtes)?;
                 budget.attribute(bytes)?;
-                claim(&mut owners, table, bytes, overhead)?;
+                claim(budget, &mut owners, table, bytes, overhead)?;
                 let _table_cache = budget.cache(bytes)?;
-                let mut data = vec![0; bytes as usize];
+                let mut data = repeated(0, bytes as usize)?;
                 source.read_exact_at(table, &mut data)?;
                 for i in 0..gtes {
                     let entry = u32le(&data, i as usize * 4);
@@ -961,7 +1376,13 @@ impl Vmdk {
                         if sector(u64::from(entry))? < overhead {
                             return Err(invalid("VMDK data inside metadata area"));
                         }
-                        claim(&mut owners, sector(u64::from(entry))?, grain, source.len())?;
+                        claim(
+                            budget,
+                            &mut owners,
+                            sector(u64::from(entry))?,
+                            grain,
+                            source.len(),
+                        )?;
                     }
                     if pass == 0 {
                         entries.push(entry);
@@ -982,13 +1403,28 @@ impl Vmdk {
             entries,
             _cache: cache,
             extents: Vec::new(),
+            dependencies: Vec::new(),
             parent: None,
-            cid: None,
+            cid: content_id,
             _identity_cache: None,
         })
     }
 }
 impl ReadAt for Vmdk {
+    #[cfg(feature = "std")]
+    fn host_context(&self) -> Option<&dyn core::any::Any> {
+        self.source.host_context()
+    }
+    fn source_identity(&self) -> Option<crate::SourceIdentity> {
+        self.source.source_identity()
+    }
+    fn ancestor_identities(&self) -> Vec<crate::SourceIdentity> {
+        let mut identities = self.source.ancestor_identities();
+        if let Some(parent) = &self.parent {
+            identities.extend(parent.ancestor_identities());
+        }
+        identities
+    }
     fn len(&self) -> u64 {
         self.length
     }

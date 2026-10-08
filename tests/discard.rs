@@ -1,3 +1,4 @@
+#![cfg(feature = "std")]
 use virtdisk::{DiscardPolicy, DiscardResult, ImageOperation, InspectImage, RawWriter, WriteAt};
 
 #[test]
@@ -15,7 +16,7 @@ fn common_vmdk_discard_releases_native_mapping_and_preserves_neighbors() {
             .discard(1, 65536, DiscardPolicy::RequireDeallocation)
             .unwrap_err()
             .kind(),
-        std::io::ErrorKind::Unsupported
+        virtdisk::io::ErrorKind::Unsupported
     );
     assert!(
         writer
@@ -127,7 +128,7 @@ fn generic_writer_without_native_discard_never_silently_zeroes_strict_request() 
             .discard(0, 512, DiscardPolicy::RequireDeallocation)
             .unwrap_err()
             .kind(),
-        std::io::ErrorKind::Unsupported
+        virtdisk::io::ErrorKind::Unsupported
     );
     let mut bytes = [0; 512];
     writer.read_exact_at(0, &mut bytes).unwrap();

@@ -1,6 +1,7 @@
 //! Stable CLI error records, separate from the library's typed I/O errors.
 use super::json_output::JsonString;
-use std::{error::Error, io};
+use std::error::Error;
+use virtdisk::io;
 use virtdisk::{
     ImageFormat, OperationError, OperationLimitExceeded, OperationResource, ParserLimitExceeded,
     ParserResource,
@@ -14,7 +15,7 @@ struct Quota {
 }
 
 pub(super) fn write_json(writer: &mut impl io::Write, error: &io::Error) -> io::Result<()> {
-    let kind = kind_name(error.kind());
+    let mut kind = kind_name(error.kind());
     let mut code = kind;
     let mut operation = None;
     let mut quota = None;
@@ -38,6 +39,11 @@ pub(super) fn write_json(writer: &mut impl io::Write, error: &io::Error) -> io::
             });
         } else if let Some(value) = current.downcast_ref::<ParserLimitExceeded>() {
             code = "parser-limit";
+            // Retain the established host CLI classification for parser bounds.
+            kind = match value.resource() {
+                ParserResource::RecursionDepth | ParserResource::AttributeBytes => "invalid-data",
+                _ => "unsupported",
+            };
             quota = Some(Quota {
                 resource: match value.resource() {
                     ParserResource::MetadataBytes => "metadata-bytes",
@@ -68,7 +74,7 @@ pub(super) fn write_json(writer: &mut impl io::Write, error: &io::Error) -> io::
     }
     let resource = quota.map(|value| value.resource);
     let range = operation.and_then(OperationError::range);
-    writeln!(
+    Ok(writeln!(
         writer,
         "{{\"type\":\"error\",\"code\":\"{code}\",\"kind\":\"{kind}\",\"message\":{},\"operation\":{},\"format\":{},\"offset\":{},\"length\":{},\"resource\":{},\"limit\":{},\"requested\":{}}}",
         json_string(&error.to_string()),
@@ -85,7 +91,7 @@ pub(super) fn write_json(writer: &mut impl io::Write, error: &io::Error) -> io::
             || "null".to_owned(),
             |value| json_string(&value.requested.to_string())
         ),
-    )
+    )?)
 }
 
 fn string_or_null(value: Option<&str>) -> String {

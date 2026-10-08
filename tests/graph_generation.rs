@@ -1,3 +1,4 @@
+#![cfg(feature = "std")]
 use virtdisk::{ImageFormat, ImageGraph, OperationContext};
 #[cfg(target_os = "linux")]
 use virtdisk::{ImageSpec, OperationPhase, OperationProgress};
@@ -145,7 +146,7 @@ fn generation_cancellation_keeps_original_graph_and_removes_private_staging() {
                     .snapshot_generation_with_context(&parent, &output, format, &mut context)
                     .unwrap_err()
                     .kind(),
-                std::io::ErrorKind::Interrupted
+                virtdisk::io::ErrorKind::Interrupted
             );
             assert!(!output.exists());
             assert!(graph.children(&parent).unwrap().is_empty());
@@ -176,7 +177,7 @@ fn generation_no_overwrite_survives_a_final_boundary_destination_race() {
             .snapshot_generation_with_context(&parent, &output, ImageFormat::Qcow2, &mut context)
             .unwrap_err()
             .kind(),
-        std::io::ErrorKind::AlreadyExists
+        virtdisk::io::ErrorKind::AlreadyExists
     );
     assert_eq!(std::fs::read(output.join("sentinel")).unwrap(), b"keep");
     assert_eq!(std::fs::read_dir(&output).unwrap().count(), 1);
@@ -197,7 +198,7 @@ fn generation_is_refused_before_io_on_platforms_without_the_publication_protocol
             &mut context,
         )
         .unwrap_err();
-    assert_eq!(error.kind(), std::io::ErrorKind::Unsupported);
+    assert_eq!(error.kind(), virtdisk::io::ErrorKind::Unsupported);
     assert_eq!(context.usage(), virtdisk::OperationUsage::default());
     let error = graph
         .rebase_generation_with_context(
@@ -207,7 +208,7 @@ fn generation_is_refused_before_io_on_platforms_without_the_publication_protocol
             &mut context,
         )
         .unwrap_err();
-    assert_eq!(error.kind(), std::io::ErrorKind::Unsupported);
+    assert_eq!(error.kind(), virtdisk::io::ErrorKind::Unsupported);
     assert_eq!(context.usage(), virtdisk::OperationUsage::default());
 }
 
@@ -286,7 +287,7 @@ fn rebase_generation_cancellation_keeps_original_graph() {
         let error = graph
             .rebase_generation_with_context(&parent, &parent, &output, &mut context)
             .unwrap_err();
-        assert_eq!(error.kind(), std::io::ErrorKind::Interrupted);
+        assert_eq!(error.kind(), virtdisk::io::ErrorKind::Interrupted);
         assert!(!output.exists());
         assert!(graph.children(&parent).unwrap().is_empty());
         assert_eq!(std::fs::read(&parent).unwrap(), original);

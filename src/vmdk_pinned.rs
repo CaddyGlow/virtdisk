@@ -145,6 +145,30 @@ impl PinnedParentGraph {
         Ok(())
     }
 }
+// Explicit recovery-only view: the pinned graph and journal authorize this shadow.
+// Omitting native path provenance prevents ordinary pending-journal checks from
+// confusing validated recovery storage with a clean external image.
+struct RecoverySource(Arc<dyn ReadAt>);
+impl ReadAt for RecoverySource {
+    fn len(&self) -> u64 {
+        self.0.len()
+    }
+    fn context(&self) -> ReadContext {
+        self.0.context()
+    }
+    fn source_identity(&self) -> Option<crate::SourceIdentity> {
+        self.0.source_identity()
+    }
+    fn ancestor_identities(&self) -> Vec<crate::SourceIdentity> {
+        self.0.ancestor_identities()
+    }
+    fn budget(&self) -> Option<ReadBudget> {
+        self.0.budget()
+    }
+    fn read_exact_at(&self, offset: u64, out: &mut [u8]) -> io::Result<()> {
+        self.0.read_exact_at(offset, out)
+    }
+}
 struct FrozenChildren<'a> {
     paths: &'a [PathBuf],
     sources: &'a [Arc<dyn ReadAt>],
@@ -168,7 +192,10 @@ impl SourceFactory for FrozenChildren<'_> {
         let mut context = self.sources[index].context();
         context.container = None;
         Ok(OpenedSource {
-            source: crate::contextual_reader(self.sources[index].clone(), context),
+            source: Arc::new(RecoverySource(crate::contextual_reader(
+                self.sources[index].clone(),
+                context,
+            ))),
             identity: None,
         })
     }

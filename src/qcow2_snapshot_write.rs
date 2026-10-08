@@ -4,8 +4,9 @@ use super::{
     allocator::Builder,
     journal::{self, Patch, Record},
 };
+use crate::io;
 use crate::{Qcow2, Qcow2Snapshot, ReadAt};
-use std::{collections::BTreeMap, io, sync::Arc};
+use std::{collections::BTreeMap, sync::Arc};
 const CLUSTER: u64 = 65536;
 fn unsupported(message: &'static str) -> io::Error {
     io::Error::new(io::ErrorKind::Unsupported, message)
@@ -691,7 +692,7 @@ mod lifecycle_recovery_tests {
         out
     }
     fn compress_saved_fixture(path: &std::path::Path, crossing: bool) -> Qcow2Writer {
-        use std::io::Write;
+        use crate::io::Write;
         let writer = prepare(path, false, true, false);
         let source = Arc::new(LockedSource {
             raw: writer.raw.clone(),

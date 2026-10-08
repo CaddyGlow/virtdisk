@@ -1,4 +1,6 @@
-use std::{cell::Cell, fs, io, ops::ControlFlow};
+#![cfg(feature = "std")]
+use std::{cell::Cell, fs, ops::ControlFlow};
+use virtdisk::io;
 use virtdisk::{
     CheckOptions, ImageFormat, OperationContext, OperationLimits, OperationPhase, ParserLimits,
     check_image_with_limits, check_image_with_limits_and_context,
@@ -49,7 +51,7 @@ fn parser_work_and_payload_context_have_independent_accounting() {
         &mut context,
     )
     .unwrap_err();
-    assert_eq!(error.kind(), io::ErrorKind::Unsupported);
+    assert_eq!(error.kind(), io::ErrorKind::ResourceLimit);
     assert_eq!(context.usage().logical_bytes, 65536);
     assert_eq!(context.usage().io_operations, 2);
     assert_eq!(fs::read(&path).unwrap(), original);

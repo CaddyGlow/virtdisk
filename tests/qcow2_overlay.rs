@@ -1,3 +1,4 @@
+#![cfg(feature = "std")]
 use virtdisk::{Qcow2, ReadAt, create_qcow2_overlay};
 
 #[test]
@@ -75,7 +76,7 @@ fn qemu_checks_and_flattens_overlay() {
 
 #[test]
 fn explicit_zero_mapping_masks_parent_while_unallocated_inherits() {
-    use std::io::{Seek, SeekFrom, Write};
+    use virtdisk::io::{Seek, SeekFrom, Write};
     let dir = tempfile::tempdir().unwrap();
     let parent = dir.path().join("parent.raw");
     let child = dir.path().join("child.qcow2");

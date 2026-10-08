@@ -1,3 +1,4 @@
+#![cfg(feature = "std")]
 #[test]
 #[ignore = "requires independent qemu-img oracle"]
 fn published_vmdk_compaction_is_readable_after_staging_filename_changes() {

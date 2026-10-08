@@ -1,4 +1,6 @@
-use std::{io, ops::ControlFlow};
+#![cfg(feature = "std")]
+use std::ops::ControlFlow;
+use virtdisk::io;
 use virtdisk::{
     ImageFormat, ImageWriter, OperationContext, OperationLimits, OperationPhase, OperationProgress,
     ShrinkPolicy, WriteAt,

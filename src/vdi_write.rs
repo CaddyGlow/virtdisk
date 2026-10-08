@@ -1,10 +1,7 @@
 //! Native VDI export with bounded block streaming.
 use crate::ReadAt;
-use std::{
-    fs::OpenOptions,
-    io::{self, Seek, SeekFrom, Write},
-    path::Path,
-};
+use crate::io::{self, Seek, SeekFrom, Write};
+use std::{fs::OpenOptions, path::Path};
 const BLOCK: u64 = 1024 * 1024;
 const MAX_MAP: u64 = 64 * 1024 * 1024;
 fn put(b: &mut [u8], at: usize, n: u32) {
@@ -127,7 +124,7 @@ pub(crate) fn export_vdi(
     }
     file.seek(SeekFrom::Start(0))?;
     file.write_all(&header)?;
-    file.sync_all()
+    Ok(file.sync_all()?)
 }
 
 /// Create an empty native VDI differencing image over an immutable VDI parent.

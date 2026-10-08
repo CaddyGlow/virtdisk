@@ -1,8 +1,8 @@
 //! Bounded QCOW2 allocation transaction records.
 
 use crate::ReadAt;
+use crate::io;
 use sha2::{Digest, Sha256};
-use std::io;
 
 const LIMIT: usize = 4 * 1024 * 1024;
 const PATCH_LIMIT: usize = 16;
@@ -273,12 +273,12 @@ pub(super) fn sidecar(path: &std::path::Path) -> std::path::PathBuf {
 fn sync_parent(path: &std::path::Path) -> io::Result<()> {
     #[cfg(target_os = "linux")]
     {
-        std::fs::File::open(
+        Ok(std::fs::File::open(
             path.parent()
                 .filter(|p| !p.as_os_str().is_empty())
                 .unwrap_or(std::path::Path::new(".")),
         )?
-        .sync_all()
+        .sync_all()?)
     }
     #[cfg(not(target_os = "linux"))]
     {
@@ -393,7 +393,7 @@ pub(super) fn commit_authorized(
     cut: Option<usize>,
     authorized: &[std::path::PathBuf],
 ) -> io::Result<()> {
-    use std::io::Write;
+    use crate::io::Write;
     validate_states(path, authorized, raw.clone(), &record)?;
     sync_parent(path)?; // Reject unsupported directory persistence before mutation.
     let bytes = record.encode()?;

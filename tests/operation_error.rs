@@ -1,4 +1,6 @@
-use std::{error::Error, io};
+#![cfg(feature = "std")]
+use std::error::Error;
+use virtdisk::io;
 use virtdisk::{ImageFormat, ImageOperation, ImageWriter, OperationError, WriteAt};
 
 #[test]

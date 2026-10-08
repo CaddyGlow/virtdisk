@@ -1,14 +1,15 @@
+#![cfg(feature = "std")]
 use virtdisk::{
     ImageFormat, ImageGraph, ImageSpec, ParserLimitExceeded, ParserLimits, ParserResource,
 };
 
-fn refusal(error: &std::io::Error) -> &ParserLimitExceeded {
+fn refusal(error: &virtdisk::io::Error) -> &ParserLimitExceeded {
     let mut current: &(dyn std::error::Error + 'static) = error;
     loop {
         if let Some(limit) = current.downcast_ref::<ParserLimitExceeded>() {
             return limit;
         }
-        if let Some(io) = current.downcast_ref::<std::io::Error>()
+        if let Some(io) = current.downcast_ref::<virtdisk::io::Error>()
             && let Some(inner) = io.get_ref()
         {
             current = inner;
@@ -110,7 +111,7 @@ fn invalid_limits_precede_path_access_and_chain_depth_uses_typed_budget_errors()
     )
     .err()
     .unwrap();
-    assert_eq!(failed.kind(), std::io::ErrorKind::InvalidInput);
+    assert_eq!(failed.kind(), virtdisk::io::ErrorKind::InvalidInput);
     let dir = tempfile::tempdir().unwrap();
     let base = dir.path().join("base.raw");
     let child = dir.path().join("child.qcow2");
@@ -180,7 +181,7 @@ fn manifest_binding_can_share_limits_without_changing_legacy_graph_budgets() {
         )
         .err()
         .unwrap();
-    assert_eq!(failed.kind(), std::io::ErrorKind::InvalidInput);
+    assert_eq!(failed.kind(), virtdisk::io::ErrorKind::InvalidInput);
     let legacy = manifest.open_graph(&[base]).unwrap();
     assert!(legacy.budget().is_none());
 }
@@ -225,7 +226,7 @@ fn staged_native_snapshot_parsing_shares_quota_and_failure_discards_output() {
                 .snapshot_as_with_context(&base, &child, format, &mut context)
                 .unwrap_err()
                 .kind(),
-            std::io::ErrorKind::Interrupted
+            virtdisk::io::ErrorKind::Interrupted
         );
         assert!(after_stage.get() > before_stage.get());
         assert!(!child.exists());
@@ -327,7 +328,7 @@ fn rebased_output_validation_uses_graph_quota_after_completed_difference_writes(
             .rebase_to_with_context(&source, &parent, &output, &mut context)
             .unwrap_err()
             .kind(),
-        std::io::ErrorKind::Interrupted
+        virtdisk::io::ErrorKind::Interrupted
     );
     assert!(after_stage.get() > before_stage.get());
     let mut graph = ImageGraph::open_with_limits(

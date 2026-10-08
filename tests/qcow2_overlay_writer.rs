@@ -1,3 +1,4 @@
+#![cfg(feature = "std")]
 #![cfg(target_os = "linux")]
 
 use virtdisk::{Qcow2, Qcow2Writer, ReadAt, create_qcow2_overlay};
@@ -36,7 +37,7 @@ fn authorized_overlay_partial_writes_copy_parent_and_preserve_immutable_base() {
 #[test]
 #[cfg(target_os = "linux")]
 fn qcow_parent_and_explicit_zero_mapping_preserve_authorization_and_masking() {
-    use std::io::{Seek, SeekFrom, Write};
+    use virtdisk::io::{Seek, SeekFrom, Write};
     let dir = tempfile::tempdir().unwrap();
     let parent = dir.path().join("base.qcow2");
     let child = dir.path().join("child.qcow2");
@@ -106,7 +107,7 @@ fn qemu_checks_and_flattens_written_overlay() {
 #[test]
 #[cfg(target_os = "linux")]
 fn every_parent_in_deeper_chain_must_be_authorized_and_cycles_fail() {
-    use std::io::{Seek, SeekFrom, Write};
+    use virtdisk::io::{Seek, SeekFrom, Write};
     let dir = tempfile::tempdir().unwrap();
     let base = dir.path().join("base.raw");
     let parent = dir.path().join("parent.qcow2");

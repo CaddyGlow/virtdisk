@@ -1,5 +1,6 @@
-use std::{io, sync::Arc};
+use std::sync::Arc;
 use virtdisk::Qcow2;
+use virtdisk::io;
 #[path = "support/bytes.rs"]
 mod bytes;
 use bytes::Bytes;
@@ -92,6 +93,7 @@ fn snapshot_only_corruption_and_vm_state_fail_closed() {
     assert_eq!(validate(b).unwrap_err().kind(), io::ErrorKind::Unsupported);
 }
 
+#[cfg(feature = "std")]
 #[test]
 #[ignore = "requires independent qemu-img and qemu-io snapshot ownership oracle"]
 fn qemu_native_snapshot_maps_validate_across_refcount_widths_and_compression() {
@@ -198,7 +200,7 @@ fn global_snapshot_walk_honors_cancellation_and_caller_budgets() {
         let disk = Qcow2::open_with_limits(Arc::new(Bytes(fixture())), limits).unwrap();
         assert_eq!(
             disk.validate_active_mapping().unwrap_err().kind(),
-            io::ErrorKind::Unsupported
+            io::ErrorKind::ResourceLimit
         );
     }
 }

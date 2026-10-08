@@ -1,3 +1,4 @@
+#![cfg(feature = "std")]
 use std::sync::Arc;
 use virtdisk::{DiscardPolicy, DiscardResult, RawDisk, ReadAt, Vdi, VdiWriter};
 const M: u64 = 1 << 20;
@@ -149,7 +150,7 @@ fn unknown_tail_and_new_hardlink_are_rejected_before_modification_epoch() {
     assert_eq!(std::fs::read(&path).unwrap(), original);
     drop(writer);
     std::fs::remove_file(alias).unwrap();
-    use std::io::Write;
+    use virtdisk::io::Write;
     std::fs::OpenOptions::new()
         .append(true)
         .open(&path)

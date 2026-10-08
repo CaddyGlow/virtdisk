@@ -1,3 +1,4 @@
+#![cfg(feature = "std")]
 use virtdisk::{Image, ImageFormat, InspectImage, ReadAt, VdiWriter};
 #[test]
 fn dispatch_opens_only_explicit_ordered_native_parents() {

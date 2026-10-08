@@ -2,7 +2,8 @@
 mod vhdx_chain;
 mod vmdk_split;
 mod writable;
-use std::{io, sync::Arc};
+use std::sync::Arc;
+use virtdisk::io;
 use virtdisk::{ParserLimits, Qcow2, Qcow2Writer, RawWriter, ReadAt, Vdi, Vhdx, Vmdk};
 
 struct Bytes(Vec<u8>);

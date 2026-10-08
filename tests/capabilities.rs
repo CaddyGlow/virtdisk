@@ -1,3 +1,4 @@
+#![cfg(feature = "std")]
 use virtdisk::{Capability, ImageOperation, InspectImage, RawDisk, RawWriter, UnsupportedReason};
 #[test]
 fn reports_enumerate_stable_operation_names_and_current_handle_access() {

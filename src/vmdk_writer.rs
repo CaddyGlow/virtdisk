@@ -3,7 +3,7 @@ mod flat;
 #[cfg(target_os = "linux")]
 #[path = "vmdk_sparse_set.rs"]
 mod sparse_set;
-use std::io;
+use crate::io;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
@@ -1484,7 +1484,7 @@ mod recovery_tests {
     #[test]
     #[ignore = "requires independent qemu-img oracle"]
     fn resize_recovery_matches_qemu_at_every_staged_boundary() {
-        use std::io::{Seek, SeekFrom, Write};
+        use crate::io::{Seek, SeekFrom, Write};
         let _process_boundary = crate::test_sync::subprocess_test();
         for shrinking in [false, true] {
             for transaction in 0..3 {

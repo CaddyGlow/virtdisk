@@ -1,8 +1,9 @@
+#![cfg(feature = "std")]
 use std::{
-    io,
     ops::ControlFlow,
     sync::atomic::{AtomicUsize, Ordering},
 };
+use virtdisk::io;
 use virtdisk::{
     Image, ImageFormat, OperationCancelled, OperationContext, OperationLimits, OperationPhase,
     OperationProgress, ReadAt, ShrinkPolicy, resize_image_with_context,

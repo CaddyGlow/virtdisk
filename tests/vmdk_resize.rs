@@ -1,5 +1,7 @@
+#![cfg(feature = "std")]
 #![cfg(target_os = "linux")]
-use std::{fs, io, sync::Arc};
+use std::{fs, sync::Arc};
+use virtdisk::io;
 use virtdisk::{ReadAt, ShrinkPolicy, Vmdk, VmdkWriter};
 
 #[test]

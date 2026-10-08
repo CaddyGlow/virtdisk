@@ -1,3 +1,4 @@
+#![cfg(feature = "std")]
 use virtdisk::{ImageFormat, ImageGraph, ImageSpec, VdiWriter};
 #[test]
 fn native_snapshot_branches_flatten_and_preserve_immutable_base() {

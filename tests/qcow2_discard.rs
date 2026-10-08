@@ -1,3 +1,4 @@
+#![cfg(feature = "std")]
 #![cfg(target_os = "linux")]
 
 use std::sync::Arc;
@@ -50,7 +51,7 @@ fn discard_alignment_and_final_partial_cluster_are_checked_before_mutation() {
     for (offset, length) in [(1, CLUSTER), (0, 512), (CLUSTER, 512)] {
         assert_eq!(
             writer.discard(offset, length).unwrap_err().kind(),
-            std::io::ErrorKind::InvalidInput
+            virtdisk::io::ErrorKind::InvalidInput
         );
     }
     assert!(writer.discard(u64::MAX, CLUSTER).is_err());

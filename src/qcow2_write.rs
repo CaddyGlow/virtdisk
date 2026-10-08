@@ -1,5 +1,5 @@
+use crate::io::{self, Seek, SeekFrom, Write};
 use std::fs::{File, OpenOptions};
-use std::io::{self, Seek, SeekFrom, Write};
 use std::path::Path;
 
 use crate::ReadAt;

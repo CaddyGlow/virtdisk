@@ -1,7 +1,6 @@
-use std::{
-    io::{Seek, SeekFrom, Write},
-    path::Path,
-};
+#![cfg(feature = "std")]
+use std::path::Path;
+use virtdisk::io::{Seek, SeekFrom, Write};
 use virtdisk::{ImageFormat, ImageGraph, ImageSpec, ParserLimits, Qcow2, ReadAt};
 
 fn remove_backing_format(child: &Path) {
@@ -156,7 +155,7 @@ fn manifest_binding_rejects_a_type_disagreement_despite_exact_path_authority() {
     let paths = [base, child];
     assert_eq!(
         manifest.open_graph(&paths).err().unwrap().kind(),
-        std::io::ErrorKind::InvalidInput
+        virtdisk::io::ErrorKind::InvalidInput
     );
     assert_eq!(
         manifest
@@ -164,7 +163,7 @@ fn manifest_binding_rejects_a_type_disagreement_despite_exact_path_authority() {
             .err()
             .unwrap()
             .kind(),
-        std::io::ErrorKind::InvalidInput
+        virtdisk::io::ErrorKind::InvalidInput
     );
 }
 

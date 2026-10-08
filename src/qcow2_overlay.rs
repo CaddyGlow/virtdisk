@@ -1,5 +1,5 @@
+use crate::io::{self, Write};
 use std::fs::OpenOptions;
-use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
 use crate::{Qcow2, RawDisk};
@@ -123,7 +123,7 @@ pub fn create_qcow2_overlay_with_chain(
         cluster[index * 2..index * 2 + 2].copy_from_slice(&1u16.to_be_bytes());
     }
     file.write_all(&cluster)?;
-    file.sync_all()
+    Ok(file.sync_all()?)
 }
 
 fn forbidden_path(name: &str) -> bool {

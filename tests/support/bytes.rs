@@ -1,6 +1,6 @@
 //! Checked in-memory transport for integration tests.
-use std::io;
 use virtdisk::ReadAt;
+use virtdisk::io;
 
 pub struct Bytes(pub Vec<u8>);
 impl ReadAt for Bytes {

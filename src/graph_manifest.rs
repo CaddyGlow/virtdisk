@@ -1,9 +1,9 @@
 //! Bounded caller-owned dependency declarations, independent of image authority.
+use crate::io::{self, Read, Write};
 use crate::{ImageFormat, ImageGraph, ImageSpec, ParserLimits, ReadBudget};
 use sha2::{Digest, Sha256};
 use std::{
     fs::File,
-    io::{self, Read, Write},
     path::{Path, PathBuf},
 };
 
@@ -96,7 +96,7 @@ impl GraphManifest {
                 .create_new(true)
                 .open(temporary)?;
             file.write_all(&bytes)?;
-            file.sync_all()
+            Ok(file.sync_all()?)
         })
     }
     /// Bind this declaration to exactly the paths authorized by the caller.

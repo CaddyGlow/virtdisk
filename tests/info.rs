@@ -1,3 +1,4 @@
+#![cfg(feature = "std")]
 use virtdisk::{
     Capability, ImageOperation, InspectImage, RawWriter, UnsupportedReason, VdiWriter, VmdkWriter,
 };
@@ -333,7 +334,8 @@ fn split_sparse_sizes_track_both_extent_allocations_without_reopen() {
 
 #[test]
 fn bounded_non_file_container_source_reports_its_own_length() {
-    use std::{io, sync::Arc};
+    use std::sync::Arc;
+    use virtdisk::io;
     use virtdisk::{Qcow2, Qcow2Writer, ReadAt};
     struct Bytes(Vec<u8>);
     impl ReadAt for Bytes {

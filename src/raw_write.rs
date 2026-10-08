@@ -1,5 +1,5 @@
+use crate::io::{self, Read, Seek, SeekFrom, Write};
 use std::fs::{File, OpenOptions};
-use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::path::Path;
 use std::sync::Mutex;
 
@@ -102,7 +102,9 @@ impl RawWriter {
         }
     }
     pub(crate) fn opened_identity(&self) -> io::Result<same_file::Handle> {
-        same_file::Handle::from_file(self.state()?.file.try_clone()?)
+        Ok(same_file::Handle::from_file(
+            self.state()?.file.try_clone()?,
+        )?)
     }
 
     pub(crate) fn require_single_link_for_journal(&self) -> io::Result<()> {
@@ -149,7 +151,7 @@ impl RawWriter {
         let mut state = self.state()?;
         crate::check_range(offset, data.len() as u64, state.length)?;
         state.file.seek(SeekFrom::Start(offset))?;
-        state.file.write_all(data)
+        Ok(state.file.write_all(data)?)
     }
 
     /// Read exactly a bounded range from the current logical image.
@@ -159,7 +161,7 @@ impl RawWriter {
         let mut state = self.state()?;
         crate::check_range(offset, destination.len() as u64, state.length)?;
         state.file.seek(SeekFrom::Start(offset))?;
-        state.file.read_exact(destination)
+        Ok(state.file.read_exact(destination)?)
     }
 
     /// Write zero bytes to a bounded range using constant memory.
@@ -298,6 +300,6 @@ impl RawWriter {
     /// Storage hardware and host filesystem determine the ultimate durability
     /// guarantee. This does not sync the image's parent directory.
     pub fn flush(&self) -> io::Result<()> {
-        self.state()?.file.sync_all()
+        Ok(self.state()?.file.sync_all()?)
     }
 }

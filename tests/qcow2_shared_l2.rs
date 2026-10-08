@@ -1,10 +1,8 @@
+#![cfg(feature = "std")]
 #![cfg(target_os = "linux")]
 
-use std::{
-    io::{Seek, SeekFrom, Write},
-    path::Path,
-    sync::Arc,
-};
+use std::{path::Path, sync::Arc};
+use virtdisk::io::{Seek, SeekFrom, Write};
 use virtdisk::{Qcow2, Qcow2Writer, RawDisk, ReadAt};
 const CLUSTER: u64 = 65536;
 const SECOND: u64 = CLUSTER * 8192;

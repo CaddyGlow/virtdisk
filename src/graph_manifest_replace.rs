@@ -1,7 +1,9 @@
 //! Atomic, expected-declaration replacement under a retained file lock.
 use super::GraphManifest;
 use crate::OperationContext;
-use std::{io, path::Path};
+use crate::io;
+use crate::io::{Seek, Write};
+use std::path::Path;
 
 impl GraphManifest {
     /// Atomically replace a declaration only if it still matches `expected`.
@@ -33,7 +35,12 @@ impl GraphManifest {
     ) -> io::Result<()> {
         #[cfg(target_os = "linux")]
         {
-            self.replace_inner(path.as_ref(), expected, context, std::fs::File::sync_all)
+            self.replace_inner(
+                path.as_ref(),
+                expected,
+                context,
+                |file| Ok(file.sync_all()?),
+            )
         }
         #[cfg(not(target_os = "linux"))]
         {
@@ -64,7 +71,6 @@ use rustix::fs::{AtFlags, Mode, OFlags, openat, renameat, statat};
 use std::{
     ffi::OsString,
     fs::{File, Metadata},
-    io::{Seek, Write},
     os::unix::fs::MetadataExt,
     path::PathBuf,
 };
@@ -376,7 +382,7 @@ mod tests {
         );
         let contender = std::fs::File::open(&path).unwrap();
         assert!(contender.try_lock().is_err());
-        published.sync(std::fs::File::sync_all).unwrap();
+        published.sync(|file| Ok(file.sync_all()?)).unwrap();
         contender.try_lock().unwrap();
         assert_eq!(dir.path().read_dir().unwrap().count(), 2);
     }

@@ -1,3 +1,4 @@
+#![cfg(feature = "std")]
 #![cfg(target_os = "linux")]
 
 use std::{fs::File, os::unix::fs::FileExt, path::Path, sync::Arc};

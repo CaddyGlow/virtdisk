@@ -1,3 +1,4 @@
+#![cfg(feature = "std")]
 #![cfg(target_os = "linux")]
 use std::sync::{Arc, Mutex};
 use virtdisk::{Qcow2, Qcow2Writer, RawDisk, ReadAt};
@@ -79,11 +80,11 @@ fn missing_ids_leave_container_unchanged_and_writer_usable() {
     let before = std::fs::read(&path).unwrap();
     assert_eq!(
         w.delete_snapshot(b"absent").unwrap_err().kind(),
-        std::io::ErrorKind::NotFound
+        virtdisk::io::ErrorKind::NotFound
     );
     assert_eq!(
         w.revert_snapshot(b"absent").unwrap_err().kind(),
-        std::io::ErrorKind::NotFound
+        virtdisk::io::ErrorKind::NotFound
     );
     assert_eq!(std::fs::read(&path).unwrap(), before);
     w.write_all_at(0, &[5]).unwrap();
@@ -462,7 +463,7 @@ fn compressed_materialization_budget_refuses_before_mutation() {
     let before = std::fs::read(&path).unwrap();
     assert_eq!(
         writer.revert_snapshot(&id).unwrap_err().kind(),
-        std::io::ErrorKind::Unsupported
+        virtdisk::io::ErrorKind::Unsupported
     );
     assert_eq!(std::fs::read(&path).unwrap(), before);
     assert!(

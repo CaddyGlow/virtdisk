@@ -1,3 +1,4 @@
+#![cfg(feature = "std")]
 use std::sync::Arc;
 use virtdisk::{Image, ImageFormat, Qcow2, RawDisk, compact_image, create_sparse_qcow2};
 
@@ -111,7 +112,10 @@ fn cancelled_compaction_leaves_no_published_output_or_staging_files() {
         let result = virtdisk::compact_image_with_cancel(&source, &output, format, &|| {
             calls.fetch_add(1, Ordering::Relaxed) > 1
         });
-        assert_eq!(result.unwrap_err().kind(), std::io::ErrorKind::Interrupted);
+        assert_eq!(
+            result.unwrap_err().kind(),
+            virtdisk::io::ErrorKind::Interrupted
+        );
         assert!(!output.exists());
         assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 1);
     }
@@ -134,7 +138,7 @@ fn legacy_compaction_checks_before_reads_and_before_publication() {
         fn len(&self) -> u64 {
             512
         }
-        fn read_exact_at(&self, offset: u64, bytes: &mut [u8]) -> std::io::Result<()> {
+        fn read_exact_at(&self, offset: u64, bytes: &mut [u8]) -> virtdisk::io::Result<()> {
             assert!(offset + bytes.len() as u64 <= self.len());
             self.reads.fetch_add(1, Ordering::Relaxed);
             bytes.fill(7);
@@ -171,7 +175,7 @@ fn legacy_compaction_checks_before_reads_and_before_publication() {
             calls.fetch_add(1, Ordering::Relaxed) + 1 == total_calls
         })
         .unwrap_err();
-        assert_eq!(error.kind(), std::io::ErrorKind::Interrupted);
+        assert_eq!(error.kind(), virtdisk::io::ErrorKind::Interrupted);
         assert!(!cancelled.exists());
     }
     assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 5);

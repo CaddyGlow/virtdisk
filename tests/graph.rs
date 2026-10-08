@@ -1,3 +1,4 @@
+#![cfg(feature = "std")]
 use std::path::PathBuf;
 use virtdisk::{ImageFormat, ImageGraph, ImageSpec};
 

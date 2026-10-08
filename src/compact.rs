@@ -1,6 +1,7 @@
 //! Logical-content-preserving sparse rewrites.
+use crate::io;
 use crate::{ImageFormat, ReadAt};
-use std::{io, ops::ControlFlow, path::Path};
+use std::{ops::ControlFlow, path::Path};
 
 /// Compact into a new independent image, omitting zero-filled payload units.
 ///
@@ -80,6 +81,15 @@ impl Cancellable<'_> {
     }
 }
 impl ReadAt for Cancellable<'_> {
+    fn source_identity(&self) -> Option<crate::SourceIdentity> {
+        self.source.source_identity()
+    }
+    fn ancestor_identities(&self) -> Vec<crate::SourceIdentity> {
+        self.source.ancestor_identities()
+    }
+    fn host_context(&self) -> Option<&dyn core::any::Any> {
+        self.source.host_context()
+    }
     fn len(&self) -> u64 {
         self.source.len()
     }

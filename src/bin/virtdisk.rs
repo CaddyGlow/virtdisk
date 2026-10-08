@@ -8,8 +8,9 @@ mod graph_output;
 #[path = "virtdisk/json_output.rs"]
 mod json_output;
 use std::sync::Arc;
-use std::{env, ffi::OsStr, io, path::PathBuf, process::ExitCode};
+use std::{env, ffi::OsStr, path::PathBuf, process::ExitCode};
 use std::{io::Write as _, ops::ControlFlow};
+use virtdisk::io;
 use virtdisk::{
     DiscardPolicy, DiscardResult, Image, ImageFormat, ImageWriter, InspectImage, OperationContext,
     OperationLimits, ParserLimits, ReadAt, ReadRecoveryPolicy, ReaderOpenOptions, RecoveryPolicy,
@@ -113,7 +114,7 @@ fn write_progress(progress: virtdisk::OperationProgress) -> io::Result<()> {
         virtdisk::OperationPhase::NativeSnapshotRevert => "native-snapshot-revert",
         _ => "unknown",
     };
-    writeln!(
+    Ok(writeln!(
         io::stderr().lock(),
         "{{\"type\":\"progress\",\"phase\":\"{phase}\",\"completed_bytes\":{},\"total_bytes\":{},\"logical_bytes\":{},\"io_operations\":{},\"peak_scratch_bytes\":{}}}",
         progress.completed_bytes,
@@ -121,7 +122,7 @@ fn write_progress(progress: virtdisk::OperationProgress) -> io::Result<()> {
         progress.usage.logical_bytes,
         progress.usage.io_operations,
         progress.usage.peak_scratch_bytes
-    )
+    )?)
 }
 
 fn run_command(

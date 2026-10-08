@@ -1,6 +1,7 @@
 //! Strict global ownership checks; never repair or change the image.
 use super::{COPIED, OFFSET_MASK, Qcow2, be64, invalid, unsupported};
-use std::io;
+use crate::io;
+use alloc::{vec, vec::Vec};
 
 const WORK_LIMIT: u64 = 16 * 1024 * 1024;
 const METADATA_LIMIT: usize = 1024 * 1024;
@@ -71,7 +72,7 @@ fn add_extent(
     budget: &Budget<'_>,
 ) -> io::Result<()> {
     if let Some(parser) = &budget.parser {
-        parser.metadata(std::mem::size_of::<Extent>() as u64)?;
+        parser.metadata(core::mem::size_of::<Extent>() as u64)?;
     }
     if extents.len() >= METADATA_LIMIT {
         return Err(unsupported(
@@ -81,6 +82,9 @@ fn add_extent(
     let end = start
         .checked_add(length)
         .ok_or_else(|| invalid("QCOW2 metadata extent overflow"))?;
+    extents.try_reserve(1).map_err(|_| {
+        io::Error::new(io::ErrorKind::OutOfMemory, "QCOW2 extent allocation failed")
+    })?;
     extents.push(Extent { start, end, kind });
     Ok(())
 }
@@ -239,8 +243,22 @@ impl Qcow2 {
         if let Some(parser) = &budget.parser {
             parser.metadata(host_clusters * 4 + refcount_length)?;
         }
-        let mut expected = vec![0u32; host_clusters as usize];
-        let mut table = vec![0; refcount_length as usize];
+        let _accounting_reservation = budget
+            .parser
+            .as_ref()
+            .map(|parser| parser.cache(host_clusters * 4 + refcount_length + self.cluster_size * 4))
+            .transpose()?;
+        let mut expected = Vec::new();
+        expected
+            .try_reserve_exact(host_clusters as usize)
+            .map_err(|_| {
+                io::Error::new(
+                    io::ErrorKind::OutOfMemory,
+                    "QCOW2 ownership allocation failed",
+                )
+            })?;
+        expected.resize(host_clusters as usize, 0u32);
+        let mut table = super::zeroed_bytes(refcount_length as usize)?;
         self.source
             .read_exact_at(self.refcount_offset, &mut table)?;
         let mut metadata = Vec::new();
@@ -285,14 +303,26 @@ impl Qcow2 {
             Self::cluster_range(&*self.source, l1_offset, l1_size * 8, self.cluster_size)?;
             add_extent(&mut metadata, l1_offset, length, 2, budget)?;
         }
-        let mut refcount_blocks = std::collections::HashSet::new();
+        let mut refcount_blocks: Vec<u64> = Vec::new();
         for entry in table.as_chunks::<8>().0 {
             budget.step()?;
             let offset = be64(entry);
             if offset != 0 {
-                if !refcount_blocks.insert(offset) {
+                if let Some(parser) = &budget.parser {
+                    parser.work(refcount_blocks.len() as u64 + 1)?;
+                    parser.metadata(8)?;
+                }
+                if refcount_blocks.binary_search(&offset).is_ok() {
                     return Err(invalid("QCOW2 refcount table aliases a block"));
                 }
+                refcount_blocks.try_reserve(1).map_err(|_| {
+                    io::Error::new(
+                        io::ErrorKind::OutOfMemory,
+                        "refcount ownership allocation failed",
+                    )
+                })?;
+                let index = refcount_blocks.partition_point(|candidate| *candidate < offset);
+                refcount_blocks.insert(index, offset);
                 Self::cluster_range(&*self.source, offset, self.cluster_size, self.cluster_size)?;
                 add_extent(&mut metadata, offset, self.cluster_size, 3, budget)?;
             }
@@ -344,7 +374,7 @@ impl Qcow2 {
             disk: self,
             table: &table,
             block_offset: 0,
-            block: vec![0; self.cluster_size as usize],
+            block: super::zeroed_bytes(self.cluster_size as usize)?,
         };
         for extent in &metadata {
             for offset in (extent.start..extent.end).step_by(self.cluster_size as usize) {
@@ -355,7 +385,7 @@ impl Qcow2 {
         if let Some(parser) = &budget.parser {
             parser.metadata(self.cluster_size)?;
         }
-        let mut l2_bytes = vec![0; self.cluster_size as usize];
+        let mut l2_bytes = super::zeroed_bytes(self.cluster_size as usize)?;
         let entries = self.cluster_size / 8;
         for (l1_index, l2_offset, copied, virtual_size, active) in l2_tables {
             if active && (refs.value(l2_offset)? == 1) != copied {
@@ -427,7 +457,7 @@ impl Qcow2 {
         if let Some(parser) = &budget.parser {
             parser.metadata(self.cluster_size)?;
         }
-        let mut refcount_block = vec![0; self.cluster_size as usize];
+        let mut refcount_block = super::zeroed_bytes(self.cluster_size as usize)?;
         for (table_index, entry) in table.as_chunks::<8>().0.iter().enumerate() {
             let offset = be64(entry);
             if offset == 0 {

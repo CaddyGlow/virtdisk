@@ -1,12 +1,10 @@
 //! Bounded internal snapshot directory inspection.
-use super::{Qcow2, be32, be64, invalid, unsupported};
+use super::{Qcow2, be32, be64, invalid, unsupported, zeroed_bytes};
+use crate::io;
 use crate::{ReadAt, check_range};
-use std::{
-    collections::{HashMap, HashSet},
-    io,
-    sync::{Arc, Mutex},
-};
-
+use alloc::{sync::Arc, vec::Vec};
+#[cfg(feature = "std")]
+use std::{collections::HashMap, sync::Mutex};
 /// Immutable saved disk state, opened after complete container ownership validation.
 /// Sources and authorized backing files must remain immutable for its lifetime.
 pub struct Qcow2SnapshotView {
@@ -21,6 +19,15 @@ impl Qcow2SnapshotView {
     }
 }
 impl ReadAt for Qcow2SnapshotView {
+    fn source_identity(&self) -> Option<crate::SourceIdentity> {
+        self.image.source_identity()
+    }
+    fn ancestor_identities(&self) -> Vec<crate::SourceIdentity> {
+        self.image.ancestor_identities()
+    }
+    fn host_context(&self) -> Option<&dyn core::any::Any> {
+        self.image.host_context()
+    }
     fn len(&self) -> u64 {
         self.image.len()
     }
@@ -85,6 +92,7 @@ impl Qcow2 {
         self.validate_active_mapping()?;
         let image = Self {
             source: self.source.clone(),
+            #[cfg(feature = "std")]
             entry_cache: Mutex::new(HashMap::new()),
             version: self.version,
             size: snapshot.virtual_size,
@@ -134,8 +142,7 @@ impl Qcow2 {
         }
         let mut position = self.snapshots_offset;
         let mut total = 0u64;
-        let mut ids = HashSet::new();
-        let mut result = Vec::new();
+        let mut result: Vec<Qcow2Snapshot> = Vec::new();
         for _ in 0..self.snapshots {
             let mut header = [0; 40];
             self.source.read_exact_at(position, &mut header)?;
@@ -160,7 +167,7 @@ impl Qcow2 {
             if let Some(budget) = self.source.budget() {
                 budget.metadata(length)?;
             }
-            let mut bytes = vec![0; (content_length - 40) as usize];
+            let mut bytes = zeroed_bytes((content_length - 40) as usize)?;
             self.source.read_exact_at(position + 40, &mut bytes)?;
             let vm_state_size = if extra_length >= 8 {
                 be64(&bytes[..8])
@@ -194,9 +201,19 @@ impl Qcow2 {
             let id_start = extra_length as usize;
             let id_end = id_start + id_length as usize;
             let id = bytes[id_start..id_end].to_vec();
-            if id.is_empty() || !ids.insert(id.clone()) {
+            if let Some(budget) = self.source.budget() {
+                budget.work(result.len() as u64 + 1)?;
+                budget.metadata(core::mem::size_of::<Qcow2Snapshot>() as u64)?;
+            }
+            if id.is_empty() || result.iter().any(|snapshot| snapshot.id == id) {
                 return Err(invalid("invalid or duplicate QCOW2 snapshot identifier"));
             }
+            result.try_reserve(1).map_err(|_| {
+                io::Error::new(
+                    io::ErrorKind::OutOfMemory,
+                    "snapshot directory allocation failed",
+                )
+            })?;
             result.push(Qcow2Snapshot {
                 id,
                 name: bytes[id_end..id_end + name_length as usize].to_vec(),

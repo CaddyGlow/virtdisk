@@ -1,3 +1,4 @@
+#![cfg(feature = "std")]
 use std::sync::Arc;
 use virtdisk::{RawDisk, ReadAt, Vhdx, VhdxWriter};
 const M: usize = 1 << 20;

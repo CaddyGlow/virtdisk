@@ -1,11 +1,11 @@
 //! Caller-tightened parser budgets and typed read provenance.
-use std::{
-    fmt, io,
-    path::PathBuf,
-    sync::{
-        Arc,
-        atomic::{AtomicU64, Ordering},
-    },
+use crate::io;
+use alloc::{format, string::String, sync::Arc, vec::Vec};
+#[cfg(test)]
+use alloc::{string::ToString, vec};
+use core::{
+    fmt,
+    sync::atomic::{AtomicU64, Ordering},
 };
 
 /// Parser ceilings. Callers may tighten defaults, never silently remove them.
@@ -82,8 +82,8 @@ impl ParserLimits {
 /// Typed provenance retained without converting original UTF-16 names to UTF-8.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ReadContext {
-    /// Physical container path, when available.
-    pub container: Option<PathBuf>,
+    /// Diagnostic container label; it is never storage identity.
+    pub container: Option<String>,
     /// Selected partition slot.
     pub partition: Option<u32>,
     /// NTFS file reference, including sequence number when known.
@@ -99,7 +99,8 @@ pub struct ReadContext {
 }
 impl ReadContext {
     /// Preserve the original error kind and source inside typed provenance.
-    pub fn error(self, operation: &'static str, source: io::Error) -> io::Error {
+    pub fn error(self, operation: &'static str, source: impl Into<io::Error>) -> io::Error {
+        let source = source.into();
         io::Error::new(
             source.kind(),
             ReadError {
@@ -123,7 +124,7 @@ impl fmt::Display for ReadError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.operation)?;
         if let Some(p) = &self.context.container {
-            write!(f, " container={}", p.display())?;
+            write!(f, " container={}", p)?;
         }
         if let Some(p) = self.context.partition {
             write!(f, " partition={p}")?;
@@ -148,8 +149,8 @@ impl fmt::Display for ReadError {
         write!(f, ": {}", self.source)
     }
 }
-impl std::error::Error for ReadError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+impl core::error::Error for ReadError {
+    fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
         Some(&self.source)
     }
 }
@@ -222,7 +223,7 @@ impl ParserLimitExceeded {
     }
     fn error(resource: ParserResource, limit: u64, requested: u128) -> io::Error {
         io::Error::new(
-            io::ErrorKind::Unsupported,
+            io::ErrorKind::ResourceLimit,
             Self {
                 resource,
                 limit,
@@ -254,7 +255,7 @@ impl fmt::Display for ParserLimitExceeded {
         write!(f, "{name} exceeds configured parser limit {}", self.limit)
     }
 }
-impl std::error::Error for ParserLimitExceeded {}
+impl core::error::Error for ParserLimitExceeded {}
 
 fn charge(
     counter: &AtomicU64,
@@ -288,9 +289,8 @@ impl ReadBudget {
     }
     fn bound(resource: ParserResource, limit: u64, requested: u128) -> io::Result<()> {
         if requested > u128::from(limit) {
-            // These existing profile checks use InvalidData; preserve that kind.
             Err(io::Error::new(
-                io::ErrorKind::InvalidData,
+                io::ErrorKind::ResourceLimit,
                 ParserLimitExceeded {
                     resource,
                     limit,
@@ -399,13 +399,22 @@ impl crate::ReadAt for BudgetReader {
     fn len(&self) -> u64 {
         self.source.len()
     }
+    fn host_context(&self) -> Option<&dyn core::any::Any> {
+        self.source.host_context()
+    }
+    fn source_identity(&self) -> Option<crate::SourceIdentity> {
+        self.source.source_identity()
+    }
+    fn ancestor_identities(&self) -> Vec<crate::SourceIdentity> {
+        self.source.ancestor_identities()
+    }
     fn visit_extents(
         &self,
         visitor: &mut dyn FnMut(crate::DiskExtent) -> io::Result<()>,
     ) -> io::Result<()> {
         self.source.visit_extents(visitor)
     }
-    fn sparse_holes(&self) -> std::io::Result<Vec<(u64, u64)>> {
+    fn sparse_holes(&self) -> io::Result<Vec<(u64, u64)>> {
         self.source.sparse_holes()
     }
     fn context(&self) -> ReadContext {
@@ -436,13 +445,22 @@ impl crate::ReadAt for ContextReader {
     fn len(&self) -> u64 {
         self.source.len()
     }
+    fn host_context(&self) -> Option<&dyn core::any::Any> {
+        self.source.host_context()
+    }
+    fn source_identity(&self) -> Option<crate::SourceIdentity> {
+        self.source.source_identity()
+    }
+    fn ancestor_identities(&self) -> Vec<crate::SourceIdentity> {
+        self.source.ancestor_identities()
+    }
     fn visit_extents(
         &self,
         visitor: &mut dyn FnMut(crate::DiskExtent) -> io::Result<()>,
     ) -> io::Result<()> {
         self.source.visit_extents(visitor)
     }
-    fn sparse_holes(&self) -> std::io::Result<Vec<(u64, u64)>> {
+    fn sparse_holes(&self) -> io::Result<Vec<(u64, u64)>> {
         self.source.sparse_holes()
     }
     fn context(&self) -> ReadContext {
@@ -594,14 +612,14 @@ mod tests {
         let lease = budget.cache(8).unwrap();
         assert_eq!(
             budget.cache(1).unwrap_err().kind(),
-            io::ErrorKind::Unsupported
+            io::ErrorKind::ResourceLimit
         );
         drop(lease);
         drop(budget.cache(8).unwrap());
         budget.metadata(8).unwrap();
         assert_eq!(
             budget.metadata(1).unwrap_err().kind(),
-            io::ErrorKind::Unsupported
+            io::ErrorKind::ResourceLimit
         );
     }
     #[test]
@@ -625,7 +643,7 @@ mod tests {
             .unwrap();
         assert_eq!(typed.context, context);
         assert_eq!(
-            std::error::Error::source(typed).unwrap().to_string(),
+            core::error::Error::source(typed).unwrap().to_string(),
             "cancelled"
         );
     }

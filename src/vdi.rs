@@ -1,10 +1,9 @@
 //! Bounded VirtualBox VDI 1.1 fixed and dynamic image reading.
+use crate::io;
 use crate::{CacheReservation, ParserLimits, ReadAt, ReadBudget, ReadContext, check_range};
-use std::{
-    io,
-    path::{Path, PathBuf},
-    sync::Arc,
-};
+use alloc::{sync::Arc, vec::Vec};
+#[cfg(feature = "std")]
+use std::path::{Path, PathBuf};
 const FREE: u32 = u32::MAX;
 const ZERO: u32 = u32::MAX - 1;
 fn invalid(message: &str) -> io::Error {
@@ -20,6 +19,7 @@ fn u32le(b: &[u8], at: usize) -> u32 {
 pub struct Vdi {
     source: Arc<dyn ReadAt>,
     length: u64,
+    #[cfg(feature = "std")]
     dynamic: bool,
     creation_uuid: [u8; 16],
     modification_uuid: [u8; 16],
@@ -32,10 +32,12 @@ pub struct Vdi {
     _cache: CacheReservation,
 }
 impl Vdi {
+    #[cfg(feature = "std")]
     pub(crate) fn container_size(&self) -> u64 {
         self.source.len()
     }
 
+    #[cfg(feature = "std")]
     pub(crate) fn info_profile(&self) -> (u64, bool) {
         (self.block, self.dynamic)
     }
@@ -44,24 +46,33 @@ impl Vdi {
         self.parent.is_some()
     }
     /// Explicit path used to open the immediate parent; VDI stores UUIDs rather than filenames.
+    #[cfg(feature = "std")]
     pub fn resolved_parent_path(&self) -> Option<PathBuf> {
-        self.parent
-            .as_ref()
-            .and_then(|parent| parent.context().container)
+        self.parent.as_ref().and_then(|parent| {
+            parent
+                .source
+                .host_context()
+                .and_then(|context| context.downcast_ref::<crate::HostSourceContext>())
+                .map(|context| context.path.clone())
+        })
     }
+    #[cfg(feature = "std")]
     pub(crate) fn identifiers(&self) -> ([u8; 16], [u8; 16]) {
         (self.creation_uuid, self.modification_uuid)
     }
+    #[cfg(feature = "std")]
     pub(crate) fn parent_reader(&self) -> Option<Arc<Vdi>> {
         self.parent.clone()
     }
     /// Open an explicitly ordered direct-parent through base chain.
     /// No parent filenames are inferred from UUIDs. Every file must remain immutable.
+    #[cfg(feature = "std")]
     pub fn open_chain(path: impl AsRef<Path>, parent_paths: &[PathBuf]) -> io::Result<Self> {
         Self::open_chain_with_limits(path, parent_paths, ParserLimits::default())
     }
     /// Open an ordered chain with shared caller-tightened parser budgets.
     /// Aliases, cycles, extra ancestors and UUID/geometry mismatches are rejected.
+    #[cfg(feature = "std")]
     pub fn open_chain_with_limits(
         path: impl AsRef<Path>,
         parent_paths: &[PathBuf],
@@ -69,6 +80,7 @@ impl Vdi {
     ) -> io::Result<Self> {
         Self::open_chain_with_budget(path, parent_paths, ReadBudget::new(limits)?)
     }
+    #[cfg(feature = "std")]
     pub(crate) fn open_chain_with_budget(
         path: impl AsRef<Path>,
         parent_paths: &[PathBuf],
@@ -78,6 +90,7 @@ impl Vdi {
         let identity = raw.identity()?;
         Self::open_parent_paths(raw, parent_paths, budget, Some(&identity))
     }
+    #[cfg(feature = "std")]
     pub(crate) fn open_locked_chain(
         source: Arc<dyn ReadAt>,
         parent_paths: &[PathBuf],
@@ -90,6 +103,7 @@ impl Vdi {
             Some(identity),
         )
     }
+    #[cfg(feature = "std")]
     fn open_parent_paths(
         source: Arc<dyn ReadAt>,
         parent_paths: &[PathBuf],
@@ -124,12 +138,38 @@ impl Vdi {
     pub fn open_with_limits(source: Arc<dyn ReadAt>, limits: ParserLimits) -> io::Result<Self> {
         Self::parse(source, ReadBudget::new(limits)?, None)
     }
+    /// Open a differencing image using an explicitly supplied immutable parent.
+    /// The child retains the parent's cumulative budget; limits must match.
+    pub fn open_with_parent(
+        source: Arc<dyn ReadAt>,
+        parent: Arc<Vdi>,
+        limits: ParserLimits,
+    ) -> io::Result<Self> {
+        let budget = parent.budget().ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "supplied VDI parent has no parser budget",
+            )
+        })?;
+        if budget.limits() != limits {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "supplied VDI parent parser limits differ from child limits",
+            ));
+        }
+        crate::portable::validate_parent_identity(&*source, &*parent, &budget, 32)?;
+        Self::parse(source, budget, Some(parent))
+    }
     fn parse(
         source: Arc<dyn ReadAt>,
         budget: ReadBudget,
         parent: Option<Arc<Vdi>>,
     ) -> io::Result<Self> {
-        if let Some(path) = source.context().container
+        #[cfg(feature = "std")]
+        if let Some(path) = source
+            .host_context()
+            .and_then(|context| context.downcast_ref::<crate::HostSourceContext>())
+            .map(|context| context.path.clone())
             && crate::transaction::pending(&path)?
         {
             return Err(invalid(
@@ -240,24 +280,40 @@ impl Vdi {
         check_range(data, physical_bytes, source.len())?;
         budget.metadata(map_bytes)?;
         let cache = budget.cache(map_bytes)?;
-        let mut encoded =
-            vec![0; usize::try_from(map_bytes).map_err(|_| invalid("VDI map too large"))?];
+        let mut encoded = Vec::new();
+        encoded
+            .try_reserve_exact(
+                usize::try_from(map_bytes).map_err(|_| invalid("VDI map too large"))?,
+            )
+            .map_err(|_| io::Error::new(io::ErrorKind::OutOfMemory, "VDI map allocation failed"))?;
+        encoded.resize(map_bytes as usize, 0);
         source.read_exact_at(map_offset, &mut encoded)?;
         budget.work(count)?;
         budget.metadata(map_bytes)?;
         let transient_cache = budget.cache(map_bytes)?;
-        let map: Vec<u32> = encoded
-            .as_chunks::<4>()
-            .0
-            .iter()
-            .map(|b| u32::from_le_bytes(*b))
-            .collect();
+        let mut map = Vec::new();
+        map.try_reserve_exact(count as usize)
+            .map_err(|_| io::Error::new(io::ErrorKind::OutOfMemory, "VDI map allocation failed"))?;
+        map.extend(
+            encoded
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .map(|b| u32::from_le_bytes(*b)),
+        );
         drop(encoded);
         drop(transient_cache);
         // A dense reverse ownership bitmap avoids adversarial hash-table work.
         budget.metadata(allocated)?;
         let ownership_cache = budget.cache(allocated)?;
-        let mut owned = vec![false; allocated as usize];
+        let mut owned = Vec::new();
+        owned.try_reserve_exact(allocated as usize).map_err(|_| {
+            io::Error::new(
+                io::ErrorKind::OutOfMemory,
+                "VDI ownership allocation failed",
+            )
+        })?;
+        owned.resize(allocated as usize, false);
         let mut seen = 0u64;
         for &entry in &map {
             if entry == FREE || entry == ZERO {
@@ -280,6 +336,7 @@ impl Vdi {
         Ok(Self {
             source,
             length,
+            #[cfg(feature = "std")]
             dynamic: kind != 2,
             creation_uuid: header[392..408].try_into().unwrap(),
             modification_uuid: header[408..424].try_into().unwrap(),
@@ -294,6 +351,26 @@ impl Vdi {
     }
 }
 impl ReadAt for Vdi {
+    fn host_context(&self) -> Option<&dyn core::any::Any> {
+        self.source.host_context()
+    }
+    fn source_identity(&self) -> Option<crate::SourceIdentity> {
+        self.source.source_identity()
+    }
+    fn ancestor_identities(&self) -> Vec<crate::SourceIdentity> {
+        let mut ancestors = self
+            .parent
+            .as_ref()
+            .map_or_else(Vec::new, |parent| parent.ancestor_identities());
+        if let Some(identity) = self
+            .parent
+            .as_ref()
+            .and_then(|parent| parent.source_identity())
+        {
+            ancestors.push(identity);
+        }
+        ancestors
+    }
     fn len(&self) -> u64 {
         self.length
     }
@@ -325,7 +402,7 @@ impl ReadAt for Vdi {
         Some(self.budget.clone())
     }
     fn read_exact_at(&self, offset: u64, destination: &mut [u8]) -> io::Result<()> {
-        let result = (|| {
+        let result = (|| -> io::Result<()> {
             check_range(offset, destination.len() as u64, self.length)?;
             let mut offset = offset;
             let mut remaining = destination;

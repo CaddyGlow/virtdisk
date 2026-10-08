@@ -1,5 +1,5 @@
 //! Version-4 identities in the little-endian UUID/GUID layout used by VDI and VHDX.
-use std::io;
+use crate::io;
 
 pub(crate) fn identity() -> io::Result<[u8; 16]> {
     let mut id = [0; 16];

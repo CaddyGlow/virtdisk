@@ -1,5 +1,7 @@
+#![cfg(feature = "std")]
 #![cfg(target_os = "linux")]
-use std::{io, ops::ControlFlow};
+use std::ops::ControlFlow;
+use virtdisk::io;
 use virtdisk::{
     ImageFormat, ImageWriter, OperationContext, OperationLimits, OperationPhase, OperationProgress,
     WriteAt,

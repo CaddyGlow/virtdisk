@@ -1,8 +1,8 @@
 //! Fixed-length adapters used while a caller retains a writer's operation lock.
+use crate::io::{self, Read, Seek, SeekFrom};
 use crate::{RawWriter, ReadAt, check_range};
 use std::{
     fs::File,
-    io::{self, Read, Seek, SeekFrom},
     sync::{Arc, Mutex},
 };
 
@@ -29,7 +29,7 @@ impl ReadAt for FileSource {
             .lock()
             .map_err(|_| io::Error::other("VHDX source mutex poisoned"))?;
         file.seek(SeekFrom::Start(offset))?;
-        file.read_exact(dst)
+        Ok(file.read_exact(dst)?)
     }
 }
 

@@ -1,3 +1,4 @@
+#![cfg(feature = "std")]
 #![cfg(target_os = "linux")]
 use virtdisk::{ImageFormat, InspectImage, Qcow2Writer, ReadAt, WriteAt};
 

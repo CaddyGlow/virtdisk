@@ -1,4 +1,6 @@
-use std::{io, sync::Arc};
+#![cfg(feature = "std")]
+use std::sync::Arc;
+use virtdisk::io;
 use virtdisk::{Qcow2, RawDisk, ReadAt, create_qcow2};
 
 struct Bytes(Vec<u8>);

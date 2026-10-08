@@ -1,4 +1,5 @@
-use std::io;
+#![cfg(feature = "std")]
+use virtdisk::io;
 use virtdisk::{
     PhysicalValidationBudget, PhysicalValidationLimitExceeded, PhysicalValidationLimits,
     PhysicalValidationResource, RawWriter,
@@ -34,7 +35,7 @@ fn retained_handle_hashes_known_bytes_and_preserves_cumulative_usage() {
     assert_eq!(usage.read_calls, 3);
     assert_eq!(usage.peak_scratch_bytes, 1);
     let error = writer.physical_fingerprint(&mut budget).unwrap_err();
-    assert_eq!(error.kind(), io::ErrorKind::Unsupported);
+    assert_eq!(error.kind(), io::ErrorKind::ResourceLimit);
     let limit = error
         .get_ref()
         .unwrap()

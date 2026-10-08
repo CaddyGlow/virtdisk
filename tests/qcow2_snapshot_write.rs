@@ -1,3 +1,4 @@
+#![cfg(feature = "std")]
 #![cfg(target_os = "linux")]
 use std::sync::{Arc, Mutex};
 static SERIAL: Mutex<()> = Mutex::new(());
@@ -59,7 +60,7 @@ fn snapshot_invalid_requests_fail_before_metadata_mutation() {
 #[test]
 fn near_full_native_directory_refuses_creation_but_resize_preserves_saved_state() {
     let _guard = SERIAL.lock().unwrap();
-    use std::io::{Seek, SeekFrom, Write};
+    use virtdisk::io::{Seek, SeekFrom, Write};
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("near-full.qcow2");
     let mut writer = Qcow2Writer::create_sparse(&path, 65536).unwrap();
@@ -76,7 +77,7 @@ fn near_full_native_directory_refuses_creation_but_resize_preserves_saved_state(
     let before = std::fs::read(&path).unwrap();
     assert_eq!(
         writer.create_snapshot(b"x", b"y").unwrap_err().kind(),
-        std::io::ErrorKind::Unsupported
+        virtdisk::io::ErrorKind::Unsupported
     );
     assert_eq!(std::fs::read(&path).unwrap(), before);
     writer
@@ -194,7 +195,7 @@ fn oversized_metadata_transaction_is_rejected_without_publication() {
             .create_snapshot(b"too-wide", b"bounded")
             .unwrap_err()
             .kind(),
-        std::io::ErrorKind::Unsupported
+        virtdisk::io::ErrorKind::Unsupported
     );
     assert_eq!(std::fs::read(&path).unwrap(), before);
     writer.write_all_at(0, &[8]).unwrap();
@@ -264,7 +265,7 @@ fn shared_active_and_saved_l1_is_readable_but_writer_refuses_before_mutation() {
         drop(view);
         drop(reader);
         match Qcow2Writer::open(&path) {
-            Err(error) => assert_eq!(error.kind(), std::io::ErrorKind::Unsupported),
+            Err(error) => assert_eq!(error.kind(), virtdisk::io::ErrorKind::Unsupported),
             Ok(writer) => {
                 let error = writer.write_all_at(500, b"later!").unwrap_err();
                 assert_eq!(std::fs::read(&path).unwrap(), bytes);

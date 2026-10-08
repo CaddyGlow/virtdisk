@@ -1,3 +1,4 @@
+#![cfg(feature = "std")]
 use std::ops::ControlFlow;
 use virtdisk::{ImageFormat, ImageGraph, ImageSpec, OperationContext, OperationPhase};
 
@@ -31,7 +32,7 @@ fn selection_cancellation_never_publishes_or_changes_original_manifest() {
         let error = graph
             .save_manifest_with_context(Some(&image), &output, &mut context)
             .unwrap_err();
-        assert_eq!(error.kind(), std::io::ErrorKind::Interrupted);
+        assert_eq!(error.kind(), virtdisk::io::ErrorKind::Interrupted);
         assert!(!output.exists());
         assert_eq!(std::fs::read(&original).unwrap(), before);
         assert_eq!(std::fs::read(&image).unwrap(), [37; 512]);

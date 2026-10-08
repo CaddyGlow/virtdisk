@@ -1,10 +1,10 @@
 //! Caller-owned external snapshot dependencies.
+use crate::io;
 use crate::{
     Image, ImageFormat, OperationContext, OperationPhase, ParserLimits, Qcow2, RawDisk, ReadAt,
     ReadBudget, convert_image_with_context,
 };
 use std::{
-    io,
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -776,7 +776,7 @@ fn sync_deleted_parent(path: &Path) -> io::Result<()> {
         let parent = path
             .parent()
             .ok_or_else(|| invalid("deleted snapshot requires a parent directory"))?;
-        std::fs::File::open(parent)?.sync_all()
+        Ok(std::fs::File::open(parent)?.sync_all()?)
     }
     #[cfg(not(unix))]
     {

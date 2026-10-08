@@ -1,6 +1,6 @@
 //! Synchronous source access inside native exporters.
+use crate::io;
 use crate::{OperationContext, OperationPhase, ReadAt};
-use std::io;
 
 pub(crate) trait ExportSource {
     fn size(&self) -> u64;

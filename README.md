@@ -254,3 +254,6 @@ outside these counters. See [operation contexts](docs/operation-contexts.md).
 Native `trim` and `preallocate` accept leading `--operation-limit` and `--progress`
 with cancellation before native dispatch. Successful requests count their logical
 range and one native call; backend physical I/O remains outside those quotas.
+
+Portable `no_std` + `alloc` readers are available with default features disabled.
+See [the 0.3 API migration, identity and accounting contracts](docs/no-std.md).

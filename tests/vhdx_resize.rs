@@ -1,3 +1,4 @@
+#![cfg(feature = "std")]
 #![cfg(target_os = "linux")]
 use virtdisk::{ShrinkPolicy, VhdxWriter};
 const M: u64 = 1 << 20;

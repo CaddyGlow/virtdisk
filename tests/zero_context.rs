@@ -1,11 +1,12 @@
+#![cfg(feature = "std")]
 use std::{
-    io,
     ops::ControlFlow,
     sync::{
         Mutex,
         atomic::{AtomicUsize, Ordering},
     },
 };
+use virtdisk::io;
 use virtdisk::{
     OperationCancelled, OperationContext, OperationLimits, OperationPhase, OperationProgress,
     WriteAt, zero_image_with_context,

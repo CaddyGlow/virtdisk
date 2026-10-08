@@ -1,3 +1,4 @@
+#![cfg(feature = "std")]
 #![cfg(target_os = "linux")]
 use std::sync::Arc;
 use virtdisk::{Qcow2, Qcow2Writer, RawDisk, ReadAt, ShrinkPolicy};

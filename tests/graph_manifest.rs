@@ -1,3 +1,4 @@
+#![cfg(feature = "std")]
 use virtdisk::{GraphManifest, ImageFormat, ImageGraph, ImageSpec};
 
 #[test]
@@ -79,7 +80,7 @@ fn saving_is_no_overwrite_and_loading_detects_corruption_and_truncation() {
     let original = std::fs::read(&output).unwrap();
     assert_eq!(
         manifest.save(&output).unwrap_err().kind(),
-        std::io::ErrorKind::AlreadyExists
+        virtdisk::io::ErrorKind::AlreadyExists
     );
     assert_eq!(std::fs::read(&output).unwrap(), original);
     for length in [0, 7, 15, original.len() - 1] {
@@ -157,7 +158,7 @@ fn independently_encoded_manifest_is_parsed_without_opening_embedded_paths() {
     assert_eq!(manifest.images()[0].format, ImageFormat::Raw);
     assert_eq!(
         manifest.open_graph(&[granted]).err().unwrap().kind(),
-        std::io::ErrorKind::PermissionDenied
+        virtdisk::io::ErrorKind::PermissionDenied
     );
 }
 

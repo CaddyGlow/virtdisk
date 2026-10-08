@@ -1,0 +1,15 @@
+[package]
+name = "virtdisk-portable-consumer"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[features]
+default = []
+host-unified = ["dep:virtdisk-host-unifier"]
+
+[dependencies]
+virtdisk = { path = "../..", default-features = false }
+virtdisk-host-unifier = { path = "host-unifier", optional = true }
+
+[workspace]

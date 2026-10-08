@@ -1,9 +1,7 @@
 //! Read-only graph diagnostics with lossless native path bytes.
 use super::json_output::JsonString;
-use std::{
-    ffi::OsStr,
-    io::{self, Write},
-};
+use std::ffi::OsStr;
+use virtdisk::io::{self, Write};
 use virtdisk::{GraphManifest, ImageFormat, ImageGraph};
 
 pub(super) fn write_json(
@@ -65,18 +63,18 @@ pub(super) fn write_json(
         )?;
         write!(writer, ",\"virtual_size\":{size}}}")?;
     }
-    writer.write_all(b"]}\n")
+    Ok(writer.write_all(b"]}\n")?)
 }
 
 fn index(writer: &mut impl Write, value: Option<usize>) -> io::Result<()> {
     match value {
-        Some(value) => write!(writer, "{value}"),
-        None => writer.write_all(b"null"),
+        Some(value) => Ok(write!(writer, "{value}")?),
+        None => Ok(writer.write_all(b"null")?),
     }
 }
 
 fn json_string(writer: &mut impl Write, value: &str) -> io::Result<()> {
-    write!(writer, "{}", JsonString(value))
+    Ok(write!(writer, "{}", JsonString(value))?)
 }
 
 fn path_encoding() -> &'static str {

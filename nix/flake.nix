@@ -31,6 +31,7 @@
           rust = pkgs.rust-bin.stable."1.99.0".default.override {
             extensions = [ "rust-src" ];
             targets = [
+              "x86_64-unknown-none"
               "x86_64-pc-windows-msvc"
               "i686-pc-windows-msvc"
             ];

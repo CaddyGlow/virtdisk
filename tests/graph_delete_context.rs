@@ -1,3 +1,4 @@
+#![cfg(feature = "std")]
 #![cfg(target_os = "linux")]
 use std::ops::ControlFlow;
 use virtdisk::{
@@ -47,7 +48,7 @@ fn cancellation_preserves_registered_leaf_and_source_bytes() {
             let error = graph
                 .delete_snapshot_with_context(&child, &mut context)
                 .unwrap_err();
-            assert_eq!(error.kind(), std::io::ErrorKind::Interrupted);
+            assert_eq!(error.kind(), virtdisk::io::ErrorKind::Interrupted);
             assert_eq!(
                 graph.children(&base).unwrap().as_slice(),
                 std::slice::from_ref(&child)

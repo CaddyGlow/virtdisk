@@ -1,7 +1,7 @@
 //! Existing monolithic/split flat descriptor validation under retained file locks.
 use crate::RawWriter;
+use crate::io;
 use std::{
-    io,
     path::{Path, PathBuf},
     sync::Arc,
 };

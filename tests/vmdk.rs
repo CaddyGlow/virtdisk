@@ -1,4 +1,5 @@
-use std::{io, sync::Arc};
+use std::sync::Arc;
+use virtdisk::io;
 use virtdisk::{ParserLimits, ReadAt, Vmdk};
 #[path = "support/bytes.rs"]
 mod bytes;
@@ -91,6 +92,7 @@ fn rejects_mapping_metadata_overlap_and_geometry_overflow() {
     assert!(open(b).is_err());
 }
 
+#[cfg(feature = "std")]
 #[test]
 #[ignore = "requires independent qemu-img oracle"]
 fn qemu_hosted_sparse_matches_raw() {
@@ -140,6 +142,7 @@ fn redundant_directory_must_match_and_own_separate_tables() {
     assert!(open(b).is_err());
 }
 
+#[cfg(feature = "std")]
 #[test]
 fn descriptor_flat_split_requires_explicit_extent_authorization() {
     use std::fs;
@@ -181,6 +184,7 @@ fn descriptor_flat_split_requires_explicit_extent_authorization() {
     assert!(Vmdk::open_descriptor(&descriptor, &[first, second]).is_err());
 }
 
+#[cfg(feature = "std")]
 #[test]
 #[ignore = "requires independent qemu-img oracle"]
 fn qemu_flat_descriptor_matches_raw() {
@@ -213,6 +217,7 @@ fn qemu_flat_descriptor_matches_raw() {
     assert_eq!(actual, bytes);
 }
 
+#[cfg(feature = "std")]
 #[test]
 fn descriptor_sparse_extent_bounds_and_repeated_paths_fail_closed() {
     use std::fs;
@@ -272,6 +277,7 @@ fn warm_sparse_reads_charge_work_and_transient_metadata_obeys_cache() {
     assert!(Vmdk::open_with_limits(Arc::new(Bytes(fixture())), limits).is_err());
 }
 
+#[cfg(feature = "std")]
 #[test]
 fn descriptor_rejects_hardlink_aliases_and_missing_or_duplicate_create_type() {
     use std::fs;
@@ -364,6 +370,7 @@ fn map_visitation_never_reads_payload_and_exhausts_work() {
     assert!(failed);
 }
 
+#[cfg(feature = "std")]
 #[test]
 fn authorized_parent_chain_inherits_but_explicit_zero_masks() {
     let dir = tempfile::tempdir().unwrap();
@@ -422,6 +429,7 @@ fn authorized_parent_chain_inherits_but_explicit_zero_masks() {
     assert!(Vmdk::open_chain(&child, &[base]).is_err());
 }
 
+#[cfg(feature = "std")]
 #[test]
 fn external_split_sparse_chain_and_flat_parent_authorization() {
     let dir = tempfile::tempdir().unwrap();
@@ -465,6 +473,7 @@ fn external_split_sparse_chain_and_flat_parent_authorization() {
     assert!(Vmdk::open_chain(&child, &[alias, first, second]).is_err());
 }
 
+#[cfg(feature = "std")]
 #[test]
 #[ignore = "requires qemu-img independent VMDK backing oracle"]
 fn qemu_created_hosted_parent_chain_matches_backing() {
@@ -510,6 +519,7 @@ fn qemu_created_hosted_parent_chain_matches_backing() {
     );
 }
 
+#[cfg(feature = "std")]
 #[test]
 #[ignore = "requires qemu-img independent flat/split backing oracle"]
 fn qemu_external_flat_parent_and_split_sparse_child() {
@@ -565,6 +575,7 @@ fn qemu_external_flat_parent_and_split_sparse_child() {
     assert_eq!(out, vec![69; 131072]);
 }
 
+#[cfg(feature = "std")]
 #[test]
 fn chain_descriptor_linkage_profiles_and_cumulative_budgets_are_strict() {
     let dir = tempfile::tempdir().unwrap();

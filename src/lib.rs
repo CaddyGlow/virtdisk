@@ -6,21 +6,42 @@
 //! provided separately by `partmgr` and filesystem interpretation by
 //! `disk-capture`.
 #![deny(missing_docs)]
+#![cfg_attr(not(feature = "std"), no_std)]
+extern crate alloc;
+pub mod io;
+pub mod portable;
+use portable::check_range;
+pub use portable::{DiskExtent, DiskView, ExtentKind, ReadAt, SourceIdentity};
 
+#[cfg(feature = "std")]
 use std::fs::File;
-use std::io;
-use std::path::Path;
-use std::sync::{Arc, Mutex};
 
+#[cfg(feature = "std")]
+use std::path::Path;
+#[cfg(feature = "std")]
+use std::sync::Mutex;
+
+#[cfg(feature = "std")]
+mod host_source;
+#[cfg(feature = "std")]
+pub use host_source::HostSourceContext;
+mod format;
+pub use format::{ImageFormat, detect_format};
 mod crc32c;
+#[cfg(feature = "std")]
 mod native_id;
 mod policy;
+#[cfg(feature = "std")]
 mod sidecar;
+#[cfg(feature = "std")]
 mod source;
 #[cfg(test)]
+#[cfg(feature = "std")]
 mod test_sync;
+#[cfg(feature = "std")]
 mod transaction;
 #[cfg(target_os = "linux")]
+#[cfg(feature = "std")]
 mod transaction_set;
 mod vmdk_descriptor;
 pub use policy::{
@@ -29,6 +50,7 @@ pub use policy::{
 };
 
 mod qcow2;
+mod zstd_decoder;
 pub use qcow2::{Qcow2, Qcow2Snapshot, Qcow2SnapshotView, Qcow2Validation};
 
 mod physical_validation;
@@ -36,179 +58,141 @@ pub use physical_validation::{
     PhysicalFingerprint, PhysicalValidationBudget, PhysicalValidationLimitExceeded,
     PhysicalValidationLimits, PhysicalValidationResource, PhysicalValidationUsage,
 };
+#[cfg(feature = "std")]
 mod raw_write;
+#[cfg(feature = "std")]
 pub use raw_write::RawWriter;
 mod vdi;
 pub use vdi::Vdi;
 mod vmdk;
-pub use vmdk::Vmdk;
+pub use vmdk::{Vmdk, VmdkExtentBinding};
+#[cfg(feature = "std")]
 mod image;
+#[cfg(feature = "std")]
 mod image_writer;
+#[cfg(feature = "std")]
 mod operation;
+#[cfg(feature = "std")]
 pub use image::{
-    Image, ImageFormat, ImageInfo, ShrinkPolicy, compare_images, compare_images_with_context,
-    convert_image, convert_image_with_context, copy_image, copy_image_with_cancel,
-    copy_image_with_context, detect_format, hash_image, hash_image_with_context, resize_image,
-    resize_image_with_context,
+    Image, ImageInfo, ShrinkPolicy, compare_images, compare_images_with_context, convert_image,
+    convert_image_with_context, copy_image, copy_image_with_cancel, copy_image_with_context,
+    hash_image, hash_image_with_context, resize_image, resize_image_with_context,
 };
+#[cfg(feature = "std")]
 pub use image_writer::ImageWriter;
+#[cfg(feature = "std")]
 pub use operation::OperationError;
+#[cfg(feature = "std")]
 mod operation_context;
+#[cfg(feature = "std")]
 pub use operation_context::{
     OperationCancelled, OperationContext, OperationLimitExceeded, OperationLimits, OperationPhase,
     OperationProgress, OperationResource, OperationUsage,
 };
+#[cfg(feature = "std")]
 mod writer_open;
+#[cfg(feature = "std")]
 pub use writer_open::{RecoveryPolicy, RecoveryRequired, WriterOpenOptions};
+#[cfg(feature = "std")]
 mod reader_open;
+#[cfg(feature = "std")]
 pub use reader_open::{ReadRecoveryPolicy, ReaderOpenOptions};
+#[cfg(feature = "std")]
 mod export_source;
+#[cfg(feature = "std")]
 mod qcow2_write;
+#[cfg(feature = "std")]
 pub use qcow2_write::{create_qcow2, create_sparse_qcow2};
+#[cfg(feature = "std")]
 mod qcow2_writer;
+#[cfg(feature = "std")]
 pub use qcow2_writer::Qcow2Writer;
+#[cfg(feature = "std")]
 mod qcow2_overlay;
+#[cfg(feature = "std")]
 pub use qcow2_overlay::{create_qcow2_overlay, create_qcow2_overlay_with_chain};
+#[cfg(feature = "std")]
 mod graph;
+#[cfg(feature = "std")]
 mod graph_manifest;
+#[cfg(feature = "std")]
 pub use graph::{ImageGraph, ImageSpec};
+#[cfg(feature = "std")]
 pub use graph_manifest::GraphManifest;
+#[cfg(feature = "std")]
 mod compact;
+#[cfg(feature = "std")]
 pub use compact::{compact_image, compact_image_with_cancel, compact_image_with_context};
+#[cfg(feature = "std")]
 mod check;
+#[cfg(feature = "std")]
 pub use check::{
     CheckOptions, CheckReport, CheckScope, check_image, check_image_with_cancel,
     check_image_with_context, check_image_with_limits, check_image_with_limits_and_context,
     check_payload_with_cancel, check_payload_with_context,
 };
+#[cfg(feature = "std")]
 mod vdi_write;
+#[cfg(feature = "std")]
 pub use vdi_write::{create_vdi, create_vdi_overlay};
+#[cfg(feature = "std")]
 mod vdi_writer;
+#[cfg(feature = "std")]
 pub use vdi_writer::VdiWriter;
 mod vhdx;
 pub use vhdx::Vhdx;
+#[cfg(feature = "std")]
 mod vhdx_write;
+#[cfg(feature = "std")]
 pub use vhdx_write::{create_vhdx, create_vhdx_overlay};
+#[cfg(feature = "std")]
 mod vhdx_writer;
+#[cfg(feature = "std")]
 pub use vhdx_writer::VhdxWriter;
+#[cfg(feature = "std")]
 mod vhdx_recover;
+#[cfg(feature = "std")]
 pub use vhdx_recover::{recover_vhdx, recover_vhdx_chain};
+#[cfg(feature = "std")]
 mod vmdk_write;
+#[cfg(feature = "std")]
 pub use vmdk_write::create_vmdk;
+#[cfg(feature = "std")]
 mod vmdk_writer;
+#[cfg(feature = "std")]
 pub use vmdk_writer::VmdkWriter;
+#[cfg(feature = "std")]
 mod write;
+#[cfg(feature = "std")]
 pub use write::{DiscardPolicy, DiscardResult, WriteAt, zero_image_with_context};
+#[cfg(feature = "std")]
 mod info;
+#[cfg(feature = "std")]
 pub use info::{
     Capability, DiskGeometry, ImageCapabilities, ImageInspection, ImageOperation, ImageProfile,
     InspectImage, UnsupportedReason, ValidationLevel,
 };
 
-/// Logical allocation classification; it does not identify guest free space.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ExtentKind {
-    /// Container payload allocation, regardless of its byte content.
-    Allocated,
-    /// Reads return zero without consulting a parent.
-    Zero,
-    /// Logical bytes are resolved through an immutable backing image.
-    Inherited,
-    /// Allocation information is unavailable for this reader.
-    Unknown,
-}
-
-/// One ordered, nonempty logical allocation extent.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct DiskExtent {
-    /// Logical starting byte offset.
-    pub offset: u64,
-    /// Extent length in bytes, wholly within the reader.
-    pub length: u64,
-    /// Logical allocation semantics.
-    pub kind: ExtentKind,
-}
-
-/// An exact positional reader with a fixed logical length.
-///
-/// Implementations must reject overflowing/out-of-bounds ranges, including an
-/// empty read beyond the end. Reads may partially modify the destination on I/O
-/// failure; callers must discard it on error. Implementations must be safe to
-/// share across threads without a shared seek cursor affecting results.
-pub trait ReadAt: Send + Sync {
-    /// Logical length in bytes, fixed for this reader's lifetime.
-    fn len(&self) -> u64;
-
-    /// Visit ordered extents covering the disk using bounded scratch memory.
-    ///
-    /// Adjacent extents may share a kind. Returning an error from the visitor
-    /// stops traversal immediately, permitting cancellation. The default
-    /// conservatively reports unknown allocation without reading payload data.
-    fn visit_extents(
-        &self,
-        visitor: &mut dyn FnMut(DiskExtent) -> io::Result<()>,
-    ) -> io::Result<()> {
-        if self.len() != 0 {
-            visitor(DiskExtent {
-                offset: 0,
-                length: self.len(),
-                kind: ExtentKind::Unknown,
-            })?;
-        }
-        Ok(())
-    }
-
-    /// Logical sparse hole ranges as half-open byte offsets. Empty means no known holes.
-    fn sparse_holes(&self) -> io::Result<Vec<(u64, u64)>> {
-        Ok(Vec::new())
-    }
-
-    /// Whether the logical image is empty.
-    fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-
-    /// Original physical/partition/filesystem provenance, when available.
-    fn context(&self) -> ReadContext {
-        ReadContext::default()
-    }
-
-    /// Shared parser accounting retained through deferred reads, when configured.
-    fn budget(&self) -> Option<ReadBudget> {
-        None
-    }
-
-    /// Fill the destination at the given logical byte offset.
-    fn read_exact_at(&self, offset: u64, destination: &mut [u8]) -> io::Result<()>;
-}
-
-fn check_range(offset: u64, count: u64, length: u64) -> io::Result<()> {
-    if offset.checked_add(count).is_none_or(|end| end > length) {
-        return Err(io::Error::new(
-            io::ErrorKind::UnexpectedEof,
-            "disk read range overflows or exceeds logical length",
-        ));
-    }
-    Ok(())
-}
-
 /// A raw image opened read-only and retained through all deferred reads.
 ///
 /// The private file cursor is serialized for portable exact reads. This does
 /// not lock out external writers or provide a snapshot. Use an immutable source.
+#[cfg(feature = "std")]
 pub struct RawDisk {
     file: Mutex<File>,
+    host: HostSourceContext,
     length: u64,
     context: ReadContext,
 }
 
+#[cfg(feature = "std")]
 impl RawDisk {
     pub(crate) fn identity(&self) -> io::Result<same_file::Handle> {
         let file = self
             .file
             .lock()
             .map_err(|_| io::Error::other("disk reader mutex poisoned"))?;
-        same_file::Handle::from_file(file.try_clone()?)
+        Ok(same_file::Handle::from_file(file.try_clone()?)?)
     }
 
     #[cfg(target_os = "linux")]
@@ -232,9 +216,10 @@ impl RawDisk {
         file.try_lock_shared().map_err(io::Error::from)?;
         Ok(Self {
             length: metadata.len(),
+            host: HostSourceContext::new(path.to_path_buf(), &file)?,
             file: Mutex::new(file),
             context: ReadContext {
-                container: Some(path.to_path_buf()),
+                container: Some(path.to_string_lossy().into_owned()),
                 ..Default::default()
             },
         })
@@ -245,12 +230,13 @@ impl RawDisk {
             .lock()
             .map_err(|_| io::Error::other("disk reader mutex poisoned"))?
             .metadata()
+            .map_err(Into::into)
     }
     /// Open a regular raw image. Device files and directories are rejected.
     pub fn open(path: impl AsRef<Path>) -> io::Result<Self> {
         let path = path.as_ref();
         let context = ReadContext {
-            container: Some(path.to_path_buf()),
+            container: Some(path.to_string_lossy().into_owned()),
             ..Default::default()
         };
         let file = File::open(path).map_err(|e| context.clone().error("open raw image", e))?;
@@ -264,17 +250,25 @@ impl RawDisk {
             ));
         }
         Ok(Self {
+            host: HostSourceContext::new(path.canonicalize()?, &file)?,
             file: Mutex::new(file),
             length: metadata.len(),
             context: ReadContext {
-                container: Some(path.canonicalize()?),
+                container: Some(path.canonicalize()?.to_string_lossy().into_owned()),
                 ..context
             },
         })
     }
 }
 
+#[cfg(feature = "std")]
 impl ReadAt for RawDisk {
+    fn host_context(&self) -> Option<&dyn core::any::Any> {
+        Some(&self.host)
+    }
+    fn source_identity(&self) -> Option<SourceIdentity> {
+        Some(self.host.token(self.length))
+    }
     fn context(&self) -> ReadContext {
         self.context.clone()
     }
@@ -283,7 +277,7 @@ impl ReadAt for RawDisk {
     }
 
     fn read_exact_at(&self, offset: u64, destination: &mut [u8]) -> io::Result<()> {
-        let result = (|| {
+        let result: io::Result<()> = (|| {
             use std::io::{Read, Seek, SeekFrom};
             check_range(offset, destination.len() as u64, self.length)?;
             let mut file = self
@@ -291,7 +285,7 @@ impl ReadAt for RawDisk {
                 .lock()
                 .map_err(|_| io::Error::other("disk reader mutex poisoned"))?;
             file.seek(SeekFrom::Start(offset))?;
-            file.read_exact(destination)
+            file.read_exact(destination).map_err(Into::into)
         })();
         result.map_err(|e| {
             let mut context = self.context();
@@ -301,89 +295,10 @@ impl ReadAt for RawDisk {
     }
 }
 
-/// A bounded logical subrange retaining its parent reader.
-///
-/// Suitable for partition views once a partition parser has validated the
-/// layout. Construction alone does not establish partition validity.
-pub struct DiskView {
-    source: Arc<dyn ReadAt>,
-    start: u64,
-    length: u64,
-    context: ReadContext,
-}
-
-impl DiskView {
-    /// Create a view wholly contained in the parent reader.
-    pub fn new(source: Arc<dyn ReadAt>, start: u64, length: u64) -> io::Result<Self> {
-        check_range(start, length, source.len())?;
-        let context = source.context();
-        Ok(Self {
-            source,
-            start,
-            length,
-            context,
-        })
-    }
-    /// Attach the validated selected partition slot to this bounded view.
-    pub fn with_partition(mut self, index: u32) -> Self {
-        self.context.partition = Some(index);
-        self
-    }
-}
-
-impl ReadAt for DiskView {
-    fn visit_extents(
-        &self,
-        visitor: &mut dyn FnMut(DiskExtent) -> io::Result<()>,
-    ) -> io::Result<()> {
-        if self.length == 0 {
-            return Ok(());
-        }
-        let end = self.start + self.length;
-        self.source.visit_extents(&mut |extent| {
-            check_range(extent.offset, extent.length, self.source.len())?;
-            let start = extent.offset.max(self.start);
-            let stop = (extent.offset + extent.length).min(end);
-            if start < stop {
-                visitor(DiskExtent {
-                    offset: start - self.start,
-                    length: stop - start,
-                    kind: extent.kind,
-                })?;
-            }
-            Ok(())
-        })
-    }
-    fn context(&self) -> ReadContext {
-        self.context.clone()
-    }
-    fn budget(&self) -> Option<ReadBudget> {
-        self.source.budget()
-    }
-    fn len(&self) -> u64 {
-        self.length
-    }
-
-    fn read_exact_at(&self, offset: u64, destination: &mut [u8]) -> io::Result<()> {
-        let result = (|| {
-            check_range(offset, destination.len() as u64, self.length)?;
-            let absolute = self.start.checked_add(offset).ok_or_else(|| {
-                io::Error::new(io::ErrorKind::InvalidInput, "disk view offset overflow")
-            })?;
-            self.source.read_exact_at(absolute, destination)
-        })();
-        result.map_err(|e| {
-            let mut context = self.context();
-            context.offset = Some(offset);
-            context.error("read partition view", e)
-        })
-    }
-}
-
-#[cfg(test)]
+#[cfg(all(test, feature = "std"))]
 mod tests {
     use super::*;
-    use std::io::Write;
+    use std::{io::Write, sync::Arc};
 
     fn fixture() -> (tempfile::NamedTempFile, Arc<dyn ReadAt>) {
         let mut file = tempfile::NamedTempFile::new().unwrap();

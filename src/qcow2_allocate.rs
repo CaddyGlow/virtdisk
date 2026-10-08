@@ -4,7 +4,8 @@ use super::{
     journal::{self, Patch, Record},
 };
 use crate::RawWriter;
-use std::{collections::BTreeMap, io, sync::Arc};
+use crate::io;
+use std::{collections::BTreeMap, sync::Arc};
 const CLUSTER: u64 = 65536;
 
 pub(super) struct Builder {
@@ -462,7 +463,7 @@ pub(super) fn resize(
 #[cfg(all(test, target_os = "linux"))]
 mod tests {
     use super::*;
-    use std::io::{Seek, SeekFrom, Write};
+    use crate::io::{Seek, SeekFrom, Write};
     fn shared_l2_fixture(path: &std::path::Path) {
         let writer = super::super::Qcow2Writer::create(path, CLUSTER).unwrap();
         writer.write_all_at(0, &vec![9; CLUSTER as usize]).unwrap();

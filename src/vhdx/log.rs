@@ -1,10 +1,12 @@
 //! Read-only MS-VHDX log replay into an immutable overlay.
 use super::{M, checksum, invalid, read, u16le, u32le, u64le, unsupported};
+use crate::io;
 use crate::{CacheReservation, ReadAt, ReadBudget, ReadContext, check_range};
+use alloc::{boxed::Box, sync::Arc, vec::Vec};
+#[cfg(feature = "std")]
 use std::{
     fs::File,
-    io::{self, Seek, SeekFrom, Write},
-    sync::Arc,
+    io::{Seek, SeekFrom, Write},
 };
 #[derive(Clone, Copy)]
 struct Entry {
@@ -27,9 +29,11 @@ pub(crate) struct Overlay {
     patches: Vec<Patch>,
     budget: ReadBudget,
     _cache: Vec<CacheReservation>,
+    #[cfg_attr(not(feature = "std"), allow(dead_code))]
     log_guid: Option<[u8; 16]>,
 }
 impl Overlay {
+    #[cfg(feature = "std")]
     pub(crate) fn reserve_replay_work(&self) -> io::Result<()> {
         if self.log_guid.is_none() {
             return Ok(());
@@ -49,6 +53,7 @@ impl Overlay {
         }
         self.budget.work(work)
     }
+    #[cfg(feature = "std")]
     pub(crate) fn native_header(&self) -> Option<(u64, [u8; 4096])> {
         let guid = self.log_guid?;
         let patch = self.patches.last()?;
@@ -56,6 +61,7 @@ impl Overlay {
         header[48..64].copy_from_slice(&guid);
         Some((patch.start, header))
     }
+    #[cfg(feature = "std")]
     pub(crate) fn replay_to(
         &self,
         file: &mut File,
@@ -94,6 +100,16 @@ impl Overlay {
     }
 }
 impl ReadAt for Overlay {
+    fn source_identity(&self) -> Option<crate::SourceIdentity> {
+        self.source.source_identity()
+    }
+    fn ancestor_identities(&self) -> Vec<crate::SourceIdentity> {
+        self.source.ancestor_identities()
+    }
+    #[cfg(feature = "std")]
+    fn host_context(&self) -> Option<&dyn core::any::Any> {
+        self.source.host_context()
+    }
     fn len(&self) -> u64 {
         self.length
     }
@@ -295,7 +311,7 @@ pub(crate) fn recover(source: Arc<dyn ReadAt>, budget: ReadBudget) -> io::Result
     let sectors = log.len() / 4096;
     let _entry_cache = budget.cache(sectors as u64 * 64)?;
     budget.metadata(sectors as u64 * 64)?;
-    let mut entries = vec![None; sectors];
+    let mut entries = super::repeated(None, sectors)?;
     for (index, slot) in entries.iter_mut().enumerate() {
         budget.work(1)?;
         *slot = parse(&log, index * 4096, guid, &budget, log_start)?;
@@ -354,6 +370,15 @@ pub(crate) fn recover(source: Arc<dyn ReadAt>, budget: ReadBudget) -> io::Result
             budget.work(1)?;
             let d = descriptor(&log, &entry, index);
             let start = u64le(d, 16);
+            reservations.try_reserve(2).map_err(|_| {
+                io::Error::new(
+                    io::ErrorKind::OutOfMemory,
+                    "VHDX reservation allocation failed",
+                )
+            })?;
+            patches.try_reserve(1).map_err(|_| {
+                io::Error::new(io::ErrorKind::OutOfMemory, "VHDX patches allocation failed")
+            })?;
             reservations.push(budget.cache(64)?);
             budget.metadata(64)?;
             let patch = if &d[..4] == b"zero" {
@@ -365,7 +390,10 @@ pub(crate) fn recover(source: Arc<dyn ReadAt>, budget: ReadBudget) -> io::Result
             } else {
                 reservations.push(budget.cache(4096)?);
                 budget.metadata(4096)?;
-                let mut bytes = Box::new([0; 4096]);
+                let mut bytes: Box<[u8; 4096]> = super::repeated(0, 4096)?
+                    .into_boxed_slice()
+                    .try_into()
+                    .map_err(|_| invalid("VHDX patch size mismatch"))?;
                 bytes.copy_from_slice(data_sector(&log, &entry, data_index));
                 data_index += 1;
                 bytes[..8].copy_from_slice(&d[8..16]);
@@ -381,9 +409,21 @@ pub(crate) fn recover(source: Arc<dyn ReadAt>, budget: ReadBudget) -> io::Result
         }
     }
     // Clear only the selected header's log GUID in the immutable recovered view.
+    reservations.try_reserve(1).map_err(|_| {
+        io::Error::new(
+            io::ErrorKind::OutOfMemory,
+            "VHDX reservation allocation failed",
+        )
+    })?;
+    patches.try_reserve(1).map_err(|_| {
+        io::Error::new(io::ErrorKind::OutOfMemory, "VHDX patches allocation failed")
+    })?;
     reservations.push(budget.cache(4096 + 64)?);
     budget.metadata(4096 + 64)?;
-    let mut clean = Box::new([0; 4096]);
+    let mut clean: Box<[u8; 4096]> = super::repeated(0, 4096)?
+        .into_boxed_slice()
+        .try_into()
+        .map_err(|_| invalid("VHDX patch size mismatch"))?;
     clean.copy_from_slice(&header);
     clean[48..64].fill(0);
     clean[4..8].fill(0);

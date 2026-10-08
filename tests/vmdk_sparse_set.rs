@@ -1,5 +1,7 @@
+#![cfg(feature = "std")]
 #![cfg(target_os = "linux")]
-use std::{fs, io};
+use std::fs;
+use virtdisk::io;
 use virtdisk::{RawWriter, ReadAt, Vmdk, VmdkWriter};
 #[path = "../src/test_sync.rs"]
 mod process_boundary;
@@ -252,7 +254,7 @@ fn late_busy_extent_authorization_and_missing_tables_refuse_unchanged() {
 
 #[test]
 fn whole_call_projects_late_alignment_and_all_appends_before_mutation() {
-    use std::io::{Read, Write};
+    use virtdisk::io::{Read, Write};
     let _boundary = process_boundary::writer_test();
     for limit_case in [false, true] {
         let (_directory, path, extents) = fixture();
@@ -367,7 +369,7 @@ fn split_sparse_allocated_holes_remain_qemu_readable() {
 
 #[test]
 fn late_aggregate_overflow_and_foreign_growth_preserve_first_extent_exactly() {
-    use std::io::{Read, Write};
+    use virtdisk::io::{Read, Write};
     let _boundary = process_boundary::writer_test();
     for foreign_growth in [false, true] {
         let (_directory, path, extents) = fixture();

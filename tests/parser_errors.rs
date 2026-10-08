@@ -1,4 +1,6 @@
-use std::{error::Error, fs, io, sync::Arc};
+#![cfg(feature = "std")]
+use std::{error::Error, fs, sync::Arc};
+use virtdisk::io;
 use virtdisk::{ParserLimitExceeded, ParserLimits, ParserResource, RawDisk, ReadBudget};
 
 fn quota(error: &io::Error) -> &ParserLimitExceeded {
@@ -29,7 +31,7 @@ fn failed_metadata_and_work_charges_preserve_usage_and_report_wide_requests() {
     .unwrap();
     budget.metadata(5).unwrap();
     let error = budget.metadata(4).unwrap_err();
-    assert_eq!(error.kind(), io::ErrorKind::Unsupported);
+    assert_eq!(error.kind(), io::ErrorKind::ResourceLimit);
     assert_eq!(quota(&error).resource(), ParserResource::MetadataBytes);
     assert_eq!(quota(&error).limit(), 8);
     assert_eq!(quota(&error).requested(), 9);
@@ -103,7 +105,7 @@ fn deferred_read_refusal_keeps_container_provenance_and_typed_source() {
         .unwrap();
     assert_eq!(
         provenance.context.container.as_deref(),
-        Some(path.as_path())
+        Some(path.to_str().unwrap())
     );
     assert_eq!(quota(&error).resource(), ParserResource::WorkItems);
     assert_eq!(quota(&error).requested(), 2);

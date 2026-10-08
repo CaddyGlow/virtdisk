@@ -1,11 +1,11 @@
 //! Explicit locked native redo recovery for standalone VHDX images.
+use crate::io::{self, Seek, SeekFrom, Write};
 use crate::source::FileSource;
 use crate::{ParserLimits, Vhdx};
 #[cfg(test)]
 use crate::{ReadAt, check_range};
 use std::{
     fs::{File, OpenOptions},
-    io::{self, Seek, SeekFrom, Write},
     path::Path,
     sync::Arc,
 };
@@ -47,7 +47,7 @@ fn install(file: &mut File, header: &mut [u8; 4096], offset: u64, sequence: u64)
     crate::vhdx_write::checksum(header);
     file.seek(SeekFrom::Start(offset))?;
     file.write_all(header)?;
-    file.sync_all()
+    Ok(file.sync_all()?)
 }
 fn recover_with_hook(
     path: impl AsRef<Path>,

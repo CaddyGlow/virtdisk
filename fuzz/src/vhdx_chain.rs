@@ -34,7 +34,7 @@ pub fn seeds() -> Vec<Vec<u8>> {
     let device = native_locator(r"\\.\PhysicalDrive0");
     vec![valid, zero, overlap, missing, ordinary, stream, device]
 }
-pub fn open(data: &[u8]) -> std::io::Result<Vhdx> {
+pub fn open(data: &[u8]) -> virtdisk::io::Result<Vhdx> {
     let directory = tempfile::tempdir()?;
     let parent = directory.path().join("parent.vhdx");
     let path = directory.path().join("child.vhdx");
@@ -73,7 +73,7 @@ pub fn run(data: &[u8]) {
     let _ = image.visit_extents(&mut |_| {
         visits += 1;
         if visits > 32 {
-            Err(std::io::ErrorKind::Interrupted.into())
+            Err(virtdisk::io::ErrorKind::Interrupted.into())
         } else {
             Ok(())
         }

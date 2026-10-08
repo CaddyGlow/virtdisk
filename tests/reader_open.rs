@@ -1,4 +1,6 @@
-use std::{fs, io};
+#![cfg(feature = "std")]
+use std::fs;
+use virtdisk::io;
 
 fn parser_quota(error: &io::Error) -> &virtdisk::ParserLimitExceeded {
     let mut current: &(dyn std::error::Error + 'static) = error;
@@ -40,7 +42,7 @@ fn vmdk_descriptor_and_grain_table_limits_report_requested_attribute_bytes() {
         })
         .unwrap();
     let error = Image::open_with_options(&image, &options).err().unwrap();
-    assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+    assert_eq!(error.kind(), io::ErrorKind::ResourceLimit);
     assert_eq!(
         parser_quota(&error).resource(),
         virtdisk::ParserResource::AttributeBytes
@@ -120,7 +122,7 @@ fn authorized_chains_report_typed_recursion_limits() {
             })
             .unwrap();
         let error = Image::open_with_options(&child, &options).err().unwrap();
-        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+        assert_eq!(error.kind(), io::ErrorKind::ResourceLimit);
         let mut current: &(dyn std::error::Error + 'static) = &error;
         let found = loop {
             if let Some(value) = current.downcast_ref::<virtdisk::ParserLimitExceeded>() {
@@ -282,7 +284,7 @@ fn raw_deferred_reads_share_the_caller_work_budget() {
     image.read_exact_at(0, &mut [0; 1]).unwrap();
     assert_eq!(
         image.read_exact_at(1, &mut [0; 1]).unwrap_err().kind(),
-        io::ErrorKind::Unsupported
+        io::ErrorKind::ResourceLimit
     );
     assert_eq!(image.budget().unwrap().usage().work_items, 1);
 }

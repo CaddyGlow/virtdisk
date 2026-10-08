@@ -1,3 +1,4 @@
+#![cfg(feature = "std")]
 use std::{fs, sync::Arc};
 use virtdisk::{RawDisk, ReadAt, Vmdk, create_vmdk};
 #[test]
@@ -42,7 +43,7 @@ fn exported_image_matches_qemu_raw_conversion() {
 
 #[test]
 fn invalid_geometry_never_creates_output_and_failed_export_stays_dirty() {
-    use std::io;
+    use virtdisk::io;
     struct Broken;
     impl ReadAt for Broken {
         fn len(&self) -> u64 {

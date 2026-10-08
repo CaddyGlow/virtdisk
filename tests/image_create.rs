@@ -1,3 +1,4 @@
+#![cfg(feature = "std")]
 use virtdisk::{Image, ImageFormat, ImageWriter, InspectImage, ReadAt, WriteAt};
 
 #[test]
@@ -39,7 +40,7 @@ fn container_preallocation_is_explicitly_unavailable_without_mutating_payload() 
     writer.write_all_at(0, &[17; 512]).unwrap();
     assert_eq!(
         writer.preallocate(0, 65536).unwrap_err().kind(),
-        std::io::ErrorKind::Unsupported
+        virtdisk::io::ErrorKind::Unsupported
     );
     let mut actual = [0; 512];
     writer.read_exact_at(0, &mut actual).unwrap();

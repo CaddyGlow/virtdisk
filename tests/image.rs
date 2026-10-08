@@ -1,4 +1,6 @@
-use std::{io, sync::Arc};
+#![cfg(feature = "std")]
+use std::sync::Arc;
+use virtdisk::io;
 use virtdisk::{
     ImageFormat, RawDisk, RawWriter, ReadAt, compare_images, copy_image, detect_format,
 };

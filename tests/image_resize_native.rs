@@ -1,3 +1,4 @@
+#![cfg(feature = "std")]
 use virtdisk::{Image, ImageFormat, ImageWriter, ReadAt, ShrinkPolicy, WriteAt};
 
 #[test]
@@ -52,7 +53,7 @@ fn unsupported_backed_native_resize_rejects_before_container_changes() {
             .resize(131072, ShrinkPolicy::Reject)
             .unwrap_err()
             .kind(),
-        std::io::ErrorKind::Unsupported
+        virtdisk::io::ErrorKind::Unsupported
     );
     assert_eq!(std::fs::read(path).unwrap(), original);
 }

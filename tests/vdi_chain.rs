@@ -1,3 +1,4 @@
+#![cfg(feature = "std")]
 use std::{path::PathBuf, sync::Arc};
 use virtdisk::{ExtentKind, InspectImage, RawDisk, ReadAt, Vdi};
 fn overlay(path: &std::path::Path, parent: &std::path::Path) {
@@ -129,7 +130,7 @@ fn vdi_writer_overlay_creator_retains_lock_and_epoch_changes_only_child() {
 
 #[test]
 fn unsupported_overlay_zero_allocation_fails_before_uuid_or_payload_mutation() {
-    use std::io::Write;
+    use virtdisk::io::Write;
     let directory = tempfile::tempdir().unwrap();
     let base = directory.path().join("base.vdi");
     let child = directory.path().join("child.vdi");
@@ -227,7 +228,7 @@ fn native_chain_rejects_nil_child_ids_and_matching_nil_parent_modification() {
         let error = Vdi::open_chain(&child, std::slice::from_ref(&parent))
             .err()
             .expect("nil child identity");
-        assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
+        assert_eq!(error.kind(), virtdisk::io::ErrorKind::InvalidData);
         assert_eq!(std::fs::read(&child).unwrap(), bytes);
     }
     let mut parent_bytes = original_parent;
@@ -239,7 +240,7 @@ fn native_chain_rejects_nil_child_ids_and_matching_nil_parent_modification() {
     let error = Vdi::open_chain(&child, std::slice::from_ref(&parent))
         .err()
         .expect("matching nil modification epochs are invalid native headers");
-    assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
+    assert_eq!(error.kind(), virtdisk::io::ErrorKind::InvalidData);
     assert_eq!(std::fs::read(&parent).unwrap(), parent_bytes);
     assert_eq!(std::fs::read(&child).unwrap(), child_bytes);
 }

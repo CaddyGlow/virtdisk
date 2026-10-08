@@ -1,12 +1,10 @@
 //! Explicit format-dispatched mutable access with retained writer locks.
+use crate::io;
 use crate::{
     DiscardPolicy, DiscardResult, ImageFormat, ImageInspection, InspectImage, Qcow2Writer, RawDisk,
     RawWriter, ReadAt, ShrinkPolicy, VdiWriter, VhdxWriter, VmdkWriter, WriteAt,
 };
-use std::{
-    io,
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 enum Kind {
     Raw(RawWriter),
     Qcow2(Qcow2Writer),

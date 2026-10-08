@@ -1,10 +1,12 @@
 //! Bounded physical-container hashing, independent of logical payload quotas.
+use crate::io;
+#[cfg(feature = "std")]
+use crate::io::{Read, Seek, SeekFrom};
+use alloc::vec::Vec;
+use core::fmt;
 use sha2::{Digest, Sha256};
-use std::{
-    fmt,
-    fs::File,
-    io::{self, Read, Seek, SeekFrom},
-};
+#[cfg(feature = "std")]
+use std::fs::File;
 const MAX_BYTES: u64 = 33 * 1024 * 1024 * 1024;
 const MAX_CALLS: u64 = 1_048_576;
 const MAX_SCRATCH: usize = 65_536;
@@ -48,7 +50,7 @@ impl fmt::Display for PhysicalValidationLimitExceeded {
         )
     }
 }
-impl std::error::Error for PhysicalValidationLimitExceeded {}
+impl core::error::Error for PhysicalValidationLimitExceeded {}
 
 /// Validated ceilings for physical-container fingerprinting.
 /// Defaults: 33 GiB cumulative physical bytes, 1,048,576 exact-read calls and
@@ -159,11 +161,7 @@ impl PhysicalValidationBudget {
     pub fn usage(&self) -> PhysicalValidationUsage {
         self.usage
     }
-    pub(crate) fn fingerprint(
-        &mut self,
-        file: &mut File,
-        length: u64,
-    ) -> io::Result<PhysicalFingerprint> {
+    fn preflight(&self, length: u64) -> io::Result<()> {
         let calls = length.div_ceil(self.limits.scratch as u64);
         for (resource, limit, requested) in [
             (
@@ -179,7 +177,7 @@ impl PhysicalValidationBudget {
         ] {
             if requested > u128::from(limit) {
                 return Err(io::Error::new(
-                    io::ErrorKind::Unsupported,
+                    io::ErrorKind::ResourceLimit,
                     PhysicalValidationLimitExceeded {
                         resource,
                         limit,
@@ -188,6 +186,46 @@ impl PhysicalValidationBudget {
                 ));
             }
         }
+        Ok(())
+    }
+    /// Hash the complete bytes of supplied immutable storage with bounded scratch.
+    /// This does not establish storage identity or protection against mutation.
+    pub fn fingerprint_reader(
+        &mut self,
+        source: &dyn crate::ReadAt,
+    ) -> io::Result<PhysicalFingerprint> {
+        let length = source.len();
+        self.preflight(length)?;
+        let scratch = length.min(self.limits.scratch as u64) as usize;
+        let mut buffer = Vec::new();
+        buffer
+            .try_reserve_exact(scratch)
+            .map_err(|error| io::Error::new(io::ErrorKind::OutOfMemory, error))?;
+        buffer.resize(scratch, 0);
+        self.usage.peak_scratch_bytes = self.usage.peak_scratch_bytes.max(scratch as u64);
+        let mut hash = Sha256::new();
+        let mut done = 0;
+        while done < length {
+            let count = (length - done).min(buffer.len() as u64) as usize;
+            self.usage.read_calls += 1;
+            self.usage.physical_bytes += count as u64;
+            source.read_exact_at(done, &mut buffer[..count])?;
+            hash.update(&buffer[..count]);
+            done += count as u64;
+            self.usage.hashed_bytes += count as u64;
+        }
+        Ok(PhysicalFingerprint {
+            length,
+            digest: hash.finalize().into(),
+        })
+    }
+    #[cfg(feature = "std")]
+    pub(crate) fn fingerprint(
+        &mut self,
+        file: &mut File,
+        length: u64,
+    ) -> io::Result<PhysicalFingerprint> {
+        self.preflight(length)?;
         if file.metadata()?.len() != length {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
@@ -222,7 +260,7 @@ impl PhysicalValidationBudget {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "std"))]
 mod tests {
     use super::*;
     #[test]
@@ -244,5 +282,42 @@ mod tests {
         assert_eq!(budget.usage().physical_bytes, 8);
         assert_eq!(budget.usage().hashed_bytes, 0);
         assert_eq!(budget.usage().peak_scratch_bytes, 8);
+    }
+}
+
+#[cfg(test)]
+mod portable_tests {
+    use super::*;
+    struct Bytes;
+    impl crate::ReadAt for Bytes {
+        fn len(&self) -> u64 {
+            3
+        }
+        fn read_exact_at(&self, offset: u64, bytes: &mut [u8]) -> io::Result<()> {
+            crate::check_range(offset, bytes.len() as u64, 3)?;
+            bytes.copy_from_slice(&b"abc"[offset as usize..offset as usize + bytes.len()]);
+            Ok(())
+        }
+    }
+    #[test]
+    fn supplied_bytes_hash_with_cumulative_preflight() {
+        let limits = PhysicalValidationLimits::default()
+            .physical_bytes(3)
+            .unwrap()
+            .scratch_bytes(2)
+            .unwrap();
+        let mut budget = PhysicalValidationBudget::new(limits);
+        let fingerprint = budget.fingerprint_reader(&Bytes).unwrap();
+        assert_eq!(
+            fingerprint.sha256(),
+            &<[u8; 32]>::from(Sha256::digest(b"abc"))
+        );
+        assert_eq!(budget.usage().read_calls, 2);
+        assert_eq!(budget.usage().physical_bytes, 3);
+        assert_eq!(
+            budget.fingerprint_reader(&Bytes).unwrap_err().kind(),
+            io::ErrorKind::ResourceLimit
+        );
+        assert_eq!(budget.usage().read_calls, 2);
     }
 }

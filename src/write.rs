@@ -1,6 +1,6 @@
 //! Explicit writable access, separate from immutable readers.
+use crate::io;
 use crate::{Qcow2Writer, RawWriter, VdiWriter, VhdxWriter, VmdkWriter};
-use std::io;
 
 /// Whether discard must request deallocation or may fall back to writing zeroes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

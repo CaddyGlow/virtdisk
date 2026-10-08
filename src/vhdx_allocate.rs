@@ -1,7 +1,7 @@
 //! One-block VHDX allocation through retained native redo records.
 use super::{State, VhdxWriter};
 use crate::ReadAt;
-use std::io::{self, Read, Seek, SeekFrom, Write};
+use crate::io::{self, Read, Seek, SeekFrom, Write};
 const M: u64 = 1 << 20;
 #[derive(Clone, Copy)]
 pub(super) struct LogEpoch {

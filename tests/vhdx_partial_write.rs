@@ -1,3 +1,4 @@
+#![cfg(feature = "std")]
 #![cfg(target_os = "linux")]
 use virtdisk::{ReadAt, Vhdx, VhdxWriter};
 const M: u64 = 1 << 20;
@@ -150,7 +151,7 @@ fn separate_chunk_bitmap_allocations_and_final_sector_stay_independent() {
 
 #[test]
 fn large_payload_block_write_crosses_bitmap_page_without_copying_parent_block() {
-    use std::io::{Read, Seek, SeekFrom, Write};
+    use virtdisk::io::{Read, Seek, SeekFrom, Write};
     let dir = tempfile::tempdir().unwrap();
     let parent = dir.path().join("base.vhdx");
     let child = dir.path().join("child.vhdx");

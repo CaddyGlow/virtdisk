@@ -1,4 +1,6 @@
-use std::{io, sync::Arc};
+#![cfg(feature = "std")]
+use std::sync::Arc;
+use virtdisk::io;
 use virtdisk::{ParserLimits, RawDisk, ReadAt, Vhdx, create_vhdx};
 const M: usize = 1 << 20;
 #[path = "support/bytes.rs"]

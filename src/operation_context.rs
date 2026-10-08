@@ -1,5 +1,6 @@
 //! Caller-controlled management work, progress and cancellation.
-use std::{fmt, io, ops::ControlFlow};
+use crate::io;
+use std::{fmt, ops::ControlFlow};
 
 /// Resource measured by a common operation context.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

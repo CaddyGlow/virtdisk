@@ -1,3 +1,4 @@
+#![cfg(feature = "std")]
 #![cfg(target_os = "linux")]
 use std::sync::Arc;
 use virtdisk::{
@@ -24,7 +25,7 @@ fn active_resize_preserves_full_and_short_saved_states() {
             .resize(CLUSTER + 512, ShrinkPolicy::RequireZero)
             .unwrap_err()
             .kind(),
-        std::io::ErrorKind::InvalidInput
+        virtdisk::io::ErrorKind::InvalidInput
     );
     assert_eq!(std::fs::read(&path).unwrap(), before);
     writer
@@ -243,7 +244,7 @@ fn backed_resize_masks_growth_and_checks_inherited_shrink_tail() {
                 .resize(512, ShrinkPolicy::RequireZero)
                 .unwrap_err()
                 .kind(),
-            std::io::ErrorKind::InvalidInput
+            virtdisk::io::ErrorKind::InvalidInput
         );
         assert_eq!(std::fs::read(&child).unwrap(), before);
         writer

@@ -1,7 +1,6 @@
-use std::{
-    io::{Seek, SeekFrom, Write},
-    path::Path,
-};
+#![cfg(feature = "std")]
+use std::path::Path;
+use virtdisk::io::{Seek, SeekFrom, Write};
 use virtdisk::{ImageFormat, ImageGraph, ImageSpec};
 
 fn change_parent(child: &Path, parent: &Path, format: &str) {

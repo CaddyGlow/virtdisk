@@ -1,4 +1,5 @@
-use std::{io, sync::Arc};
+use std::sync::Arc;
+use virtdisk::io;
 use virtdisk::{Qcow2, ReadAt};
 
 #[path = "support/bytes.rs"]
@@ -88,6 +89,7 @@ fn invalid_or_unsupported_mapping_returns_an_error() {
     }
 }
 
+#[cfg(feature = "std")]
 #[test]
 #[ignore = "requires independent qemu-img oracle"]
 fn randomized_ranges_match_qemu_converted_raw_image() {
@@ -137,6 +139,7 @@ fn randomized_ranges_match_qemu_converted_raw_image() {
     assert_eq!(source_digest(&raw), raw_before);
 }
 
+#[cfg(feature = "std")]
 fn source_digest(path: &std::path::Path) -> [u8; 32] {
     use sha2::{Digest, Sha256};
     use std::io::Read;
@@ -217,6 +220,7 @@ fn compressed_descriptors_reject_copied_reserved_offsets_and_truncation() {
     }
 }
 
+#[cfg(feature = "std")]
 fn set_backing(image: &mut [u8], name: &str, format: &str) {
     image[8..16].copy_from_slice(&256u64.to_be_bytes());
     image[16..20].copy_from_slice(&(name.len() as u32).to_be_bytes());
@@ -226,6 +230,7 @@ fn set_backing(image: &mut [u8], name: &str, format: &str) {
     image[112..112 + format.len()].copy_from_slice(format.as_bytes());
 }
 
+#[cfg(feature = "std")]
 #[test]
 fn backing_requires_authorization_and_zero_overrides_a_short_raw_parent() {
     use std::fs;
@@ -248,6 +253,7 @@ fn backing_requires_authorization_and_zero_overrides_a_short_raw_parent() {
     assert!(out[700..].iter().all(|byte| *byte == 0));
 }
 
+#[cfg(feature = "std")]
 #[test]
 fn cycles_and_malformed_backing_headers_fail_closed() {
     use std::fs;
@@ -271,6 +277,7 @@ fn cycles_and_malformed_backing_headers_fail_closed() {
     }
 }
 
+#[cfg(feature = "std")]
 #[test]
 #[ignore = "requires independent qemu-img and qemu-io oracles"]
 fn qemu_compression_and_three_layer_backing_chain_match_raw_oracle() {
@@ -383,6 +390,7 @@ fn qemu_compression_and_three_layer_backing_chain_match_raw_oracle() {
     assert_eq!(sources.map(|path| source_digest(path)), before);
 }
 
+#[cfg(feature = "std")]
 #[test]
 #[ignore = "requires independent qemu-img and qemu-io oracles"]
 fn qemu_v2_compressed_backing_chain_matches_raw_oracle() {
@@ -487,6 +495,7 @@ fn qemu_v2_compressed_backing_chain_matches_raw_oracle() {
     assert_eq!(paths.map(|path| source_digest(path)), before);
 }
 
+#[cfg(feature = "std")]
 #[test]
 fn chain_depth_and_protocol_paths_are_rejected() {
     use std::fs;
@@ -515,6 +524,7 @@ fn chain_depth_and_protocol_paths_are_rejected() {
 }
 
 #[cfg(unix)]
+#[cfg(feature = "std")]
 #[test]
 fn hardlink_and_symlink_aliases_do_not_bypass_cycle_detection() {
     use std::{fs, os::unix::fs::symlink};
@@ -572,6 +582,7 @@ fn l1_allocated_tail_padding_is_not_required_at_physical_eof() {
     assert!(Qcow2::open(Arc::new(Bytes(image))).is_err());
 }
 
+#[cfg(feature = "std")]
 #[test]
 #[ignore = "requires independent qemu-img oracle"]
 fn qemu_blank_large_image_with_partial_l1_tail_validates() {
@@ -675,6 +686,7 @@ fn compressed_payload_audit_checks_descriptors_outside_file_capture() {
     );
 }
 
+#[cfg(feature = "std")]
 #[test]
 #[ignore = "requires independent qemu-img oracle"]
 fn shared_l2_and_data_ownership_matches_qemu_checker() {
@@ -719,6 +731,7 @@ fn shared_l2_and_data_ownership_matches_qemu_checker() {
     }
 }
 
+#[cfg(feature = "std")]
 #[test]
 #[ignore = "requires independent qemu-img oracle"]
 fn all_refcount_widths_match_qemu_generated_images() {
@@ -760,7 +773,7 @@ fn caller_tightened_work_and_decompression_limits_stop_real_reads() {
     let error = Qcow2::open_with_limits(Arc::new(Bytes(fixture(3))), limits)
         .err()
         .unwrap();
-    assert_eq!(error.kind(), io::ErrorKind::Unsupported);
+    assert_eq!(error.kind(), io::ErrorKind::ResourceLimit);
     assert!(error.to_string().contains("work"));
     let image = compressed_fixture(&deflate(&vec![0x39; 512]), false);
     let limits = virtdisk::ParserLimits {
@@ -769,7 +782,7 @@ fn caller_tightened_work_and_decompression_limits_stop_real_reads() {
     };
     let disk = Qcow2::open_with_limits(Arc::new(Bytes(image)), limits).unwrap();
     let error = disk.read_exact_at(0, &mut [0; 1]).unwrap_err();
-    assert_eq!(error.kind(), io::ErrorKind::Unsupported);
+    assert_eq!(error.kind(), io::ErrorKind::ResourceLimit);
     assert!(error.to_string().contains("decompression-buffer"));
 }
 
@@ -794,12 +807,13 @@ fn validator_rejects_caller_tightened_metadata_and_cache_allocations() {
     ] {
         let disk = Qcow2::open_with_limits(Arc::new(Bytes(validated_fixture())), limits).unwrap();
         let error = disk.validate_active_mapping().unwrap_err();
-        assert_eq!(error.kind(), io::ErrorKind::Unsupported);
+        assert_eq!(error.kind(), io::ErrorKind::ResourceLimit);
         assert!(error.to_string().contains(name), "{error}");
         assert!(error.get_ref().unwrap().is::<virtdisk::ReadError>());
     }
 }
 
+#[cfg(feature = "std")]
 #[test]
 fn caller_chain_recursion_limit_rejects_a_valid_authorized_parent() {
     let root = tempfile::tempdir().unwrap();
@@ -821,6 +835,7 @@ fn caller_chain_recursion_limit_rejects_a_valid_authorized_parent() {
     assert_eq!(std::fs::read(child).unwrap(), bytes);
 }
 
+#[cfg(feature = "std")]
 #[test]
 fn immutable_mapping_cache_avoids_repeated_table_reads_and_remains_bounded() {
     let input = fixture(3);
@@ -847,7 +862,7 @@ fn immutable_mapping_cache_avoids_repeated_table_reads_and_remains_bounded() {
     let disk = Qcow2::open_with_limits(Arc::new(Bytes(fixture(3))), limits).unwrap();
     assert_eq!(
         disk.read_exact_at(0, &mut byte).unwrap_err().kind(),
-        io::ErrorKind::Unsupported
+        io::ErrorKind::ResourceLimit
     );
     let mut malformed = fixture(3);
     malformed[1536..1544].copy_from_slice(&(2048u64 | (1 << 61)).to_be_bytes());
@@ -889,12 +904,13 @@ fn warmed_zero_mappings_still_exhaust_tightened_work_limits() {
             assert_eq!(byte, [0]);
         }
         let error = error.expect("cached zero reads must remain bounded");
-        assert_eq!(error.kind(), io::ErrorKind::Unsupported);
+        assert_eq!(error.kind(), io::ErrorKind::ResourceLimit);
         assert!(error.to_string().contains("work"));
         assert_eq!(disk.budget().unwrap().usage().work_items, 32);
     }
 }
 
+#[cfg(feature = "std")]
 #[test]
 fn extent_visitor_allocated_zero_clipped_and_short_backing() {
     use virtdisk::ExtentKind;

@@ -1,3 +1,4 @@
+#![cfg(feature = "std")]
 use virtdisk::{ShrinkPolicy, VdiWriter};
 const M: u64 = 1 << 20;
 #[test]
@@ -51,7 +52,7 @@ fn invalid_shrink_does_not_mutate() {
 
 #[test]
 fn growth_never_exposes_hidden_partial_block_padding() {
-    use std::io::{Seek, SeekFrom, Write};
+    use virtdisk::io::{Seek, SeekFrom, Write};
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("disk.vdi");
     let disk = VdiWriter::create_sparse(&path, 512).unwrap();

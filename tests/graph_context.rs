@@ -1,3 +1,4 @@
+#![cfg(feature = "std")]
 use std::{ops::ControlFlow, path::Path};
 use virtdisk::{
     ImageFormat, ImageGraph, ImageSpec, OperationContext, OperationLimits, OperationPhase,
@@ -98,7 +99,7 @@ fn cancellation_at_verification_and_publication_discards_child_without_graph_edg
             let error = graph
                 .snapshot_as_with_context(&base, &child, format, &mut context)
                 .unwrap_err();
-            assert_eq!(error.kind(), std::io::ErrorKind::Interrupted);
+            assert_eq!(error.kind(), virtdisk::io::ErrorKind::Interrupted);
             assert!(!child.exists());
             assert!(graph.children(&base).unwrap().is_empty());
             assert_eq!(std::fs::read(base).unwrap(), original);
@@ -306,7 +307,7 @@ fn rebase_cancellation_and_late_quota_refusal_remove_staging_and_preserve_graph(
                 .rebase_to_with_context(&source, &parent, &output, &mut context)
                 .unwrap_err()
                 .kind(),
-            std::io::ErrorKind::Interrupted
+            virtdisk::io::ErrorKind::Interrupted
         );
         assert!(!output.exists());
         assert!(graph.children(&parent).unwrap().is_empty());

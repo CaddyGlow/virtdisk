@@ -1,5 +1,6 @@
 //! Shared VMDK descriptor syntax; supported profiles are checked by callers.
-use std::{io, ops::Range};
+use crate::io;
+use core::ops::Range;
 
 fn invalid() -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, "invalid VMDK descriptor syntax")
@@ -13,7 +14,7 @@ pub(crate) fn text(bytes: &[u8]) -> io::Result<&str> {
     if bytes[end..].iter().any(|byte| *byte != 0) {
         return Err(invalid());
     }
-    std::str::from_utf8(&bytes[..end]).map_err(|_| invalid())
+    core::str::from_utf8(&bytes[..end]).map_err(|_| invalid())
 }
 
 /// Tracks native singleton fields without allocating or restricting vendor keys.
@@ -39,6 +40,7 @@ impl Properties {
 
 pub(crate) struct Field<'a> {
     pub(crate) text: &'a str,
+    #[cfg_attr(not(feature = "std"), allow(dead_code))]
     pub(crate) range: Range<usize>,
 }
 

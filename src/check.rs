@@ -1,9 +1,7 @@
 //! Read-only checks with explicit structural and logical payload scope.
+use crate::io;
 use crate::{Image, ImageFormat, Qcow2, ReadAt};
-use std::{
-    io,
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 
 /// Optional work beyond supported container ownership validation.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]

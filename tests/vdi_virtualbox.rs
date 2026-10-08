@@ -1,5 +1,7 @@
+#![cfg(feature = "std")]
 //! Independent native VirtualBox format acceptance; no VM execution is involved.
-use std::{ffi::OsStr, fs, io, path::Path, process::Command, sync::Arc};
+use std::{ffi::OsStr, fs, path::Path, process::Command, sync::Arc};
+use virtdisk::io;
 use virtdisk::{RawDisk, ReadAt, Vdi, VdiWriter, create_vdi, create_vdi_overlay};
 
 // VBoxSVC and its temporary registry must not race another test in this binary.

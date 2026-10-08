@@ -1,3 +1,4 @@
+#![cfg(feature = "std")]
 use std::{io::Read, path::Path};
 use virtdisk::{InspectImage, ReadAt, Vhdx};
 

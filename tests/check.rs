@@ -1,4 +1,6 @@
-use std::{fs, io, sync::Arc};
+#![cfg(feature = "std")]
+use std::{fs, sync::Arc};
+use virtdisk::io;
 use virtdisk::{
     CheckOptions, CheckScope, ImageFormat, RawDisk, ReadAt, check_image, check_image_with_cancel,
     check_payload_with_cancel, convert_image, create_qcow2_overlay,
@@ -165,7 +167,7 @@ fn payload_sweep_preserves_read_errors_and_checks_cancel_between_chunks() {
     assert_eq!(detail.context.offset, Some(65536));
     assert_eq!(
         detail.context.container.as_deref(),
-        Some(std::path::Path::new("authorized-parent"))
+        Some("authorized-parent")
     );
     let mut calls = 0;
     assert_eq!(

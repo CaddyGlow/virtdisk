@@ -1,4 +1,6 @@
-use std::{fs, io};
+#![cfg(feature = "std")]
+use std::fs;
+use virtdisk::io;
 use virtdisk::{ImageFormat, ImageWriter, RecoveryPolicy, WriteAt, WriterOpenOptions};
 
 #[test]

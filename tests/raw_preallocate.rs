@@ -1,3 +1,4 @@
+#![cfg(feature = "std")]
 use virtdisk::RawWriter;
 
 #[test]
@@ -57,7 +58,7 @@ fn unsupported_preallocation_never_substitutes_zero_writes() {
     writer.write_all_at(0, &[41; 512]).unwrap();
     assert_eq!(
         writer.preallocate(0, 512).unwrap_err().kind(),
-        std::io::ErrorKind::Unsupported
+        virtdisk::io::ErrorKind::Unsupported
     );
     let mut bytes = [0; 512];
     writer.read_exact_at(0, &mut bytes).unwrap();

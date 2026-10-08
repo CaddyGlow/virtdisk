@@ -1,8 +1,8 @@
 //! Native hosted-sparse VMDK new-output exporter.
 use crate::ReadAt;
+use crate::io::{self, Seek, SeekFrom, Write};
 use std::{
     fs::{File, OpenOptions},
-    io::{self, Seek, SeekFrom, Write},
     path::Path,
 };
 fn put32(b: &mut [u8], o: usize, v: u32) {

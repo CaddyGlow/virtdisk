@@ -1,6 +1,7 @@
 //! Explicit immutable reader opening policies.
+use crate::io;
 use crate::{ImageFormat, ParserLimits};
-use std::{io, path::PathBuf};
+use std::path::PathBuf;
 
 /// Recovery allowed while opening an immutable reader.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]

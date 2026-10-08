@@ -1,11 +1,11 @@
 //! Native clean dynamic VHDX export.
+use crate::io::{self, Seek, SeekFrom, Write};
 use crate::{
     ReadAt,
     vhdx::{BAT, ID, LOGICAL, META, PARAM, PHYSICAL, SIZE},
 };
 use std::{
     fs::{File, OpenOptions},
-    io::{self, Seek, SeekFrom, Write},
     path::Path,
 };
 const M: u64 = 1 << 20;

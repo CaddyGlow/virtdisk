@@ -1,5 +1,7 @@
-use std::{fs, io, process::Command};
+#![cfg(feature = "std")]
+use std::{fs, process::Command};
 use virtdisk::VmdkWriter;
+use virtdisk::io;
 static SERIAL: std::sync::Mutex<()> = std::sync::Mutex::new(());
 fn descriptor() -> &'static str {
     "# Disk DescriptorFile\nversion=1\nCID=C\nparentCID=ffffffff\ncreateType=\"monolithicFlat\"\nRW 2 FLAT \"extent-flat.vmdk\" 1\n"

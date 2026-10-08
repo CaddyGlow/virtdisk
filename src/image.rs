@@ -1,29 +1,17 @@
 //! Bounded format detection and logical image operations.
+use crate::ImageFormat;
+use crate::detect_format;
+use crate::io;
 use crate::{
     ImageInspection, InspectImage, Qcow2, RawDisk, RawWriter, ReadAt, ReadBudget, ReadContext, Vdi,
     Vhdx, Vmdk, WriteAt,
 };
 use sha2::{Digest, Sha256};
 use std::{
-    fs, io,
+    fs,
     path::{Path, PathBuf},
     sync::Arc,
 };
-
-/// A virtual disk container family; support depends on its concrete profile.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ImageFormat {
-    /// Unstructured logical disk bytes.
-    Raw,
-    /// QEMU copy-on-write version 2 container.
-    Qcow2,
-    /// Microsoft virtual hard disk version 2.
-    Vhdx,
-    /// VMware virtual machine disk.
-    Vmdk,
-    /// VirtualBox disk image.
-    Vdi,
-}
 
 /// Basic inspection facts for an opened image, without implied deep validation.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -253,6 +241,15 @@ impl InspectImage for Image {
 }
 
 impl ReadAt for Image {
+    fn host_context(&self) -> Option<&dyn core::any::Any> {
+        self.reader.host_context()
+    }
+    fn source_identity(&self) -> Option<crate::SourceIdentity> {
+        self.reader.source_identity()
+    }
+    fn ancestor_identities(&self) -> Vec<crate::SourceIdentity> {
+        self.reader.ancestor_identities()
+    }
     fn visit_extents(
         &self,
         visitor: &mut dyn FnMut(crate::DiskExtent) -> io::Result<()>,
@@ -274,28 +271,6 @@ impl ReadAt for Image {
     fn sparse_holes(&self) -> io::Result<Vec<(u64, u64)>> {
         self.reader.sparse_holes()
     }
-}
-
-/// Recognize a binary container signature with at most 68 bytes of input.
-///
-/// `None` means unrecognized, not validated raw data. Recognition does not
-/// validate a container, and a recognized malformed image must not fall back
-/// to raw. Text VMDK descriptors require explicit opening until supported.
-pub fn detect_format(source: &dyn ReadAt) -> io::Result<Option<ImageFormat>> {
-    let mut header = [0; 68];
-    let length = source.len().min(header.len() as u64) as usize;
-    source.read_exact_at(0, &mut header[..length])?;
-    Ok(if length >= 4 && &header[..4] == b"QFI\xfb" {
-        Some(ImageFormat::Qcow2)
-    } else if length >= 8 && &header[..8] == b"vhdxfile" {
-        Some(ImageFormat::Vhdx)
-    } else if length >= 4 && &header[..4] == b"KDMV" {
-        Some(ImageFormat::Vmdk)
-    } else if length >= 68 && header[64..68] == 0xbeda107fu32.to_le_bytes() {
-        Some(ImageFormat::Vdi)
-    } else {
-        None
-    })
 }
 
 /// Compare logical lengths and bytes using bounded scratch memory.

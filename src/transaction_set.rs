@@ -1,4 +1,5 @@
 //! Linux bounded multi-file transactions, validated as a complete set.
+use crate::io;
 use crate::{
     RawWriter, ReadAt,
     transaction::{self, Record},
@@ -10,7 +11,6 @@ use std::os::unix::{
     fs::MetadataExt,
 };
 use std::{
-    io,
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -28,7 +28,7 @@ fn invalid() -> io::Error {
     )
 }
 fn sync_parent(path: &Path) -> io::Result<()> {
-    std::fs::File::open(path.parent().ok_or_else(invalid)?)?.sync_all()
+    Ok(std::fs::File::open(path.parent().ok_or_else(invalid)?)?.sync_all()?)
 }
 
 pub(super) struct File {
@@ -1038,7 +1038,7 @@ mod tests {
                     std::fs::write(&extent, bytes).unwrap();
                 }
                 1 => {
-                    use std::io::Write;
+                    use crate::io::Write;
                     std::fs::OpenOptions::new()
                         .append(true)
                         .open(&extent)

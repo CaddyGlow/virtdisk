@@ -1,4 +1,5 @@
-use std::{io, sync::Arc};
+use std::sync::Arc;
+use virtdisk::io;
 use virtdisk::{ParserLimits, ReadAt, Vdi};
 #[path = "support/bytes.rs"]
 mod bytes;

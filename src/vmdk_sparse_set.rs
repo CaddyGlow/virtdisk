@@ -1,4 +1,5 @@
 //! Retained split hosted sparse extents with bounded allocation and pinned parents.
+use crate::io;
 use crate::{
     CacheReservation, ParserLimits, RawWriter, ReadAt, ReadBudget, Vmdk,
     transaction::{self, Patch, Record},
@@ -6,7 +7,6 @@ use crate::{
     vmdk::PinnedParentGraph,
 };
 use std::{
-    io,
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };

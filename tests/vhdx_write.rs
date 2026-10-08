@@ -1,4 +1,6 @@
-use std::{io, sync::Arc};
+#![cfg(feature = "std")]
+use std::sync::Arc;
+use virtdisk::io;
 use virtdisk::{RawDisk, ReadAt, Vhdx, create_vhdx};
 #[path = "support/bytes.rs"]
 mod bytes;

@@ -43,7 +43,7 @@ impl Writer {
             Self::Vhdx(w) => w.as_ref(),
         }
     }
-    fn read(&self, offset: u64, dst: &mut [u8]) -> std::io::Result<()> {
+    fn read(&self, offset: u64, dst: &mut [u8]) -> virtdisk::io::Result<()> {
         match self {
             Self::Vdi(w) => w.read_exact_at(offset, dst),
             Self::Vmdk(w) => w.read_exact_at(offset, dst),

@@ -1,5 +1,6 @@
 use super::{invalid, u16le, u32le};
-use std::{collections::BTreeMap, io};
+use crate::io;
+use alloc::{collections::BTreeMap, string::String, vec, vec::Vec};
 pub(crate) const ITEM: [u8; 16] = [
     0x2d, 0x5f, 0xd3, 0xa8, 0x0b, 0xb3, 0x4d, 0x45, 0xab, 0xf7, 0xd3, 0xd8, 0x48, 0x34, 0xab, 0x0c,
 ];
@@ -8,6 +9,7 @@ const TYPE: [u8; 16] = [
 ];
 pub(super) struct Locator {
     pub(super) linkage: Vec<[u8; 16]>,
+    #[cfg_attr(not(feature = "std"), allow(dead_code))]
     pub(super) paths: Vec<String>,
 }
 pub(super) fn parse(bytes: &[u8]) -> io::Result<Locator> {
@@ -133,6 +135,7 @@ fn guid(s: &str) -> io::Result<[u8; 16]> {
     result[6..8].reverse();
     Ok(result)
 }
+#[cfg(feature = "std")]
 impl super::Vhdx {
     /// Open a clean native chain, authorizing every parent before opening its data.
     /// Sources must remain immutable; chains share limits and cannot repeat file identities.
@@ -291,7 +294,7 @@ impl super::Vhdx {
                 let canonical = match std::fs::canonicalize(candidate) {
                     Ok(p) => p,
                     Err(e) if e.kind() == io::ErrorKind::NotFound => continue,
-                    Err(e) => return Err(e),
+                    Err(e) => return Err(e.into()),
                 };
                 if !approved.contains_key(&canonical) {
                     unauthorized = true;
@@ -335,6 +338,7 @@ fn drive_rooted(name: &str) -> bool {
     let b = name.as_bytes();
     b.len() > 3 && b[0].is_ascii_alphabetic() && b[1] == b':' && b[2] == b'\\'
 }
+#[cfg(feature = "std")]
 fn resolve(child: &std::path::Path, name: &str) -> io::Result<std::path::PathBuf> {
     #[cfg(windows)]
     if name.starts_with("\\\\?\\") || drive_rooted(name) {
@@ -356,13 +360,14 @@ fn resolve(child: &std::path::Path, name: &str) -> io::Result<std::path::PathBuf
         .join(name.replace('\\', "/")))
 }
 
+#[cfg(feature = "std")]
 pub(crate) fn encode(linkage: [u8; 16], relative: &str) -> io::Result<Vec<u8>> {
     let mut id = linkage;
     id[..4].reverse();
     id[4..6].reverse();
     id[6..8].reverse();
-    let hex: Vec<_> = id.iter().map(|b| format!("{b:02x}")).collect();
-    let linkage = format!(
+    let hex: Vec<_> = id.iter().map(|b| alloc::format!("{b:02x}")).collect();
+    let linkage = alloc::format!(
         "{{{}-{}-{}-{}-{}}}",
         hex[..4].concat(),
         hex[4..6].concat(),
@@ -394,6 +399,7 @@ pub(crate) fn encode(linkage: [u8; 16], relative: &str) -> io::Result<Vec<u8>> {
     Ok(b)
 }
 
+#[cfg(feature = "std")]
 impl super::Vhdx {
     /// Open an immutable native recovered child view with explicitly authorized clean parents.
     /// Only the child log is replayed; source files are never modified.
@@ -444,7 +450,7 @@ impl super::Vhdx {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "std"))]
 mod tests {
     use super::*;
     fn fixture(pairs: &[(&str, &str)]) -> Vec<u8> {

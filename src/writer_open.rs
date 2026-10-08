@@ -1,6 +1,7 @@
 //! Explicit policies for opening a mutable image.
+use crate::io;
 use std::{
-    fmt, io,
+    fmt,
     path::{Path, PathBuf},
 };
 
@@ -26,7 +27,7 @@ impl RecoveryPolicy {
         let pending = match std::fs::symlink_metadata(path) {
             Ok(_) => true,
             Err(error) if error.kind() == io::ErrorKind::NotFound => false,
-            Err(error) => return Err(error),
+            Err(error) => return Err(error.into()),
         };
         self.check(pending)
     }

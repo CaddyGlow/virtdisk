@@ -1,3 +1,4 @@
+#![cfg(feature = "std")]
 //! Independent recovery review regressions.
 #[cfg(target_os = "linux")]
 #[test]
@@ -38,7 +39,8 @@ fn published_clean_qcow2_transaction_cannot_be_bypassed_through_hardlink_alias()
 
 #[test]
 fn vhdx_recovery_rejects_log_updates_to_payload_header_or_log() {
-    use std::{io, sync::Arc};
+    use std::sync::Arc;
+    use virtdisk::io;
     use virtdisk::{ReadAt, Vhdx, create_vhdx};
     const M: usize = 1 << 20;
     struct Bytes(Vec<u8>);

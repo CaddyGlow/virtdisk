@@ -1,3 +1,4 @@
+#![cfg(feature = "std")]
 use std::{fs, sync::Arc};
 use virtdisk::{Qcow2, Qcow2Writer, RawDisk};
 

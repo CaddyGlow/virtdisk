@@ -68,7 +68,7 @@ fn writes(writer: &VhdxWriter, model: &mut [u8], sector: u32) -> io::Result<()> 
     }
     writer.write_zeroes((3 << 20) + 128, 8)?;
     model[(3 << 20) + 128..(3 << 20) + 136].fill(0);
-    writer.flush()
+    Ok(writer.flush()?)
 }
 fn guarded(writer: &mut VhdxWriter) -> io::Result<()> {
     #[cfg(windows)]

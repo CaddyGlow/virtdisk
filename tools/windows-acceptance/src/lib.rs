@@ -154,8 +154,11 @@ pub fn copy_tree(root: &Path, m: &Manifest) -> io::Result<tempfile::TempDir> {
 pub fn authorized_view(root: &Path, m: &Manifest) -> io::Result<virtdisk::Vhdx> {
     let parents: Vec<_> = m.parents.iter().map(|p| root.join(p)).collect();
     match m.mode {
-        Mode::Clean => virtdisk::Vhdx::open_chain(root.join(&m.image), &parents),
-        _ => virtdisk::Vhdx::open_recovered_chain(root.join(&m.image), &parents),
+        Mode::Clean => Ok(virtdisk::Vhdx::open_chain(root.join(&m.image), &parents)?),
+        _ => Ok(virtdisk::Vhdx::open_recovered_chain(
+            root.join(&m.image),
+            &parents,
+        )?),
     }
 }
 pub fn validate_locator_keys(entries: &[(String, String)]) -> io::Result<()> {

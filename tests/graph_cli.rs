@@ -1,3 +1,4 @@
+#![cfg(feature = "std")]
 #![cfg(all(feature = "cli", target_os = "linux"))]
 use std::process::Command;
 use virtdisk::{GraphManifest, ImageFormat, ImageGraph, ImageSpec, ReadAt};
