@@ -662,3 +662,41 @@ impl VhdxWriter {
         Ok(state.file.sync_all()?)
     }
 }
+
+#[cfg(test)]
+mod epoch_tests {
+    use super::*;
+    fn snapshot(writer: &VhdxWriter) -> Vec<u8> {
+        let mut state = writer.state().unwrap();
+        state.file.seek(SeekFrom::Start(0)).unwrap();
+        let mut bytes = Vec::new();
+        state.file.read_to_end(&mut bytes).unwrap();
+        bytes
+    }
+    #[test]
+    fn one_retained_writer_keeps_one_uuid_epoch_across_payload_writes() {
+        let _process_boundary = crate::test_sync::writer_test();
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("disk.vhdx");
+        let writer = VhdxWriter::create(&path, 1 << 20).unwrap();
+        let before = snapshot(&writer);
+        writer.write_all_at(0, &[7]).unwrap();
+        writer.flush().unwrap();
+        let first = snapshot(&writer);
+        assert_ne!(
+            &first[65536 + 16..65536 + 48],
+            &before[65536 + 16..65536 + 48]
+        );
+        writer.write_all_at(1, &[9]).unwrap();
+        writer.flush().unwrap();
+        let second = snapshot(&writer);
+        assert_eq!(
+            &second[65536 + 16..65536 + 48],
+            &first[65536 + 16..65536 + 48]
+        );
+        assert_eq!(
+            &second[65536 + 16..65536 + 48],
+            &second[131072 + 16..131072 + 48]
+        );
+    }
+}

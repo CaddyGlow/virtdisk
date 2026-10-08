@@ -32,7 +32,7 @@ enum Stage {
 /// requires exclusion of non-cooperating external writers. Host fault tests do
 /// not establish native Windows power-loss correctness.
 pub fn recover_vhdx(path: impl AsRef<Path>) -> io::Result<()> {
-    recover_with_hook(path, |_| Ok(()))
+    recover_with_hook(path, |_, _| Ok(()))
 }
 /// Recover a child under exclusive lock, validating its explicitly authorized clean parent chain first.
 /// Parents remain unchanged. Original child native redo remains available after interrupted recovery.
@@ -40,7 +40,7 @@ pub fn recover_vhdx_chain(
     path: impl AsRef<Path>,
     authorized_parent_paths: &[std::path::PathBuf],
 ) -> io::Result<()> {
-    recover_impl(path, Some(authorized_parent_paths), |_| Ok(()))
+    recover_impl(path, Some(authorized_parent_paths), |_, _| Ok(()))
 }
 fn install(file: &mut File, header: &mut [u8; 4096], offset: u64, sequence: u64) -> io::Result<()> {
     header[8..16].copy_from_slice(&sequence.to_le_bytes());
@@ -51,14 +51,14 @@ fn install(file: &mut File, header: &mut [u8; 4096], offset: u64, sequence: u64)
 }
 fn recover_with_hook(
     path: impl AsRef<Path>,
-    hook: impl FnMut(Stage) -> io::Result<()>,
+    hook: impl FnMut(Stage, &File) -> io::Result<()>,
 ) -> io::Result<()> {
     recover_impl(path, None, hook)
 }
 fn recover_impl(
     path: impl AsRef<Path>,
     authorized: Option<&[std::path::PathBuf]>,
-    hook: impl FnMut(Stage) -> io::Result<()>,
+    hook: impl FnMut(Stage, &File) -> io::Result<()>,
 ) -> io::Result<()> {
     let path = path.as_ref();
     let file = OpenOptions::new().read(true).write(true).open(path)?;
@@ -78,14 +78,14 @@ pub(crate) fn recover_locked(
     authorized: Option<&[std::path::PathBuf]>,
     policy: crate::RecoveryPolicy,
 ) -> io::Result<File> {
-    recover_locked_with_hook(file, path, authorized, policy, |_| Ok(()))
+    recover_locked_with_hook(file, path, authorized, policy, |_, _| Ok(()))
 }
 fn recover_locked_with_hook(
     mut file: File,
     path: &Path,
     authorized: Option<&[std::path::PathBuf]>,
     policy: crate::RecoveryPolicy,
-    mut hook: impl FnMut(Stage) -> io::Result<()>,
+    mut hook: impl FnMut(Stage, &File) -> io::Result<()>,
 ) -> io::Result<File> {
     let meta = file.metadata()?;
     if !meta.is_file() {
@@ -107,7 +107,7 @@ fn recover_locked_with_hook(
         Vhdx::recovered_parts(source, ParserLimits::default())?
     };
     overlay.reserve_replay_work()?;
-    hook(Stage::Validated)?;
+    hook(Stage::Validated, &file)?;
     let Some((active, mut header)) = overlay.native_header() else {
         return Ok(file);
     };
@@ -123,17 +123,19 @@ fn recover_locked_with_hook(
     header[32..48].copy_from_slice(&crate::vhdx_write::identity()?);
     let inactive = if active == 65536 { 131072 } else { 65536 };
     install(&mut file, &mut header, inactive, sequence + 1)?;
-    hook(Stage::EpochFirstSynced)?;
+    hook(Stage::EpochFirstSynced, &file)?;
     install(&mut file, &mut header, active, sequence + 2)?;
-    hook(Stage::EpochSecondSynced)?;
-    overlay.replay_to(&mut file, |index| hook(Stage::PatchApplied(index)))?;
+    hook(Stage::EpochSecondSynced, &file)?;
+    overlay.replay_to(&mut file, |index, file| {
+        hook(Stage::PatchApplied(index), file)
+    })?;
     file.sync_all()?;
-    hook(Stage::ReplaySynced)?;
+    hook(Stage::ReplaySynced, &file)?;
     header[48..64].fill(0);
     install(&mut file, &mut header, inactive, sequence + 3)?;
-    hook(Stage::ClearFirstSynced)?;
+    hook(Stage::ClearFirstSynced, &file)?;
     install(&mut file, &mut header, active, final_sequence)?;
-    hook(Stage::ClearSecondSynced)?;
+    hook(Stage::ClearSecondSynced, &file)?;
     Ok(file)
 }
 
@@ -191,7 +193,7 @@ mod tests {
             let path = dir.path().join("disk");
             dirty(&path);
             let original = std::fs::read(&path).unwrap();
-            let result = recover_with_hook(&path, |stage| {
+            let result = recover_with_hook(&path, |stage, _locked_file| {
                 if stage == stop {
                     Err(io::Error::new(
                         io::ErrorKind::Interrupted,
@@ -234,11 +236,11 @@ mod tests {
             let dir = tempfile::tempdir().unwrap();
             let path = dir.path().join("disk");
             dirty(&path);
-            let result = recover_with_hook(&path, |stage| {
+            let result = recover_with_hook(&path, |stage, locked_file| {
                 if stage != stop {
                     return Ok(());
                 }
-                let mut torn = OpenOptions::new().write(true).open(&path)?;
+                let mut torn = locked_file.try_clone()?;
                 if stage == Stage::PatchApplied(0) {
                     torn.seek(SeekFrom::Start((2 * M + 2048) as u64))?;
                     torn.write_all(&[0xff; 2048])?;

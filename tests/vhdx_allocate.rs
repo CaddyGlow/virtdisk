@@ -8,8 +8,10 @@ fn sparse_create_partial_writes_and_reopen_preserve_untouched_zeroes() {
     let path = dir.path().join("disk.vhdx");
     let writer = VhdxWriter::create(&path, (3 * M + 512) as u64).unwrap();
     assert_eq!(std::fs::metadata(&path).unwrap().len(), 4 * M as u64);
+    drop(writer);
     let before = std::fs::read(&path).unwrap();
     assert_eq!(std::fs::read(&path).unwrap(), before);
+    let writer = VhdxWriter::open(&path).unwrap();
     writer.write_all_at(M as u64 - 2, &[1, 2, 3, 4]).unwrap();
     writer.write_all_at(3 * M as u64 + 511, &[9]).unwrap();
     writer.flush().unwrap();

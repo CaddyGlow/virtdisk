@@ -3,8 +3,13 @@
 use std::process::Command;
 use virtdisk::{GraphManifest, ImageFormat, ImageGraph, ImageSpec, ReadAt};
 
+#[path = "../src/test_sync.rs"]
+#[allow(dead_code)]
+mod process_boundary;
+
 #[test]
 fn graph_snapshot_publishes_selected_generation_with_explicit_authority() {
+    let _process_boundary = process_boundary::subprocess_test();
     let dir = tempfile::tempdir().unwrap();
     let base = dir.path().join("base");
     let declaration = dir.path().join("input.manifest");
@@ -52,6 +57,7 @@ fn graph_snapshot_publishes_selected_generation_with_explicit_authority() {
 
 #[test]
 fn graph_snapshot_requires_authority_and_honors_payload_quota() {
+    let _process_boundary = process_boundary::subprocess_test();
     let dir = tempfile::tempdir().unwrap();
     let base = dir.path().join("base");
     let declaration = dir.path().join("input.manifest");
@@ -96,6 +102,7 @@ fn graph_snapshot_requires_authority_and_honors_payload_quota() {
 
 #[test]
 fn graph_snapshot_rejects_recovery_controls_before_manifest_io() {
+    let _process_boundary = process_boundary::subprocess_test();
     for controls in [vec!["--recover"], vec!["--replay-vhdx-log"]] {
         let result = Command::new(env!("CARGO_BIN_EXE_virtdisk"))
             .arg("--json-errors")
@@ -117,6 +124,7 @@ fn graph_snapshot_rejects_recovery_controls_before_manifest_io() {
 
 #[test]
 fn graph_materialization_commands_preserve_sources_and_enforce_ancestry() {
+    let _process_boundary = process_boundary::subprocess_test();
     let dir = tempfile::tempdir().unwrap();
     let base = dir.path().join("base");
     let other = dir.path().join("other");
@@ -222,6 +230,7 @@ fn graph_materialization_commands_preserve_sources_and_enforce_ancestry() {
 
 #[test]
 fn graph_rebase_generation_publishes_image_with_selected_manifest() {
+    let _process_boundary = process_boundary::subprocess_test();
     let dir = tempfile::tempdir().unwrap();
     let parent = dir.path().join("parent");
     let source = dir.path().join("source");
@@ -278,6 +287,7 @@ fn graph_rebase_generation_publishes_image_with_selected_manifest() {
 
 #[test]
 fn graph_selection_persists_registered_state_without_changing_branches() {
+    let _process_boundary = process_boundary::subprocess_test();
     let dir = tempfile::tempdir().unwrap();
     let base = dir.path().join("base");
     let other = dir.path().join("other");
@@ -347,6 +357,7 @@ fn graph_selection_persists_registered_state_without_changing_branches() {
 
 #[test]
 fn graph_info_reports_selected_state_edges_sizes_and_escaped_paths() {
+    let _process_boundary = process_boundary::subprocess_test();
     let dir = tempfile::tempdir().unwrap();
     let base = dir.path().join("base\"line\n");
     let child = dir.path().join("child");
@@ -399,6 +410,7 @@ fn graph_info_reports_selected_state_edges_sizes_and_escaped_paths() {
 
 #[test]
 fn graph_info_preserves_non_unicode_path_bytes_and_rejects_log_replay() {
+    let _process_boundary = process_boundary::subprocess_test();
     use std::os::unix::ffi::OsStringExt;
     let dir = tempfile::tempdir().unwrap();
     let image = dir

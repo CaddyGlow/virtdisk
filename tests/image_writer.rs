@@ -175,7 +175,8 @@ fn common_writer_reverts_and_deletes_native_snapshot_without_losing_survivors() 
     drop(image);
     let raw = directory.path().join("raw");
     let mut writer = ImageWriter::create(&raw, ImageFormat::Raw, 512).unwrap();
-    let original = std::fs::read(&raw).unwrap();
+    let mut original = vec![0; writer.len() as usize];
+    writer.read_exact_at(0, &mut original).unwrap();
     assert_eq!(
         writer.delete_snapshot(b"x").unwrap_err().kind(),
         virtdisk::io::ErrorKind::Unsupported
@@ -184,6 +185,7 @@ fn common_writer_reverts_and_deletes_native_snapshot_without_losing_survivors() 
         writer.revert_snapshot(b"x").unwrap_err().kind(),
         virtdisk::io::ErrorKind::Unsupported
     );
+    drop(writer);
     assert_eq!(std::fs::read(&raw).unwrap(), original);
 }
 #[test]
@@ -468,10 +470,12 @@ fn common_writer_snapshot_creation_preserves_saved_bytes_and_rejects_other_forma
     assert_eq!(bytes, [17; 512]);
     let raw = directory.path().join("raw");
     let mut writer = ImageWriter::create(&raw, ImageFormat::Raw, 512).unwrap();
-    let before = std::fs::read(&raw).unwrap();
+    let mut before = vec![0; writer.len() as usize];
+    writer.read_exact_at(0, &mut before).unwrap();
     assert_eq!(
         writer.create_snapshot(b"1", b"saved").unwrap_err().kind(),
         virtdisk::io::ErrorKind::Unsupported
     );
+    drop(writer);
     assert_eq!(std::fs::read(&raw).unwrap(), before);
 }

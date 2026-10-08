@@ -1,5 +1,8 @@
 #![cfg(feature = "std")]
 #![cfg(target_os = "linux")]
+#[cfg(target_os = "linux")]
+#[path = "../src/test_sync.rs"]
+mod process_boundary;
 use std::ops::ControlFlow;
 use virtdisk::io;
 use virtdisk::{
@@ -9,6 +12,8 @@ use virtdisk::{
 
 #[test]
 fn native_snapshot_controls_preserve_container_on_cancellation_and_quota_refusal() {
+    #[cfg(target_os = "linux")]
+    let _process_boundary = process_boundary::writer_test();
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("image");
     let mut writer = ImageWriter::create_sparse(&path, ImageFormat::Qcow2, 65536).unwrap();
@@ -87,6 +92,8 @@ fn native_snapshot_controls_preserve_container_on_cancellation_and_quota_refusal
 
 #[test]
 fn controlled_backed_lifecycle_preserves_parent_and_counts_failed_native_calls() {
+    #[cfg(target_os = "linux")]
+    let _process_boundary = process_boundary::writer_test();
     for format in [ImageFormat::Raw, ImageFormat::Qcow2] {
         let dir = tempfile::tempdir().unwrap();
         let parent = dir.path().join("parent");
@@ -160,6 +167,8 @@ fn controlled_backed_lifecycle_preserves_parent_and_counts_failed_native_calls()
 #[cfg(feature = "cli")]
 #[test]
 fn cli_quotas_and_progress_cover_native_snapshot_lifecycle() {
+    #[cfg(target_os = "linux")]
+    let _process_boundary = process_boundary::subprocess_test();
     use std::process::Command;
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("image");

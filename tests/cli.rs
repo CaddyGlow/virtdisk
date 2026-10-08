@@ -2,8 +2,19 @@
 #![cfg(feature = "cli")]
 use std::process::Command;
 
+// A concurrent subprocess spawn can inherit this process's locked descriptors
+// until exec closes them. Keep each test's image handles and subprocesses inside
+// one process boundary so drop/reopen checks cannot see another test's fork.
+static PROCESS_BOUNDARY: std::sync::Mutex<()> = std::sync::Mutex::new(());
+fn subprocess_test() -> std::sync::MutexGuard<'static, ()> {
+    PROCESS_BOUNDARY
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+}
+
 #[test]
 fn json_errors_report_chain_and_descriptor_bounds_as_parser_limits() {
+    let _process_boundary = subprocess_test();
     let directory = tempfile::tempdir().unwrap();
     let raw = directory.path().join("raw");
     let parent = directory.path().join("parent.qcow2");
@@ -42,6 +53,7 @@ fn json_errors_report_chain_and_descriptor_bounds_as_parser_limits() {
 
 #[test]
 fn json_errors_identify_parser_quota_through_read_provenance() {
+    let _process_boundary = subprocess_test();
     let directory = tempfile::tempdir().unwrap();
     let raw = directory.path().join("raw");
     std::fs::write(&raw, [37; 65537]).unwrap();
@@ -62,6 +74,7 @@ fn json_errors_identify_parser_quota_through_read_provenance() {
 #[cfg(target_os = "linux")]
 #[test]
 fn json_errors_report_recovery_and_coexist_with_progress() {
+    let _process_boundary = subprocess_test();
     let directory = tempfile::tempdir().unwrap();
     let raw = directory.path().join("raw");
     let qcow2 = directory.path().join("disk.qcow2");
@@ -140,6 +153,7 @@ fn json_errors_report_recovery_and_coexist_with_progress() {
 
 #[test]
 fn json_errors_preserve_mutation_ranges_and_escape_messages() {
+    let _process_boundary = subprocess_test();
     let directory = tempfile::tempdir().unwrap();
     let raw = directory.path().join("raw");
     std::fs::write(&raw, [37; 512]).unwrap();
@@ -176,6 +190,7 @@ fn json_errors_preserve_mutation_ranges_and_escape_messages() {
 
 #[test]
 fn json_errors_report_quota_and_input_kinds_without_success_output() {
+    let _process_boundary = subprocess_test();
     let directory = tempfile::tempdir().unwrap();
     let raw = directory.path().join("raw");
     std::fs::write(&raw, [37; 512]).unwrap();
@@ -209,6 +224,7 @@ fn json_errors_report_quota_and_input_kinds_without_success_output() {
 
 #[test]
 fn progress_handles_comparison_empty_work_and_rejects_unsupported_commands() {
+    let _process_boundary = subprocess_test();
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("raw");
     std::fs::write(&path, [37; 512]).unwrap();
@@ -252,6 +268,7 @@ fn progress_handles_comparison_empty_work_and_rejects_unsupported_commands() {
 #[cfg(unix)]
 #[test]
 fn closed_progress_pipe_fails_without_a_success_result_or_panic() {
+    let _process_boundary = subprocess_test();
     use std::{
         os::{fd::OwnedFd, unix::net::UnixStream},
         process::Stdio,
@@ -279,6 +296,7 @@ fn closed_progress_pipe_fails_without_a_success_result_or_panic() {
 
 #[test]
 fn progress_reports_final_partial_chunks_on_stderr_without_changing_results() {
+    let _process_boundary = subprocess_test();
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("raw");
     std::fs::write(&path, [37; 513]).unwrap();
@@ -314,6 +332,7 @@ fn progress_reports_final_partial_chunks_on_stderr_without_changing_results() {
 
 #[test]
 fn check_progress_separates_metadata_and_payload_and_quota_refusal_is_not_success() {
+    let _process_boundary = subprocess_test();
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("raw");
     std::fs::write(&path, [37; 512]).unwrap();
@@ -347,6 +366,7 @@ fn check_progress_separates_metadata_and_payload_and_quota_refusal_is_not_succes
 
 #[test]
 fn operation_quotas_bound_hash_compare_and_payload_check() {
+    let _process_boundary = subprocess_test();
     let directory = tempfile::tempdir().unwrap();
     let raw = directory.path().join("raw");
     std::fs::write(&raw, [37; 1024]).unwrap();
@@ -394,6 +414,7 @@ fn operation_quotas_bound_hash_compare_and_payload_check() {
 
 #[test]
 fn operation_controls_validate_before_file_access_and_allow_empty_work() {
+    let _process_boundary = subprocess_test();
     for arguments in [
         vec!["--operation-limit", "scratch=0", "hash", "absent", "raw"],
         vec![
@@ -445,6 +466,7 @@ fn operation_controls_validate_before_file_access_and_allow_empty_work() {
 
 #[test]
 fn comparison_io_and_combined_scratch_are_budgeted_and_repetition_tightens() {
+    let _process_boundary = subprocess_test();
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("raw");
     std::fs::write(&path, [37; 512]).unwrap();
@@ -492,6 +514,7 @@ fn comparison_io_and_combined_scratch_are_budgeted_and_repetition_tightens() {
 
 #[test]
 fn snapshot_listing_and_export_honor_parser_limits() {
+    let _process_boundary = subprocess_test();
     use virtdisk::WriteAt;
     let directory = tempfile::tempdir().unwrap();
     let image = directory.path().join("disk.qcow2");
@@ -539,6 +562,7 @@ fn snapshot_listing_and_export_honor_parser_limits() {
 
 #[test]
 fn check_enforces_caller_metadata_and_payload_work_limits() {
+    let _process_boundary = subprocess_test();
     let directory = tempfile::tempdir().unwrap();
     let raw = directory.path().join("raw");
     let qcow2 = directory.path().join("disk.qcow2");
@@ -587,6 +611,7 @@ fn check_enforces_caller_metadata_and_payload_work_limits() {
 
 #[test]
 fn reader_parser_limits_reach_opening_and_deferred_reads() {
+    let _process_boundary = subprocess_test();
     let directory = tempfile::tempdir().unwrap();
     let raw = directory.path().join("source.raw");
     let qcow2 = directory.path().join("source.qcow2");
@@ -631,6 +656,7 @@ fn reader_parser_limits_reach_opening_and_deferred_reads() {
 
 #[test]
 fn invalid_reader_controls_are_refused_before_opening() {
+    let _process_boundary = subprocess_test();
     for arguments in [
         vec!["--parser-limit", "work=0", "info", "absent", "raw"],
         vec!["--parser-limit", "unknown=1", "info", "absent", "raw"],
@@ -666,6 +692,7 @@ fn invalid_reader_controls_are_refused_before_opening() {
 
 #[test]
 fn all_parser_fields_are_accepted_and_repetition_only_tightens() {
+    let _process_boundary = subprocess_test();
     let directory = tempfile::tempdir().unwrap();
     let raw = directory.path().join("source.raw");
     std::fs::write(&raw, [37; 131072]).unwrap();
@@ -711,6 +738,7 @@ fn all_parser_fields_are_accepted_and_repetition_only_tightens() {
 
 #[test]
 fn source_parser_refusal_prevents_conversion_compaction_and_resize_outputs() {
+    let _process_boundary = subprocess_test();
     let directory = tempfile::tempdir().unwrap();
     let source = directory.path().join("source.qcow2");
     drop(virtdisk::ImageWriter::create(&source, virtdisk::ImageFormat::Qcow2, 65536).unwrap());
@@ -741,6 +769,7 @@ fn source_parser_refusal_prevents_conversion_compaction_and_resize_outputs() {
 
 #[test]
 fn deferred_reader_budget_failure_removes_unpublished_outputs() {
+    let _process_boundary = subprocess_test();
     let directory = tempfile::tempdir().unwrap();
     let source = directory.path().join("source.raw");
     let original = [37; 131072];
@@ -772,6 +801,7 @@ fn deferred_reader_budget_failure_removes_unpublished_outputs() {
 #[cfg(target_os = "linux")]
 #[test]
 fn mutation_commands_preserve_pending_evidence_until_recovery_is_authorized() {
+    let _process_boundary = subprocess_test();
     use std::{ffi::OsString, fs};
     use virtdisk::{ImageFormat, ImageWriter, WriteAt};
     let directory = tempfile::tempdir().unwrap();
@@ -855,6 +885,7 @@ fn mutation_commands_preserve_pending_evidence_until_recovery_is_authorized() {
 
 #[test]
 fn recovery_flag_is_rejected_for_readers_and_new_outputs() {
+    let _process_boundary = subprocess_test();
     for arguments in [
         vec!["--recover", "info", "absent", "raw"],
         vec!["--recover", "create", "absent", "raw", "512"],
@@ -875,6 +906,7 @@ fn recovery_flag_is_rejected_for_readers_and_new_outputs() {
 #[cfg(target_os = "linux")]
 #[test]
 fn cli_vhdx_zero_uses_partial_sector_mapping_without_changing_parent() {
+    let _process_boundary = subprocess_test();
     use virtdisk::{ReadAt, VhdxWriter};
     let directory = tempfile::tempdir().unwrap();
     let parent = directory.path().join("parent.vhdx");
@@ -919,6 +951,7 @@ fn cli_vhdx_zero_uses_partial_sector_mapping_without_changing_parent() {
 #[cfg(target_os = "linux")]
 #[test]
 fn cli_vmdk_native_trim_masks_parent_and_preserves_partial_write_neighbors() {
+    let _process_boundary = subprocess_test();
     use virtdisk::{ReadAt, VmdkWriter};
     let directory = tempfile::tempdir().unwrap();
     let parent = directory.path().join("parent.vmdk");
@@ -968,6 +1001,7 @@ fn cli_vmdk_native_trim_masks_parent_and_preserves_partial_write_neighbors() {
 #[cfg(target_os = "linux")]
 #[test]
 fn cli_reverts_and_deletes_exact_binary_snapshot_id() {
+    let _process_boundary = subprocess_test();
     use std::sync::Arc;
     use virtdisk::{Qcow2, Qcow2Writer, RawDisk, ReadAt};
     let directory = tempfile::tempdir().unwrap();
@@ -1018,6 +1052,7 @@ fn cli_reverts_and_deletes_exact_binary_snapshot_id() {
 #[cfg(target_os = "linux")]
 #[test]
 fn cli_creates_disk_snapshot_and_rejects_duplicate_without_mutation() {
+    let _process_boundary = subprocess_test();
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("disk.qcow2");
     let writer = virtdisk::Qcow2Writer::create(&path, 65536).unwrap();
@@ -1081,6 +1116,7 @@ fn cli_creates_disk_snapshot_and_rejects_duplicate_without_mutation() {
 
 #[test]
 fn cli_check_reports_scope_and_rejects_corrupt_ownership() {
+    let _process_boundary = subprocess_test();
     let directory = tempfile::tempdir().unwrap();
     let raw = directory.path().join("raw");
     std::fs::write(&raw, [42; 512]).unwrap();
@@ -1119,6 +1155,7 @@ fn cli_check_reports_scope_and_rejects_corrupt_ownership() {
 
 #[test]
 fn cli_snapshot_listing_and_missing_export_are_read_only() {
+    let _process_boundary = subprocess_test();
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("disk.qcow2");
     let output = directory.path().join("saved.raw");
@@ -1152,6 +1189,7 @@ fn cli_snapshot_listing_and_missing_export_are_read_only() {
 #[test]
 #[ignore = "requires independent QEMU internal snapshot oracle"]
 fn cli_exports_saved_snapshot_instead_of_current_disk() {
+    let _process_boundary = subprocess_test();
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("disk.qcow2");
     let output = directory.path().join("saved.raw");
@@ -1226,6 +1264,7 @@ fn cli_exports_saved_snapshot_instead_of_current_disk() {
 }
 #[test]
 fn cli_inspects_converts_and_compares_without_overwriting() {
+    let _process_boundary = subprocess_test();
     let dir = tempfile::tempdir().unwrap();
     let input = dir.path().join("in.raw");
     let output = dir.path().join("out.qcow2");
@@ -1286,6 +1325,7 @@ fn cli_inspects_converts_and_compares_without_overwriting() {
 
 #[test]
 fn cli_hashes_maps_and_resizes_with_explicit_shrink_policy() {
+    let _process_boundary = subprocess_test();
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("input.raw");
     let output = directory.path().join("grown.vhdx");
@@ -1343,6 +1383,7 @@ fn cli_hashes_maps_and_resizes_with_explicit_shrink_policy() {
 
 #[test]
 fn cli_compacts_to_verified_new_output() {
+    let _process_boundary = subprocess_test();
     let directory = tempfile::tempdir().unwrap();
     let input = directory.path().join("input.raw");
     let output = directory.path().join("compact.qcow2");
@@ -1370,6 +1411,7 @@ fn cli_compacts_to_verified_new_output() {
 
 #[test]
 fn cli_trim_has_explicit_policy_and_zero_accepts_authorized_parent_paths() {
+    let _process_boundary = subprocess_test();
     let directory = tempfile::tempdir().unwrap();
     let base = directory.path().join("base.raw");
     let child = directory.path().join("child.qcow2");
@@ -1413,6 +1455,7 @@ fn cli_trim_has_explicit_policy_and_zero_accepts_authorized_parent_paths() {
 
 #[test]
 fn cli_rejects_invalid_mutation_requests_before_touching_bytes() {
+    let _process_boundary = subprocess_test();
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("input.raw");
     let bytes = vec![9; 512];
@@ -1436,6 +1479,7 @@ fn cli_rejects_invalid_mutation_requests_before_touching_bytes() {
 
 #[test]
 fn cli_zero_masks_an_authorized_parent_and_preserves_neighbors() {
+    let _process_boundary = subprocess_test();
     use virtdisk::ReadAt;
     let directory = tempfile::tempdir().unwrap();
     let base = directory.path().join("base.raw");
@@ -1465,6 +1509,7 @@ fn cli_zero_masks_an_authorized_parent_and_preserves_neighbors() {
 
 #[test]
 fn cli_chain_inspection_hash_and_map_require_explicit_parent_authorization() {
+    let _process_boundary = subprocess_test();
     let directory = tempfile::tempdir().unwrap();
     let parent = directory.path().join("parent.vdi");
     let child = directory.path().join("child.vdi");
@@ -1500,6 +1545,7 @@ fn cli_chain_inspection_hash_and_map_require_explicit_parent_authorization() {
 
 #[test]
 fn cli_creates_explicit_profiles_and_never_overwrites_existing_outputs() {
+    let _process_boundary = subprocess_test();
     use virtdisk::ReadAt;
     let directory = tempfile::tempdir().unwrap();
     for (name, format) in [
@@ -1550,6 +1596,7 @@ fn cli_creates_explicit_profiles_and_never_overwrites_existing_outputs() {
 #[cfg(target_os = "linux")]
 #[test]
 fn cli_preallocation_preserves_payload_and_requests_host_storage() {
+    let _process_boundary = subprocess_test();
     use std::os::unix::fs::MetadataExt;
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("raw");
@@ -1576,6 +1623,7 @@ fn cli_preallocation_preserves_payload_and_requests_host_storage() {
 #[cfg(target_os = "linux")]
 #[test]
 fn cli_native_resize_requires_tail_policy_and_zeroes_grown_range() {
+    let _process_boundary = subprocess_test();
     use virtdisk::ReadAt;
     let directory = tempfile::tempdir().unwrap();
     for (selected, format) in [
@@ -1619,6 +1667,7 @@ fn cli_native_resize_requires_tail_policy_and_zeroes_grown_range() {
 #[cfg(target_os = "linux")]
 #[test]
 fn cli_vdi_trim_reclaims_child_tail_masks_parent_and_preserves_other_block() {
+    let _process_boundary = subprocess_test();
     use virtdisk::ReadAt;
     let directory = tempfile::tempdir().unwrap();
     let base = directory.path().join("base.vdi");
@@ -1663,6 +1712,7 @@ fn cli_vdi_trim_reclaims_child_tail_masks_parent_and_preserves_other_block() {
 #[cfg(target_os = "linux")]
 #[test]
 fn cli_sparse_vdi_creation_enables_native_capacity_changes() {
+    let _process_boundary = subprocess_test();
     use virtdisk::ReadAt;
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("disk.vdi");
@@ -1693,6 +1743,7 @@ fn cli_sparse_vdi_creation_enables_native_capacity_changes() {
 
 #[test]
 fn cli_descriptor_sizes_preserve_primary_and_add_full_extent_aggregate() {
+    let _process_boundary = subprocess_test();
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("disk.vmdk");
     let extent = dir.path().join("flat.vmdk");
@@ -1719,6 +1770,7 @@ fn cli_descriptor_sizes_preserve_primary_and_add_full_extent_aggregate() {
 
 #[test]
 fn conversion_and_compaction_progress_and_quotas_preserve_publication_contract() {
+    let _process_boundary = subprocess_test();
     let directory = tempfile::tempdir().unwrap();
     let input = directory.path().join("source");
     std::fs::write(&input, [37; 512]).unwrap();
@@ -1771,6 +1823,7 @@ fn conversion_and_compaction_progress_and_quotas_preserve_publication_contract()
 #[cfg(unix)]
 #[test]
 fn closed_materialization_progress_pipe_removes_unpublished_staging() {
+    let _process_boundary = subprocess_test();
     use std::{
         os::{fd::OwnedFd, unix::net::UnixStream},
         process::Stdio,
@@ -1804,6 +1857,7 @@ fn closed_materialization_progress_pipe_removes_unpublished_staging() {
 #[cfg(target_os = "linux")]
 #[test]
 fn capabilities_report_current_read_and_write_handles_without_mutation() {
+    let _process_boundary = subprocess_test();
     use virtdisk::{ImageFormat, ImageWriter};
     let directory = tempfile::tempdir().unwrap();
     for (format, name) in [
@@ -1851,6 +1905,7 @@ fn capabilities_report_current_read_and_write_handles_without_mutation() {
 
 #[test]
 fn capability_controls_are_validated_before_file_access() {
+    let _process_boundary = subprocess_test();
     for arguments in [
         vec!["capabilities", "invalid", "absent", "raw"],
         vec![
@@ -1895,6 +1950,7 @@ fn capability_controls_are_validated_before_file_access() {
 #[cfg(target_os = "linux")]
 #[test]
 fn write_capabilities_reject_pending_recovery_and_held_locks() {
+    let _process_boundary = subprocess_test();
     use virtdisk::{ImageFormat, ImageWriter};
     let directory = tempfile::tempdir().unwrap();
     for (format, name, suffix) in [
@@ -1935,6 +1991,7 @@ fn write_capabilities_reject_pending_recovery_and_held_locks() {
 #[cfg(target_os = "linux")]
 #[test]
 fn capabilities_keep_parent_authorization_and_backed_resize_restrictions() {
+    let _process_boundary = subprocess_test();
     use virtdisk::{ImageFormat, ImageWriter, VmdkWriter};
     let directory = tempfile::tempdir().unwrap();
     for (format, name) in [
@@ -1996,6 +2053,7 @@ fn capabilities_keep_parent_authorization_and_backed_resize_restrictions() {
 #[cfg(unix)]
 #[test]
 fn closed_capability_output_pipe_returns_an_error_without_mutation() {
+    let _process_boundary = subprocess_test();
     use std::{
         os::{fd::OwnedFd, unix::net::UnixStream},
         process::Stdio,
@@ -2027,6 +2085,7 @@ fn closed_capability_output_pipe_returns_an_error_without_mutation() {
 
 #[test]
 fn resize_progress_and_shared_quotas_cover_zero_tail_and_materialization() {
+    let _process_boundary = subprocess_test();
     let directory = tempfile::tempdir().unwrap();
     let input = directory.path().join("source");
     let mut bytes = vec![0; 1024];
@@ -2076,6 +2135,7 @@ fn resize_progress_and_shared_quotas_cover_zero_tail_and_materialization() {
 #[cfg(target_os = "linux")]
 #[test]
 fn controlled_zeroing_reports_native_chunks_and_refuses_quota_before_mutation() {
+    let _process_boundary = subprocess_test();
     use virtdisk::{ImageFormat, ImageWriter, WriteAt};
     let directory = tempfile::tempdir().unwrap();
     for (format, name) in [

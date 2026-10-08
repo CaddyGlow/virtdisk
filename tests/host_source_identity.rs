@@ -25,7 +25,9 @@ fn retained_aliases_share_tokens_and_replacement_receives_new_identity() {
             .same_storage(source.source_identity().unwrap())
     );
     assert_ne!(view.source_identity(), source.source_identity());
-    std::fs::remove_file(&original).unwrap();
+    // Retain the displaced file under another name so Windows can replace the
+    // path without waiting for delete-pending read handles to close.
+    std::fs::rename(&original, dir.path().join("displaced")).unwrap();
     std::fs::write(&original, [1, 2, 3, 4]).unwrap();
     let replaced = RawDisk::open(&original).unwrap();
     assert_ne!(replaced.source_identity(), source.source_identity());

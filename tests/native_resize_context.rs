@@ -1,4 +1,7 @@
 #![cfg(feature = "std")]
+#[cfg(target_os = "linux")]
+#[path = "../src/test_sync.rs"]
+mod process_boundary;
 use std::ops::ControlFlow;
 use virtdisk::io;
 use virtdisk::{
@@ -6,8 +9,22 @@ use virtdisk::{
     ShrinkPolicy, WriteAt,
 };
 
+// Windows cases use raw images and must read through the lock-owning writer.
+// Other hosts retain the stronger physical-container byte comparison.
+fn retained_snapshot(writer: &ImageWriter, path: &std::path::Path) -> Vec<u8> {
+    if cfg!(windows) {
+        let mut bytes = vec![0; writer.len() as usize];
+        writer.read_exact_at(0, &mut bytes).unwrap();
+        bytes
+    } else {
+        std::fs::read(path).unwrap()
+    }
+}
+
 #[test]
 fn zero_tail_accounting_and_final_cancellation_leave_container_unchanged() {
+    #[cfg(target_os = "linux")]
+    let _process_boundary = process_boundary::writer_test();
     for format in [
         ImageFormat::Raw,
         ImageFormat::Qcow2,
@@ -23,7 +40,7 @@ fn zero_tail_accounting_and_final_cancellation_leave_container_unchanged() {
         let mut writer = ImageWriter::create_sparse(&path, format, 4096).unwrap();
         writer.write_all_at(0, &[37; 512]).unwrap();
         writer.flush().unwrap();
-        let original = std::fs::read(&path).unwrap();
+        let original = retained_snapshot(&writer, &path);
         let mut observer = |event: OperationProgress| {
             if event.phase == OperationPhase::NativeResize {
                 ControlFlow::Break(())
@@ -46,7 +63,7 @@ fn zero_tail_accounting_and_final_cancellation_leave_container_unchanged() {
         );
         assert_eq!(context.usage().logical_bytes, 3584);
         assert_eq!(context.usage().io_operations, 7);
-        assert_eq!(std::fs::read(&path).unwrap(), original);
+        assert_eq!(retained_snapshot(&writer, &path), original);
         let mut context = OperationContext::new(limits);
         writer
             .resize_with_context(512, ShrinkPolicy::RequireZero, &mut context)
@@ -61,11 +78,13 @@ fn zero_tail_accounting_and_final_cancellation_leave_container_unchanged() {
 
 #[test]
 fn quota_refusal_and_nonzero_tail_precede_native_mutation() {
+    #[cfg(target_os = "linux")]
+    let _process_boundary = process_boundary::writer_test();
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("image");
     let mut writer = ImageWriter::create(&path, ImageFormat::Raw, 4096).unwrap();
     writer.write_all_at(4095, &[37]).unwrap();
-    let before = std::fs::read(&path).unwrap();
+    let before = retained_snapshot(&writer, &path);
     for limits in [
         OperationLimits::default().logical_bytes(3583),
         OperationLimits::default().io_operations(1),
@@ -79,7 +98,7 @@ fn quota_refusal_and_nonzero_tail_precede_native_mutation() {
             io::ErrorKind::Unsupported
         );
         assert_eq!(context.usage().io_operations, 0);
-        assert_eq!(std::fs::read(&path).unwrap(), before);
+        assert_eq!(retained_snapshot(&writer, &path), before);
     }
     let mut context = OperationContext::default();
     assert_eq!(
@@ -91,12 +110,14 @@ fn quota_refusal_and_nonzero_tail_precede_native_mutation() {
     );
     assert_eq!(context.usage().logical_bytes, 3584);
     assert_eq!(context.usage().io_operations, 1);
-    assert_eq!(std::fs::read(&path).unwrap(), before);
+    assert_eq!(retained_snapshot(&writer, &path), before);
 }
 
 #[cfg(all(feature = "cli", target_os = "linux"))]
 #[test]
 fn cli_controlled_backed_resize_requires_authorization_and_reports_boundary() {
+    #[cfg(target_os = "linux")]
+    let _process_boundary = process_boundary::subprocess_test();
     use std::process::Command;
     let dir = tempfile::tempdir().unwrap();
     let parent = dir.path().join("parent");
@@ -145,6 +166,8 @@ fn cli_controlled_backed_resize_requires_authorization_and_reports_boundary() {
 
 #[test]
 fn reused_context_and_mid_scan_cancellation_preserve_capacity() {
+    #[cfg(target_os = "linux")]
+    let _process_boundary = process_boundary::writer_test();
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("image");
     let mut writer = ImageWriter::create(&path, ImageFormat::Raw, 512).unwrap();
@@ -162,7 +185,7 @@ fn reused_context_and_mid_scan_cancellation_preserve_capacity() {
         .unwrap_err();
     assert_eq!(writer.len(), 4096);
     assert_eq!(context.usage().io_operations, 1);
-    let before = std::fs::read(&path).unwrap();
+    let before = retained_snapshot(&writer, &path);
     let mut observer = |event: OperationProgress| {
         if event.phase == OperationPhase::TailValidation && event.completed_bytes == 512 {
             ControlFlow::Break(())
@@ -181,5 +204,5 @@ fn reused_context_and_mid_scan_cancellation_preserve_capacity() {
     );
     assert_eq!(context.usage().logical_bytes, 512);
     assert_eq!(context.usage().io_operations, 1);
-    assert_eq!(std::fs::read(path).unwrap(), before);
+    assert_eq!(retained_snapshot(&writer, &path), before);
 }

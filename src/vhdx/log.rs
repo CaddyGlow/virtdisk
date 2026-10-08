@@ -65,7 +65,7 @@ impl Overlay {
     pub(crate) fn replay_to(
         &self,
         file: &mut File,
-        mut applied: impl FnMut(usize) -> io::Result<()>,
+        mut applied: impl FnMut(usize, &File) -> io::Result<()>,
     ) -> io::Result<()> {
         file.set_len(self.length)?;
         let zero = [0; 65536];
@@ -81,7 +81,7 @@ impl Overlay {
                     remaining -= length as u64;
                 }
             }
-            applied(index)?;
+            applied(index, file)?;
         }
         Ok(())
     }

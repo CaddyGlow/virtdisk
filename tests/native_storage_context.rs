@@ -1,4 +1,7 @@
 #![cfg(feature = "std")]
+#[cfg(target_os = "linux")]
+#[path = "../src/test_sync.rs"]
+mod process_boundary;
 use std::ops::ControlFlow;
 use virtdisk::io;
 use virtdisk::{
@@ -6,8 +9,22 @@ use virtdisk::{
     OperationProgress, WriteAt,
 };
 
+// Windows cases use raw images and must read through the lock-owning writer.
+// Other hosts retain the stronger physical-container byte comparison.
+fn retained_snapshot(writer: &ImageWriter, path: &std::path::Path) -> Vec<u8> {
+    if cfg!(windows) {
+        let mut bytes = vec![0; writer.len() as usize];
+        writer.read_exact_at(0, &mut bytes).unwrap();
+        bytes
+    } else {
+        std::fs::read(path).unwrap()
+    }
+}
+
 #[test]
 fn discard_refusal_and_cancellation_preserve_bytes_and_success_accounts_range() {
+    #[cfg(target_os = "linux")]
+    let _process_boundary = process_boundary::writer_test();
     for format in [
         ImageFormat::Raw,
         ImageFormat::Qcow2,
@@ -23,7 +40,7 @@ fn discard_refusal_and_cancellation_preserve_bytes_and_success_accounts_range() 
         let writer = ImageWriter::create_sparse(&path, format, 131072).unwrap();
         writer.write_all_at(0, &vec![37; 131072]).unwrap();
         writer.flush().unwrap();
-        let before = std::fs::read(&path).unwrap();
+        let before = retained_snapshot(&writer, &path);
         let mut context = OperationContext::new(OperationLimits::default().logical_bytes(4096));
         assert_eq!(
             writer
@@ -33,7 +50,7 @@ fn discard_refusal_and_cancellation_preserve_bytes_and_success_accounts_range() 
             io::ErrorKind::Unsupported
         );
         assert_eq!(context.usage().io_operations, 0);
-        assert_eq!(std::fs::read(&path).unwrap(), before);
+        assert_eq!(retained_snapshot(&writer, &path), before);
         let mut observer = |event: OperationProgress| {
             assert_eq!(event.phase, OperationPhase::NativeDiscard);
             ControlFlow::Break(())
@@ -46,7 +63,7 @@ fn discard_refusal_and_cancellation_preserve_bytes_and_success_accounts_range() 
                 .kind(),
             io::ErrorKind::Interrupted
         );
-        assert_eq!(std::fs::read(&path).unwrap(), before);
+        assert_eq!(retained_snapshot(&writer, &path), before);
         let mut context = OperationContext::new(
             OperationLimits::default()
                 .logical_bytes(4097)
@@ -75,6 +92,8 @@ fn discard_refusal_and_cancellation_preserve_bytes_and_success_accounts_range() 
 #[cfg(target_os = "linux")]
 #[test]
 fn preallocation_keeps_content_and_counts_native_range_with_cumulative_quotas() {
+    #[cfg(target_os = "linux")]
+    let _process_boundary = process_boundary::writer_test();
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("raw");
     let writer = ImageWriter::create_sparse(&path, ImageFormat::Raw, 131072).unwrap();
@@ -114,6 +133,8 @@ fn preallocation_keeps_content_and_counts_native_range_with_cumulative_quotas() 
 #[cfg(target_os = "linux")]
 #[test]
 fn controlled_backed_discard_masks_parent_and_preserves_saved_inheritance() {
+    #[cfg(target_os = "linux")]
+    let _process_boundary = process_boundary::writer_test();
     let dir = tempfile::tempdir().unwrap();
     let parent = dir.path().join("parent");
     let child = dir.path().join("child");
@@ -159,6 +180,8 @@ fn controlled_backed_discard_masks_parent_and_preserves_saved_inheritance() {
 #[cfg(all(feature = "cli", target_os = "linux"))]
 #[test]
 fn cli_storage_controls_refuse_quota_then_report_native_boundary() {
+    #[cfg(target_os = "linux")]
+    let _process_boundary = process_boundary::subprocess_test();
     use std::process::Command;
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("raw");

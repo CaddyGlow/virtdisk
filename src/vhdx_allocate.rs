@@ -762,7 +762,31 @@ mod tests {
     use super::*;
     use crate::{RawDisk, ReadAt, Vhdx};
     use std::sync::Arc;
+    #[cfg(not(target_os = "linux"))]
     #[test]
+    fn native_resize_refusal_preserves_the_locked_image() {
+        let _process_boundary = crate::test_sync::writer_test();
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("disk.vhdx");
+        let mut writer = VhdxWriter::create(&path, M).unwrap();
+        let mut retained = writer.state().unwrap().file.try_clone().unwrap();
+        let mut before = Vec::new();
+        retained.seek(SeekFrom::Start(0)).unwrap();
+        retained.read_to_end(&mut before).unwrap();
+        assert_eq!(
+            writer
+                .resize(2 * M, crate::ShrinkPolicy::Reject)
+                .unwrap_err()
+                .kind(),
+            io::ErrorKind::Unsupported
+        );
+        writer.flush().unwrap();
+        drop(writer);
+        drop(retained);
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+    }
+    #[test]
+    #[cfg(target_os = "linux")]
     fn resize_fresh_reused_log_and_final_capacity_recover_at_each_boundary() {
         let _process_boundary = crate::test_sync::writer_test();
         for shrink in [false, true] {
@@ -852,6 +876,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(target_os = "linux")]
     fn resize_boundary_payload_prefix_remains_old_capacity_and_regrows_zero() {
         let _process_boundary = crate::test_sync::writer_test();
         for stop in [Stage::CowChunkWritten(65536), Stage::PayloadSynced] {
@@ -891,6 +916,7 @@ mod tests {
         }
     }
 
+    #[cfg(target_os = "linux")]
     fn size_sector_replay_cases(oracle: bool) {
         for shrink in [false, true] {
             for reused in [false, true] {
@@ -994,18 +1020,21 @@ mod tests {
         }
     }
     #[test]
+    #[cfg(target_os = "linux")]
     fn fresh_reused_native_size_sector_recovery_preserves_exact_capacity() {
         let _process_boundary = crate::test_sync::writer_test();
         size_sector_replay_cases(false);
     }
     #[test]
     #[ignore = "requires independent qemu-img size-sector native recovery oracle"]
+    #[cfg(target_os = "linux")]
     fn qemu_replays_fresh_reused_size_sector_with_exact_capacity_and_payload() {
         let _process_boundary = crate::test_sync::subprocess_test();
         size_sector_replay_cases(true);
     }
 
     #[test]
+    #[cfg(target_os = "linux")]
     fn resize_cache_work_and_sequence_limits_precede_epoch_mutation() {
         let _process_boundary = crate::test_sync::writer_test();
         for kind in 0..3 {
@@ -1041,6 +1070,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(target_os = "linux")]
     fn torn_native_size_item_is_restored_from_retained_complete_redo() {
         let _process_boundary = crate::test_sync::writer_test();
         let dir = tempfile::tempdir().unwrap();
@@ -1301,12 +1331,13 @@ mod tests {
             let mut state = writer.state().unwrap();
             let log = state.log_epoch.unwrap();
             let bitmap = state.bitmaps[0];
+            let fault_file = state.file.try_clone().unwrap();
             assert!(
                 partial(&writer, &mut state, 1, 3, &[9], |stage| {
                     if (tear == 0 && stage == Stage::RedoLogSynced)
                         || (tear != 0 && stage == Stage::BatPublished)
                     {
-                        let mut file = std::fs::OpenOptions::new().write(true).open(&path)?;
+                        let mut file = fault_file.try_clone()?;
                         let position = match tear {
                             0 => log.offset + log.slot + 12284,
                             1 => bitmap,
@@ -1326,6 +1357,7 @@ mod tests {
                 .is_err()
             );
             drop(state);
+            drop(fault_file);
             drop(writer);
             let original = std::fs::read(&path).unwrap();
             let recovered =
@@ -1510,6 +1542,7 @@ mod tests {
             writer.write_all_at(37, &[7]).unwrap();
             let mut state = writer.state().unwrap();
             let log = state.log_epoch.unwrap();
+            let fault_file = state.file.try_clone().unwrap();
             let error = allocate(&writer, &mut state, 1, 37, &[9], |stage| {
                 let stop = if torn_log {
                     Stage::RedoLogSynced
@@ -1519,7 +1552,7 @@ mod tests {
                 if stage != stop {
                     return Ok(());
                 }
-                let mut torn = std::fs::OpenOptions::new().write(true).open(&path)?;
+                let mut torn = fault_file.try_clone()?;
                 if torn_log {
                     torn.seek(SeekFrom::Start(log.offset + log.slot + 4))?;
                     torn.write_all(&[0; 4])?;
@@ -1536,6 +1569,7 @@ mod tests {
             .unwrap_err();
             assert_eq!(error.kind(), io::ErrorKind::Interrupted);
             drop(state);
+            drop(fault_file);
             drop(writer);
             check_and_recover(&path, 1, if torn_log { 0 } else { 9 });
             let disk = Vhdx::open(Arc::new(RawDisk::open(path).unwrap())).unwrap();

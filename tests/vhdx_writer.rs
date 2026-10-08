@@ -19,10 +19,15 @@ fn updates_crossings_zeroes_and_reopen_with_new_uuid_epoch() {
     let writer = VhdxWriter::open(&p).unwrap();
     assert_eq!(writer.len(), (M + 512) as u64);
     assert!(!writer.is_empty());
+    drop(writer);
     assert_eq!(std::fs::read(&p).unwrap(), initial);
+    let writer = VhdxWriter::open(&p).unwrap();
     writer.write_all_at(M as u64 - 2, &[1, 2, 3, 4]).unwrap();
     writer.write_zeroes(3, 13).unwrap();
     writer.flush().unwrap();
+    writer.write_all_at(0, &[7]).unwrap();
+    writer.flush().unwrap();
+    drop(writer);
     let after = std::fs::read(&p).unwrap();
     assert_ne!(
         &after[65536 + 16..65536 + 48],
@@ -32,13 +37,6 @@ fn updates_crossings_zeroes_and_reopen_with_new_uuid_epoch() {
         &after[65536 + 16..65536 + 48],
         &after[131072 + 16..131072 + 48]
     );
-    writer.write_all_at(0, &[7]).unwrap();
-    writer.flush().unwrap();
-    assert_eq!(
-        &std::fs::read(&p).unwrap()[65536 + 16..65536 + 48],
-        &after[65536 + 16..65536 + 48]
-    );
-    drop(writer);
     let disk = Vhdx::open(Arc::new(RawDisk::open(&p).unwrap())).unwrap();
     let mut b = [0; 4];
     disk.read_exact_at(M as u64 - 2, &mut b).unwrap();
@@ -47,8 +45,10 @@ fn updates_crossings_zeroes_and_reopen_with_new_uuid_epoch() {
     disk.read_exact_at(3, &mut b).unwrap();
     assert_eq!(b, [0; 13]);
     let writer = VhdxWriter::open(&p).unwrap();
+    drop(disk);
     writer.write_all_at(1, &[9]).unwrap();
     writer.flush().unwrap();
+    drop(writer);
     assert_ne!(
         &std::fs::read(&p).unwrap()[65536 + 16..65536 + 48],
         &after[65536 + 16..65536 + 48]
@@ -156,13 +156,14 @@ fn invalid_ranges_and_exhausted_sequences_never_change_payload_or_headers() {
     writer.write_all_at(writer.len(), &[]).unwrap();
     writer.write_zeroes(writer.len(), 0).unwrap();
     writer.flush().unwrap();
-    assert_eq!(std::fs::read(&p).unwrap(), before);
     drop(writer);
+    assert_eq!(std::fs::read(&p).unwrap(), before);
     let mut bytes = before;
     bytes[131072 + 8..131072 + 16].copy_from_slice(&u64::MAX.to_le_bytes());
     checksum_header(&mut bytes[131072..131072 + 4096]);
     std::fs::write(&p, &bytes).unwrap();
     let writer = VhdxWriter::open(&p).unwrap();
     assert!(writer.write_all_at(0, &[1]).is_err());
+    drop(writer);
     assert_eq!(std::fs::read(p).unwrap(), bytes);
 }

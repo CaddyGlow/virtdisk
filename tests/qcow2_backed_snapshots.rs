@@ -1,9 +1,12 @@
 #![cfg(feature = "std")]
 #![cfg(target_os = "linux")]
+#[path = "../src/test_sync.rs"]
+mod process_boundary;
 use virtdisk::{ImageFormat, InspectImage, Qcow2Writer, ReadAt, WriteAt};
 
 #[test]
 fn authorized_backed_snapshot_lifecycle_preserves_inherited_private_and_zero_bytes() {
+    let _process_boundary = process_boundary::writer_test();
     for format in [ImageFormat::Raw, ImageFormat::Qcow2] {
         let dir = tempfile::tempdir().unwrap();
         let parent = dir.path().join("parent");
@@ -92,6 +95,7 @@ fn authorized_backed_snapshot_lifecycle_preserves_inherited_private_and_zero_byt
 
 #[test]
 fn backed_snapshot_writer_requires_parent_authority_before_mutation() {
+    let _process_boundary = process_boundary::writer_test();
     let dir = tempfile::tempdir().unwrap();
     let parent = dir.path().join("parent");
     let child = dir.path().join("child");
@@ -106,6 +110,7 @@ fn backed_snapshot_writer_requires_parent_authority_before_mutation() {
 #[cfg(feature = "cli")]
 #[test]
 fn cli_backed_native_snapshot_lifecycle_requires_explicit_parent() {
+    let _process_boundary = process_boundary::subprocess_test();
     use std::process::Command;
     let dir = tempfile::tempdir().unwrap();
     let parent = dir.path().join("parent");
@@ -166,6 +171,7 @@ fn cli_backed_native_snapshot_lifecycle_requires_explicit_parent() {
 #[test]
 #[ignore = "requires independent qemu-img backed snapshot lifecycle oracle"]
 fn qemu_reads_backed_active_and_saved_states_before_and_after_lifecycle() {
+    let _process_boundary = process_boundary::subprocess_test();
     use std::process::Command;
     for format in [ImageFormat::Raw, ImageFormat::Qcow2] {
         let dir = tempfile::tempdir().unwrap();

@@ -1,5 +1,7 @@
 #![cfg(feature = "std")]
 #![cfg(target_os = "linux")]
+#[path = "../src/test_sync.rs"]
+mod process_boundary;
 use std::sync::Arc;
 use virtdisk::{
     Capability, ImageOperation, InspectImage, Qcow2, Qcow2Writer, ReadAt, ShrinkPolicy, WriteAt,
@@ -8,6 +10,7 @@ const CLUSTER: u64 = 65536;
 
 #[test]
 fn active_resize_preserves_full_and_short_saved_states() {
+    let _process_boundary = process_boundary::writer_test();
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("image");
     let mut writer = Qcow2Writer::create_sparse(&path, 3 * CLUSTER).unwrap();
@@ -74,6 +77,7 @@ fn active_resize_preserves_full_and_short_saved_states() {
 
 #[test]
 fn growth_from_empty_keeps_empty_snapshot_and_revert_capacity() {
+    let _process_boundary = process_boundary::writer_test();
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("image");
     let mut writer = Qcow2Writer::create_sparse(&path, 0).unwrap();
@@ -98,6 +102,7 @@ fn growth_from_empty_keeps_empty_snapshot_and_revert_capacity() {
 #[test]
 #[ignore = "requires independent qemu-img snapshot resize ownership/readback oracle"]
 fn qemu_reads_resized_active_and_original_saved_capacity() {
+    let _process_boundary = process_boundary::subprocess_test();
     use std::process::Command;
     for (old_size, new_size, policy) in [
         (CLUSTER + 512, 3 * CLUSTER, ShrinkPolicy::Reject),
@@ -176,6 +181,7 @@ fn qemu_reads_resized_active_and_original_saved_capacity() {
 #[cfg(feature = "cli")]
 #[test]
 fn cli_native_resize_preserves_saved_capacity() {
+    let _process_boundary = process_boundary::subprocess_test();
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("image");
     let mut writer = Qcow2Writer::create_sparse(&path, CLUSTER + 512).unwrap();
@@ -209,6 +215,7 @@ fn cli_native_resize_preserves_saved_capacity() {
 
 #[test]
 fn backed_resize_masks_growth_and_checks_inherited_shrink_tail() {
+    let _process_boundary = process_boundary::writer_test();
     for format in [virtdisk::ImageFormat::Raw, virtdisk::ImageFormat::Qcow2] {
         let dir = tempfile::tempdir().unwrap();
         let parent = dir.path().join("parent");
@@ -285,6 +292,7 @@ fn backed_resize_masks_growth_and_checks_inherited_shrink_tail() {
 #[test]
 #[ignore = "requires independent qemu-img backed resize ownership/readback oracle"]
 fn qemu_reads_backed_resize_masks_and_saved_inheritance() {
+    let _process_boundary = process_boundary::subprocess_test();
     use std::process::Command;
     for format in [virtdisk::ImageFormat::Raw, virtdisk::ImageFormat::Qcow2] {
         for new_size in [512, 3 * CLUSTER + 512] {

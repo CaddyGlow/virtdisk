@@ -91,6 +91,11 @@ mod tests {
         let mut bytes = [0; 4];
         retained.read_exact_at(0, &mut bytes).unwrap();
         assert_eq!(bytes, [1, 2, 3, 4]);
+        // FileSource production callers clone the lock-owning file handle.
+        // This fixture independently reopens the path, so on Windows it cannot
+        // read the locked range until every retained writer handle is dropped.
+        drop(retained);
+        drop(raw);
         file.read_exact_at(0, &mut bytes).unwrap();
         assert_eq!(bytes, [1, 2, 3, 4]);
     }

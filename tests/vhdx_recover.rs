@@ -1,4 +1,6 @@
 #![cfg(feature = "std")]
+#[path = "../src/test_sync.rs"]
+mod process_boundary;
 use std::sync::Arc;
 use virtdisk::{RawDisk, ReadAt, Vhdx, create_vhdx, recover_vhdx};
 const M: usize = 1 << 20;
@@ -49,6 +51,7 @@ fn dirty(path: &std::path::Path) -> Vec<u8> {
 }
 #[test]
 fn common_reader_replays_without_mutation_and_reports_physical_size() {
+    let _process_boundary = process_boundary::writer_test();
     use virtdisk::{Image, InspectImage, ReadRecoveryPolicy, ReaderOpenOptions};
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("disk.vhdx");
@@ -71,6 +74,7 @@ fn common_reader_replays_without_mutation_and_reports_physical_size() {
 #[cfg(feature = "cli")]
 #[test]
 fn cli_immutable_log_replay_preserves_source_and_physical_inspection() {
+    let _process_boundary = process_boundary::subprocess_test();
     use std::process::Command;
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("disk.vhdx");
@@ -114,6 +118,7 @@ fn cli_immutable_log_replay_preserves_source_and_physical_inspection() {
 #[cfg(feature = "cli")]
 #[test]
 fn cli_requires_explicit_recovery_before_mutation() {
+    let _process_boundary = process_boundary::subprocess_test();
     use std::process::Command;
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("disk.vhdx");
@@ -144,6 +149,7 @@ fn cli_requires_explicit_recovery_before_mutation() {
 }
 #[test]
 fn native_recovery_is_clean_idempotent_and_preserves_log_bytes() {
+    let _process_boundary = process_boundary::writer_test();
     let d = tempfile::tempdir().unwrap();
     let p = d.path().join("disk");
     let old = dirty(&p);
@@ -163,6 +169,7 @@ fn native_recovery_is_clean_idempotent_and_preserves_log_bytes() {
 
 #[test]
 fn common_open_requires_explicit_native_recovery_and_retains_lock() {
+    let _process_boundary = process_boundary::writer_test();
     use virtdisk::{
         ImageFormat, ImageWriter, RecoveryPolicy, RecoveryRequired, WriteAt, WriterOpenOptions,
     };
@@ -177,8 +184,6 @@ fn common_open_requires_explicit_native_recovery_and_retains_lock() {
     assert_eq!(std::fs::read(&path).unwrap(), original);
     let options = WriterOpenOptions::default().recovery_policy(RecoveryPolicy::Recover);
     let writer = ImageWriter::open_with_options(&path, ImageFormat::Vhdx, &options).unwrap();
-    let recovered = std::fs::read(&path).unwrap();
-    assert_eq!(&recovered[M..2 * M], &original[M..2 * M]);
     assert!(ImageWriter::open_with_options(&path, ImageFormat::Vhdx, &options).is_err());
     let mut bytes = vec![0; M];
     writer.read_exact_at(0, &mut bytes).unwrap();
@@ -187,6 +192,8 @@ fn common_open_requires_explicit_native_recovery_and_retains_lock() {
     assert!(bytes.iter().all(|byte| *byte == 0));
     writer.flush().unwrap();
     drop(writer);
+    let recovered = std::fs::read(&path).unwrap();
+    assert_eq!(&recovered[M..2 * M], &original[M..2 * M]);
     drop(
         ImageWriter::open_with_options(&path, ImageFormat::Vhdx, &WriterOpenOptions::default())
             .unwrap(),
@@ -195,6 +202,7 @@ fn common_open_requires_explicit_native_recovery_and_retains_lock() {
 }
 #[test]
 fn invalid_recovered_metadata_and_lock_conflicts_never_mutate() {
+    let _process_boundary = process_boundary::writer_test();
     let d = tempfile::tempdir().unwrap();
     let p = d.path().join("disk");
     let mut bytes = dirty(&p);
@@ -209,11 +217,13 @@ fn invalid_recovered_metadata_and_lock_conflicts_never_mutate() {
         .unwrap();
     f.try_lock().unwrap();
     assert!(recover_vhdx(&p).is_err());
+    drop(f);
     assert_eq!(std::fs::read(p).unwrap(), bytes);
 }
 #[test]
 #[ignore = "requires independent qemu-img"]
 fn qemu_checks_native_recovered_file_without_repair() {
+    let _process_boundary = process_boundary::subprocess_test();
     let d = tempfile::tempdir().unwrap();
     let p = d.path().join("disk");
     dirty(&p);

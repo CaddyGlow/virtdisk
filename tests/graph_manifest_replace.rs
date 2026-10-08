@@ -7,8 +7,12 @@ use virtdisk::{
     OperationProgress,
 };
 
+#[path = "../src/test_sync.rs"]
+mod process_boundary;
+
 #[test]
 fn atomic_selection_replacement_refuses_stale_declarations_and_preserves_images() {
+    let _process_boundary = process_boundary::writer_test();
     let dir = tempfile::tempdir().unwrap();
     let first = dir.path().join("first");
     let second = dir.path().join("second");
@@ -49,6 +53,7 @@ fn atomic_selection_replacement_refuses_stale_declarations_and_preserves_images(
 
 #[test]
 fn final_cancellation_and_destination_replacement_keep_staging_private() {
+    let _process_boundary = process_boundary::writer_test();
     let dir = tempfile::tempdir().unwrap();
     let image = dir.path().join("image");
     std::fs::write(&image, [37; 512]).unwrap();
@@ -92,6 +97,7 @@ fn final_cancellation_and_destination_replacement_keep_staging_private() {
 
 #[test]
 fn locks_aliases_and_late_content_changes_refuse_without_overwrite() {
+    let _process_boundary = process_boundary::writer_test();
     use std::{fs::File, os::unix::fs::symlink};
     let dir = tempfile::tempdir().unwrap();
     let image = dir.path().join("image");
@@ -137,6 +143,7 @@ fn locks_aliases_and_late_content_changes_refuse_without_overwrite() {
 #[cfg(feature = "cli")]
 #[test]
 fn cli_selection_replaces_existing_manifest_after_exact_authorization() {
+    let _process_boundary = process_boundary::subprocess_test();
     use std::process::Command;
     let dir = tempfile::tempdir().unwrap();
     let image = dir.path().join("image");
@@ -181,6 +188,7 @@ fn cli_selection_replaces_existing_manifest_after_exact_authorization() {
 
 #[test]
 fn replacement_accepts_valid_native_encoding_of_unicode_paths() {
+    let _process_boundary = process_boundary::writer_test();
     use sha2::{Digest, Sha256};
     let dir = tempfile::tempdir().unwrap();
     let image = dir.path().join("image");
@@ -215,6 +223,7 @@ fn replacement_accepts_valid_native_encoding_of_unicode_paths() {
 #[cfg(feature = "cli")]
 #[test]
 fn cli_refuses_fifo_manifest_without_waiting_for_writer() {
+    let _process_boundary = process_boundary::subprocess_test();
     use std::{
         process::{Command, Stdio},
         time::{Duration, Instant},
@@ -255,6 +264,7 @@ fn cli_refuses_fifo_manifest_without_waiting_for_writer() {
 
 #[test]
 fn equivalent_encoding_change_at_final_boundary_is_still_refused() {
+    let _process_boundary = process_boundary::writer_test();
     use sha2::{Digest, Sha256};
     let dir = tempfile::tempdir().unwrap();
     let image = dir.path().join("image");

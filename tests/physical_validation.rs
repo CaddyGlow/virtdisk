@@ -44,6 +44,7 @@ fn retained_handle_hashes_known_bytes_and_preserves_cumulative_usage() {
     assert_eq!(limit.resource(), PhysicalValidationResource::PhysicalBytes);
     assert_eq!(limit.requested(), 6);
     assert_eq!(budget.usage(), usage);
+    drop(writer);
     assert_eq!(std::fs::read(path).unwrap(), b"abc");
 }
 
