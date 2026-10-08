@@ -23,7 +23,7 @@ fn unsupported_vmdk_snapshot_preserves_registration_and_parent() {
         virtdisk::io::ErrorKind::Unsupported
     );
     assert!(!child.exists());
-    assert_eq!(graph.images().len(), 1);
+    assert_eq!(graph.manifest(None).unwrap().images().len(), 1);
     assert_eq!(std::fs::read(&base).unwrap(), before);
 }
 #[test]
@@ -95,11 +95,10 @@ fn native_snapshot_branches_flatten_and_preserve_immutable_base() {
 #[test]
 fn hosted_vmdk_and_vhdx_snapshot_branches_and_stale_parent_epochs() {
     use virtdisk::{VhdxWriter, VmdkWriter};
-    for format in [
-        #[cfg(target_os = "linux")]
-        ImageFormat::Vmdk,
-        ImageFormat::Vhdx,
-    ] {
+    for format in [ImageFormat::Vmdk, ImageFormat::Vhdx] {
+        if format == ImageFormat::Vmdk && !cfg!(target_os = "linux") {
+            continue;
+        }
         let dir = tempfile::tempdir().unwrap();
         let base = dir.path().join("base.img");
         let child = dir.path().join("child.img");
