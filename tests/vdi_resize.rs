@@ -1,4 +1,6 @@
 #![cfg(feature = "std")]
+#![cfg(target_os = "linux")]
+// Native sparse allocation and capacity mutation require Linux.
 use virtdisk::{ShrinkPolicy, VdiWriter};
 const M: u64 = 1 << 20;
 #[test]

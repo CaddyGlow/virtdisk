@@ -36,6 +36,7 @@ fn copying_preserves_content_and_comparison_checks_length() {
     let output = RawWriter::create(&path, bytes.len()).unwrap();
     copy_image(bytes.as_ref(), &output).unwrap();
     output.flush().unwrap();
+    drop(output);
     let read = RawDisk::open(&path).unwrap();
     assert!(compare_images(bytes.as_ref(), &read).unwrap());
     assert!(!compare_images(bytes.as_ref(), &Bytes(vec![0; 100_000])).unwrap());

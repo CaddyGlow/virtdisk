@@ -26,6 +26,7 @@ fn writes_cross_clusters_flush_and_reopen() {
     disk.validate_active_mapping().unwrap();
     disk.read_exact_at(65532, &mut actual).unwrap();
     assert_eq!(actual, [7, 7, 7, 0, 0, 0, 0, 0, 7, 7, 7, 7]);
+    drop(disk);
     let writer = Qcow2Writer::open(&path).unwrap();
     writer.write_all_at(0, &[3; 512]).unwrap();
 }

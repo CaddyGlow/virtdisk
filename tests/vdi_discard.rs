@@ -1,8 +1,12 @@
 #![cfg(feature = "std")]
+#[cfg(target_os = "linux")]
 use std::sync::Arc;
-use virtdisk::{DiscardPolicy, DiscardResult, RawDisk, ReadAt, Vdi, VdiWriter};
+use virtdisk::{DiscardPolicy, DiscardResult, VdiWriter};
+#[cfg(target_os = "linux")]
+use virtdisk::{RawDisk, ReadAt, Vdi};
 const M: u64 = 1 << 20;
 #[test]
+#[cfg(target_os = "linux")]
 fn native_dynamic_discard_moves_last_owner_and_reclaims_physical_tail() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("disk.vdi");
@@ -36,6 +40,7 @@ fn native_dynamic_discard_moves_last_owner_and_reclaims_physical_tail() {
     assert_eq!(out, [3; 4]);
 }
 #[test]
+#[cfg(target_os = "linux")]
 fn native_overlay_discard_masks_inherited_data_without_changing_parent() {
     let dir = tempfile::tempdir().unwrap();
     let parent = dir.path().join("base.vdi");
@@ -67,17 +72,22 @@ fn native_overlay_discard_masks_inherited_data_without_changing_parent() {
 fn invalid_or_unsupported_discard_preserves_epochs_and_explicit_fallback_is_zeroed() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("fixed.vdi");
-    let writer = VdiWriter::create(&path, M).unwrap();
+    let mut writer = VdiWriter::create(&path, M).unwrap();
     writer.write_all_at(0, &[7; 512]).unwrap();
     writer.flush().unwrap();
+    // Inspect physical epochs only after releasing the exclusive writer lock.
+    drop(writer);
     let original = std::fs::read(&path).unwrap();
+    writer = VdiWriter::open(&path).unwrap();
     for (offset, length) in [(0, M), (1, M - 1), (M, 1), (u64::MAX, 1)] {
         assert!(
             writer
                 .discard(offset, length, DiscardPolicy::RequireDeallocation)
                 .is_err()
         );
+        drop(writer);
         assert_eq!(std::fs::read(&path).unwrap(), original);
+        writer = VdiWriter::open(&path).unwrap();
     }
     assert_eq!(
         writer
@@ -85,7 +95,9 @@ fn invalid_or_unsupported_discard_preserves_epochs_and_explicit_fallback_is_zero
             .unwrap(),
         DiscardResult::Zeroed
     );
+    drop(writer);
     assert_eq!(std::fs::read(&path).unwrap(), original);
+    writer = VdiWriter::open(&path).unwrap();
     assert_eq!(
         writer
             .discard(3, 5, DiscardPolicy::AllowZeroFallback)
@@ -97,6 +109,7 @@ fn invalid_or_unsupported_discard_preserves_epochs_and_explicit_fallback_is_zero
     assert_eq!(out, [7, 7, 7, 0, 0, 0, 0, 0, 7]);
 }
 #[test]
+#[cfg(target_os = "linux")]
 fn final_clipped_units_and_multiunit_discard_reuse_dense_zero_allocation() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("partial.vdi");
@@ -133,6 +146,7 @@ fn final_clipped_units_and_multiunit_discard_reuse_dense_zero_allocation() {
     assert_eq!(std::fs::metadata(&path).unwrap().len(), after + M);
 }
 #[test]
+#[cfg(target_os = "linux")]
 fn unknown_tail_and_new_hardlink_are_rejected_before_modification_epoch() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("disk.vdi");
@@ -167,6 +181,7 @@ fn unknown_tail_and_new_hardlink_are_rejected_before_modification_epoch() {
     assert_eq!(std::fs::read(&path).unwrap(), original);
 }
 #[test]
+#[cfg(target_os = "linux")]
 #[ignore = "requires independent native VBoxManage and qemu-img"]
 fn virtualbox_and_qemu_accept_reclaimed_interior_discard() {
     let dir = tempfile::tempdir().unwrap();

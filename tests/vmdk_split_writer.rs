@@ -45,11 +45,11 @@ fn split_authorization_locks_and_cross_boundary_io_preserve_extent_neighbors() {
     let mut b = vec![29; 2560];
     b[1024..1036].fill(83);
     b[1024..1028].fill(0);
+    assert!(writer.write_zeroes(1535, 2).is_err());
+    drop(writer);
     assert_eq!(fs::read(&first).unwrap(), a);
     assert_eq!(fs::read(&second).unwrap(), b);
     assert_ne!(fs::read_to_string(&path).unwrap(), descriptor());
-    assert!(writer.write_zeroes(1535, 2).is_err());
-    drop(writer);
     let writer = VmdkWriter::open_descriptor(&path, &[first, second]).unwrap();
     writer.read_exact_at(500, &mut out).unwrap();
     assert_eq!(&out[..5], &[18; 5]);

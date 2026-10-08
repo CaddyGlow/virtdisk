@@ -29,13 +29,21 @@ fn authorized_flat_writer_locks_both_files_changes_cid_and_respects_extent_slice
     }
     writer.write_all_at(0, &[]).unwrap();
     writer.write_zeroes(0, 0).unwrap();
-    assert_eq!(fs::read(&path).unwrap(), original);
     assert!(writer.write_all_at(1023, &[1, 2]).is_err());
     assert!(writer.write_zeroes(1024, 1).is_err());
+    drop(writer);
     assert_eq!(fs::read(&path).unwrap(), original);
+    let writer = VmdkWriter::open_descriptor(&path, std::slice::from_ref(&extent)).unwrap();
     writer.write_all_at(507, &[81; 17]).unwrap();
     writer.write_zeroes(19, 11).unwrap();
     writer.flush().unwrap();
+    let mut expected = vec![31; 2048];
+    expected[512 + 507..512 + 524].fill(81);
+    expected[512 + 19..512 + 30].fill(0);
+    let mut logical = vec![0; 1024];
+    writer.read_exact_at(0, &mut logical).unwrap();
+    assert_eq!(logical, expected[512..1536]);
+    drop(writer);
     let text = fs::read_to_string(&path).unwrap();
     assert!(text.contains("CID="));
     assert_ne!(text, descriptor());
@@ -44,14 +52,7 @@ fn authorized_flat_writer_locks_both_files_changes_cid_and_respects_extent_slice
         .find_map(|line| line.strip_prefix("CID="))
         .unwrap();
     assert_ne!(u32::from_str_radix(cid, 16).unwrap(), 12);
-    let mut expected = vec![31; 2048];
-    expected[512 + 507..512 + 524].fill(81);
-    expected[512 + 19..512 + 30].fill(0);
     assert_eq!(fs::read(&extent).unwrap(), expected);
-    let mut logical = vec![0; 1024];
-    writer.read_exact_at(0, &mut logical).unwrap();
-    assert_eq!(logical, expected[512..1536]);
-    drop(writer);
     let writer = VmdkWriter::open_descriptor(&path, std::slice::from_ref(&extent)).unwrap();
     writer.read_exact_at(0, &mut logical).unwrap();
     assert_eq!(logical, expected[512..1536]);

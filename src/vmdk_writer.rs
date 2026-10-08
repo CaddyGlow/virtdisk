@@ -1667,3 +1667,32 @@ impl FlatBackend {
         Ok(state)
     }
 }
+
+#[cfg(test)]
+mod epoch_tests {
+    use super::*;
+    #[test]
+    fn one_retained_writer_changes_cid_after_each_flushed_mutation_epoch() {
+        let _process_boundary = crate::test_sync::writer_test();
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("disk.vmdk");
+        let writer = VmdkWriter::create(&path, 65536).unwrap();
+        let descriptor = || {
+            let mut bytes = vec![0; 20 * 512];
+            writer.raw.read_exact_at(512, &mut bytes).unwrap();
+            bytes
+        };
+        let before = descriptor();
+        writer.write_all_at(0, &[]).unwrap();
+        writer.flush().unwrap();
+        assert_eq!(descriptor(), before);
+        writer.write_all_at(0, &[1]).unwrap();
+        let first = descriptor();
+        assert_ne!(first, before);
+        writer.flush().unwrap();
+        writer.write_zeroes(0, 1).unwrap();
+        let second = descriptor();
+        assert_ne!(second, first);
+        writer.flush().unwrap();
+    }
+}

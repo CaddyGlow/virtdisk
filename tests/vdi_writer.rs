@@ -9,11 +9,16 @@ fn fixed_writer_lock_bounds_zeroes_and_modification_identity() {
     assert!(VdiWriter::open(&image).is_err());
     assert_eq!(d.len(), 2 * 1048576 + 512);
     assert!(!d.is_empty());
+    // Windows locks prohibit independent physical reads while the writer lives.
+    drop(d);
     let before = fs::read(&image).unwrap()[408..424].to_vec();
+    let d = VdiWriter::open(&image).unwrap();
     d.write_all_at(1048570, &[7; 20]).unwrap();
     d.write_zeroes(1048575, 4).unwrap();
     d.flush().unwrap();
+    drop(d);
     assert_ne!(&fs::read(&image).unwrap()[408..424], before);
+    let d = VdiWriter::open(&image).unwrap();
     assert!(d.write_all_at(d.len(), &[]).is_ok());
     assert!(d.write_all_at(d.len(), &[1]).is_err());
     assert!(d.write_all_at(u64::MAX, &[1]).is_err());
@@ -22,6 +27,7 @@ fn fixed_writer_lock_bounds_zeroes_and_modification_identity() {
     let mut bytes = [0; 20];
     reader.read_exact_at(1048570, &mut bytes).unwrap();
     assert_eq!(&bytes[5..9], &[0; 4]);
+    drop(reader);
     let writer = VdiWriter::open(&image).unwrap();
     writer.read_exact_at(1048570, &mut bytes).unwrap();
     assert_eq!(&bytes[..5], &[7; 5]);
@@ -57,12 +63,14 @@ fn qemu_post_write_matches_payload() {
     d.write_all_at(1048500, &expected[1048500..1048700])
         .unwrap();
     d.flush().unwrap();
+    drop(d);
     let first = fs::read(&image).unwrap()[408..424].to_vec();
+    let d = VdiWriter::open(&image).unwrap();
     d.write_zeroes(1048600, 50).unwrap();
     expected[1048600..1048650].fill(0);
     d.flush().unwrap();
-    assert_ne!(fs::read(&image).unwrap()[408..424], first);
     drop(d);
+    assert_ne!(fs::read(&image).unwrap()[408..424], first);
     assert!(
         std::process::Command::new("qemu-img")
             .args(["convert", "-f", "vdi", "-O", "raw"])
@@ -80,13 +88,17 @@ fn read_only_operations_and_empty_writes_preserve_uuid_and_threads_serialize() {
     let dir = tempfile::tempdir().unwrap();
     let image = dir.path().join("disk.vdi");
     let d = Arc::new(VdiWriter::create(&image, 1048576).unwrap());
+    drop(d);
     let identity = fs::read(&image).unwrap()[408..424].to_vec();
+    let d = Arc::new(VdiWriter::open(&image).unwrap());
     d.write_all_at(0, &[]).unwrap();
     d.write_zeroes(0, 0).unwrap();
     let mut b = [0; 4];
     d.read_exact_at(0, &mut b).unwrap();
     d.flush().unwrap();
+    drop(d);
     assert_eq!(fs::read(&image).unwrap()[408..424], identity);
+    let d = Arc::new(VdiWriter::open(&image).unwrap());
     std::thread::scope(|scope| {
         for i in 0..8u64 {
             let d = d.clone();
@@ -232,4 +244,14 @@ fn explicit_zero_blocks_and_concurrent_sparse_writes_allocate_unique_owners() {
         assert_eq!(&data[17..36], &[index as u8 + 3; 19]);
         assert_eq!(&data[36..], &[0; 28]);
     }
+}
+
+#[test]
+#[cfg(not(target_os = "linux"))]
+fn sparse_creation_refuses_unsupported_host_before_creating_output() {
+    let dir = tempfile::tempdir().unwrap();
+    let image = dir.path().join("unsupported.vdi");
+    let error = VdiWriter::create_sparse(&image, 1048576).err().unwrap();
+    assert_eq!(error.kind(), virtdisk::io::ErrorKind::Unsupported);
+    assert!(!image.exists());
 }

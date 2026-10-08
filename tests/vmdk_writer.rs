@@ -186,15 +186,22 @@ fn cid_changes_before_nonempty_payload_mutation_and_after_flush_epoch() {
     let dir = tempfile::tempdir().unwrap();
     let image = dir.path().join("disk.vmdk");
     let d = VmdkWriter::create(&image, 65536).unwrap();
+    drop(d);
     let original = fs::read(&image).unwrap();
+    let d = VmdkWriter::open(&image).unwrap();
     d.write_all_at(0, &[]).unwrap();
     d.flush().unwrap();
+    drop(d);
     assert_eq!(fs::read(&image).unwrap(), original);
+    let d = VmdkWriter::open(&image).unwrap();
     d.write_all_at(0, &[1]).unwrap();
     d.flush().unwrap();
+    drop(d);
     let first = fs::read(&image).unwrap()[512..21 * 512].to_vec();
+    let d = VmdkWriter::open(&image).unwrap();
     d.write_zeroes(0, 1).unwrap();
     d.flush().unwrap();
+    drop(d);
     let second = fs::read(&image).unwrap()[512..21 * 512].to_vec();
     assert_ne!(first, second);
 }
@@ -253,6 +260,7 @@ fn shorter_legacy_cid_keeps_descriptor_layout_and_becomes_fresh() {
     let d = VmdkWriter::open(&image).unwrap();
     d.write_all_at(0, &[1]).unwrap();
     d.flush().unwrap();
+    drop(d);
     let bytes = fs::read(&image).unwrap();
     let updated = String::from_utf8_lossy(&bytes[512..21 * 512]);
     let cid = updated
@@ -264,6 +272,7 @@ fn shorter_legacy_cid_keeps_descriptor_layout_and_becomes_fresh() {
 }
 
 #[test]
+#[cfg(target_os = "linux")]
 fn hosted_overlay_partial_writes_preserve_parent_and_zero_masks() {
     let _serial = TEST_SERIAL.lock().unwrap();
     let dir = tempfile::tempdir().unwrap();
@@ -308,6 +317,7 @@ fn hosted_overlay_partial_writes_preserve_parent_and_zero_masks() {
 
 #[test]
 #[ignore = "requires qemu-img independent writable backing oracle"]
+#[cfg(target_os = "linux")]
 fn qemu_reads_native_overlay_and_qemu_child_after_cow_writes() {
     let _serial = TEST_SERIAL.lock().unwrap();
     use std::process::Command;
@@ -377,6 +387,7 @@ fn qemu_reads_native_overlay_and_qemu_child_after_cow_writes() {
 }
 
 #[test]
+#[cfg(target_os = "linux")]
 fn parent_mismatch_and_explicit_zero_overlay_fail_closed_or_mask() {
     let _serial = TEST_SERIAL.lock().unwrap();
     let dir = tempfile::tempdir().unwrap();
@@ -409,4 +420,35 @@ fn parent_mismatch_and_explicit_zero_overlay_fail_closed_or_mask() {
     drop(parent);
     assert!(virtdisk::VmdkWriter::open_chain(&child, std::slice::from_ref(&base)).is_err());
     assert_eq!(std::fs::read(&child).unwrap(), unchanged);
+}
+
+#[cfg(not(target_os = "linux"))]
+#[test]
+fn sparse_and_overlay_creation_refuse_without_changing_sources() {
+    let _serial = TEST_SERIAL.lock().unwrap();
+    let directory = tempfile::tempdir().unwrap();
+    let parent_path = directory.path().join("parent.vmdk");
+    let child_path = directory.path().join("child.vmdk");
+    drop(VmdkWriter::create(&parent_path, 65536).unwrap());
+    let before = fs::read(&parent_path).unwrap();
+    assert_eq!(
+        VmdkWriter::create_sparse(&child_path, 65536)
+            .err()
+            .unwrap()
+            .kind(),
+        virtdisk::io::ErrorKind::Unsupported
+    );
+    assert_eq!(
+        VmdkWriter::create_overlay(
+            &child_path,
+            &parent_path,
+            std::slice::from_ref(&parent_path)
+        )
+        .err()
+        .unwrap()
+        .kind(),
+        virtdisk::io::ErrorKind::Unsupported
+    );
+    assert!(!child_path.exists());
+    assert_eq!(fs::read(&parent_path).unwrap(), before);
 }

@@ -1308,3 +1308,37 @@ mod recovery_tests {
         }
     }
 }
+
+#[cfg(test)]
+mod epoch_tests {
+    use super::*;
+
+    #[test]
+    fn retained_writer_changes_uuid_once_per_mutation_epoch() {
+        let _process_boundary = crate::test_sync::writer_test();
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("epoch.vdi");
+        let writer = VdiWriter::create(&path, 1048576).unwrap();
+        let modification_id = || {
+            let mut id = [0; 16];
+            writer.raw.read_exact_at(408, &mut id).unwrap();
+            id
+        };
+        let initial = modification_id();
+        writer.write_all_at(0, &[]).unwrap();
+        writer.write_zeroes(0, 0).unwrap();
+        writer.read_exact_at(0, &mut [0; 4]).unwrap();
+        writer.flush().unwrap();
+        assert_eq!(modification_id(), initial);
+        writer.write_all_at(0, &[7]).unwrap();
+        let first_epoch = modification_id();
+        assert_ne!(first_epoch, initial);
+        writer.write_zeroes(1, 1).unwrap();
+        writer.write_all_at(2, &[8]).unwrap();
+        assert_eq!(modification_id(), first_epoch);
+        writer.flush().unwrap();
+        assert_eq!(modification_id(), first_epoch);
+        writer.write_all_at(3, &[9]).unwrap();
+        assert_ne!(modification_id(), first_epoch);
+    }
+}

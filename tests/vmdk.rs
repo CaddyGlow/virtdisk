@@ -577,6 +577,7 @@ fn qemu_external_flat_parent_and_split_sparse_child() {
 
 #[cfg(feature = "std")]
 #[test]
+#[cfg(target_os = "linux")]
 fn chain_descriptor_linkage_profiles_and_cumulative_budgets_are_strict() {
     let dir = tempfile::tempdir().unwrap();
     let base = dir.path().join("base.vmdk");

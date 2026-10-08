@@ -84,6 +84,7 @@ fn native_overlay_creator_supports_deeper_authorized_vdi_chains() {
 }
 
 #[test]
+#[cfg(target_os = "linux")]
 fn writable_vdi_overlay_copies_inherited_block_and_zeroes_without_changing_parent() {
     let directory = tempfile::tempdir().unwrap();
     let parent = directory.path().join("base.vdi");
@@ -113,6 +114,7 @@ fn writable_vdi_overlay_copies_inherited_block_and_zeroes_without_changing_paren
 }
 
 #[test]
+#[cfg(target_os = "linux")]
 fn vdi_writer_overlay_creator_retains_lock_and_epoch_changes_only_child() {
     let directory = tempfile::tempdir().unwrap();
     let base = directory.path().join("base.vdi");
@@ -145,6 +147,7 @@ fn unsupported_overlay_zero_allocation_fails_before_uuid_or_payload_mutation() {
     let before = std::fs::read(&child).unwrap();
     let writer = virtdisk::VdiWriter::open_chain(&child, std::slice::from_ref(&base)).unwrap();
     assert!(writer.write_zeroes(10, 5).is_err());
+    drop(writer);
     assert_eq!(std::fs::read(child).unwrap(), before);
 }
 

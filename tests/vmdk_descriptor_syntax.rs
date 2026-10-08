@@ -9,7 +9,7 @@ fn external_reader_and_writer_profiles_share_descriptor_syntax_checks() {
         let descriptor = directory.path().join("disk.vmdk");
         let extent = directory.path().join("extent with spaces.vmdk");
         let (profile, kind, tail) = if sparse {
-            drop(VmdkWriter::create_sparse(&extent, 65536).unwrap());
+            drop(VmdkWriter::create(&extent, 65536).unwrap());
             ("twoGbMaxExtentSparse", "SPARSE", "")
         } else {
             fs::write(&extent, vec![0; 65536]).unwrap();
@@ -21,7 +21,17 @@ fn external_reader_and_writer_profiles_share_descriptor_syntax_checks() {
         fs::write(&descriptor, format!("{text}\0\0")).unwrap();
         let authorized = std::slice::from_ref(&extent);
         assert!(Vmdk::open_descriptor(&descriptor, authorized).is_ok());
-        drop(VmdkWriter::open_descriptor(&descriptor, authorized).unwrap());
+        if sparse && !cfg!(target_os = "linux") {
+            assert_eq!(
+                VmdkWriter::open_descriptor(&descriptor, authorized)
+                    .err()
+                    .unwrap()
+                    .kind(),
+                virtdisk::io::ErrorKind::Unsupported
+            );
+        } else {
+            drop(VmdkWriter::open_descriptor(&descriptor, authorized).unwrap());
+        }
         for malformed in [
             format!("{text}CID=012a\n"),
             text.replace("\"extent with spaces.vmdk\"", "\"extent with spaces.vmdk"),
@@ -38,7 +48,7 @@ fn external_reader_and_writer_profiles_share_descriptor_syntax_checks() {
 fn hosted_chain_and_writer_reject_duplicate_cid_and_interior_padding() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("disk.vmdk");
-    drop(VmdkWriter::create_sparse(&path, 65536).unwrap());
+    drop(VmdkWriter::create(&path, 65536).unwrap());
     let original = fs::read(&path).unwrap();
     let offset = u64::from_le_bytes(original[28..36].try_into().unwrap()) as usize * 512;
     let length = u64::from_le_bytes(original[36..44].try_into().unwrap()) as usize * 512;

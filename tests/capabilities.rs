@@ -5,7 +5,8 @@ fn reports_enumerate_stable_operation_names_and_current_handle_access() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("raw");
     let writer = RawWriter::create(&path, 512).unwrap();
-    let before = std::fs::read(&path).unwrap();
+    let mut before = vec![0; writer.len() as usize];
+    writer.read_exact_at(0, &mut before).unwrap();
     let writer_capabilities = writer.inspection().capabilities;
     let rows: Vec<_> = writer_capabilities.iter().collect();
     assert_eq!(rows.len(), 16);
@@ -28,6 +29,7 @@ fn reports_enumerate_stable_operation_names_and_current_handle_access() {
         writer_capabilities.get(ImageOperation::Resize),
         Capability::Supported
     );
+    drop(writer);
     let reader = RawDisk::open(&path).unwrap();
     let capabilities = reader.inspection().capabilities;
     assert!(

@@ -45,9 +45,9 @@ fn unsupported_backed_native_resize_rejects_before_container_changes() {
     let parent = directory.path().join("parent.vhdx");
     drop(ImageWriter::create(&parent, ImageFormat::Vhdx, 65536).unwrap());
     virtdisk::create_vhdx_overlay(&path, &parent, &[]).unwrap();
+    let original = std::fs::read(&path).unwrap();
     let mut writer =
         ImageWriter::open_chain(&path, ImageFormat::Vhdx, std::slice::from_ref(&parent)).unwrap();
-    let original = std::fs::read(&path).unwrap();
     assert_eq!(
         writer
             .resize(131072, ShrinkPolicy::Reject)
@@ -55,5 +55,6 @@ fn unsupported_backed_native_resize_rejects_before_container_changes() {
             .kind(),
         virtdisk::io::ErrorKind::Unsupported
     );
+    drop(writer);
     assert_eq!(std::fs::read(path).unwrap(), original);
 }
