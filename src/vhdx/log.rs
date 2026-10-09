@@ -427,14 +427,8 @@ pub(crate) fn recover(source: Arc<dyn ReadAt>, budget: ReadBudget) -> io::Result
     clean.copy_from_slice(&header);
     clean[48..64].fill(0);
     clean[4..8].fill(0);
-    let mut c = !0u32;
-    for &v in clean.iter() {
-        c ^= v as u32;
-        for _ in 0..8 {
-            c = (c >> 1) ^ if c & 1 != 0 { 0x82f63b78 } else { 0 };
-        }
-    }
-    clean[4..8].copy_from_slice(&(!c).to_le_bytes());
+    let checksum = crate::crc32c::checksum(clean.iter().copied());
+    clean[4..8].copy_from_slice(&checksum.to_le_bytes());
     patches.push(Patch {
         start: offset,
         length: 4096,

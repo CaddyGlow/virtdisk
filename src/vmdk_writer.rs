@@ -66,22 +66,17 @@ use crate::source::LockedSource;
 
 fn resize_descriptor(bytes: &[u8], sectors: u64) -> io::Result<Vec<u8>> {
     let mut text = crate::vmdk_descriptor::text(bytes)?.to_owned();
-    let mut cursor = 0;
-    let mut range = None;
-    for line in text.split_inclusive('\n') {
-        if line.trim_start().starts_with("RW") {
-            let extent = crate::vmdk_descriptor::extent(line, cursor)?;
-            if range.is_some() || extent.access != "RW" || extent.kind != "SPARSE" {
-                return Err(io::ErrorKind::Unsupported.into());
-            }
-            range = Some(extent.count.range);
-        }
-        cursor += line.len();
+    let parsed = crate::vmdk_descriptor::Descriptor::parse(&text, || Ok(()))?;
+    if parsed.profile != crate::vmdk_descriptor::Profile::MonolithicSparse {
+        return Err(io::ErrorKind::Unsupported.into());
     }
-    text.replace_range(
-        range.ok_or(io::ErrorKind::Unsupported)?,
-        &sectors.to_string(),
-    );
+    let range = parsed
+        .extents()
+        .next()
+        .ok_or(io::ErrorKind::Unsupported)??
+        .count
+        .range;
+    text.replace_range(range, &sectors.to_string());
     if text.len() > bytes.len() {
         return Err(io::ErrorKind::Unsupported.into());
     }
@@ -92,21 +87,9 @@ fn resize_descriptor(bytes: &[u8], sectors: u64) -> io::Result<Vec<u8>> {
 
 fn descriptor_cid_offset(bytes: &[u8], offset: u64) -> io::Result<u64> {
     let text = crate::vmdk_descriptor::text(bytes)?;
-    let mut cursor = 0;
-    let mut range = None;
-    let mut properties = crate::vmdk_descriptor::Properties::default();
-    for line in text.split_inclusive('\n') {
-        if let Some(("CID", value)) = crate::vmdk_descriptor::property(line, cursor) {
-            if properties.duplicate("CID") {
-                return Err(io::ErrorKind::InvalidData.into());
-            }
-            crate::vmdk_descriptor::hexadecimal(value.text)?;
-            range = Some(value.range);
-        }
-        cursor += line.len();
-    }
+    let parsed = crate::vmdk_descriptor::Descriptor::parse(text, || Ok(()))?;
     offset
-        .checked_add(range.ok_or(io::ErrorKind::InvalidData)?.start as u64)
+        .checked_add(parsed.cid_range.start as u64)
         .ok_or_else(|| io::ErrorKind::InvalidData.into())
 }
 
@@ -858,25 +841,18 @@ impl VmdkWriter {
         let mut desc = vec![0; descriptor_length as usize];
         raw.read_exact_at(descriptor_offset, &mut desc)?;
         let text = crate::vmdk_descriptor::text(&desc)?;
-        let mut cid = None;
-        let mut properties = crate::vmdk_descriptor::Properties::default();
-        let mut cursor = 0;
-        for line in text.split_inclusive('\n') {
-            if let Some(("CID", field)) = crate::vmdk_descriptor::property(line, cursor) {
-                if properties.duplicate("CID") {
-                    return Err(io::ErrorKind::InvalidData.into());
-                }
-                crate::vmdk_descriptor::hexadecimal(field.text)?;
-                cid = Some((
-                    descriptor_offset + field.range.start as u64,
-                    field.range.len(),
-                ));
-            }
-            cursor += line.len();
+        let parsed = crate::vmdk_descriptor::Descriptor::parse(text, || Ok(()))?;
+        parsed.require_parent(parent.is_some())?;
+        if parsed.profile != crate::vmdk_descriptor::Profile::MonolithicSparse
+            || parsed.sectors != size / 512
+        {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "VMDK embedded descriptor capacity or profile mismatch",
+            ));
         }
-        let (cid_offset, cid_width) = cid.ok_or_else(|| {
-            io::Error::new(io::ErrorKind::Unsupported, "VMDK writer requires CID")
-        })?;
+        let cid_offset = descriptor_offset + parsed.cid_range.start as u64;
+        let cid_width = parsed.cid_range.len();
         let mut primary = Vec::with_capacity(mappings.len());
         let mut redundant = Vec::with_capacity(mappings.len());
         for table in 0..(mappings.len() as u64).div_ceil(512) {

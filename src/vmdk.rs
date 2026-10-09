@@ -137,111 +137,20 @@ struct Link {
     parent_cid: u32,
     hint: Option<String>,
     sectors: u64,
+    #[cfg_attr(not(all(feature = "std", target_os = "linux")), allow(dead_code))]
     extent_count: u64,
-    profile: String,
-    sparse_extents: bool,
+    profile: crate::vmdk_descriptor::Profile,
 }
 impl Link {
     fn parse(text: &str, budget: &ReadBudget) -> io::Result<Self> {
-        let mut properties = crate::vmdk_descriptor::Properties::default();
-        let mut cid = None;
-        let mut parent_cid = None;
-        let mut hint = None;
-        let mut version = false;
-        let mut profile = None;
-        let mut sectors = 0u64;
-        let mut extent_count = 0u64;
-        let mut sparse_extents = true;
-        for line in text.lines() {
-            budget.work(1)?;
-            let line = line.trim();
-            if line.is_empty() || line.starts_with('#') {
-                continue;
-            }
-            let Some((key, field)) = crate::vmdk_descriptor::property(line, 0) else {
-                let extent = crate::vmdk_descriptor::extent(line, 0)?;
-                if extent.access != "RW" {
-                    return Err(unsupported("unsupported VMDK descriptor syntax"));
-                }
-                let capacity = crate::vmdk_descriptor::number(extent.count.text)?;
-                if capacity == 0 {
-                    return Err(invalid("empty VMDK extent"));
-                }
-                let kind = extent.kind;
-                sparse_extents &= kind == "SPARSE";
-                let name = extent.name;
-                if name.is_empty()
-                    || name.contains([':', '\\'])
-                    || name.chars().any(char::is_control)
-                {
-                    return Err(unsupported("unsupported VMDK extent name"));
-                }
-                if kind == "SPARSE" && !extent.tail.is_empty() {
-                    return Err(invalid("unexpected sparse extent offset"));
-                }
-                sectors = sectors
-                    .checked_add(capacity)
-                    .ok_or_else(|| invalid("VMDK capacity overflow"))?;
-                extent_count += 1;
-                continue;
-            };
-            let duplicate = properties.duplicate(key);
-            let value = field.text;
-            match key {
-                "CID" | "parentCID" => {
-                    let field = if key.trim() == "CID" {
-                        &mut cid
-                    } else {
-                        &mut parent_cid
-                    };
-                    if duplicate || crate::vmdk_descriptor::hexadecimal(value).is_err() {
-                        return Err(invalid("invalid or duplicate VMDK CID"));
-                    }
-                    *field = Some(crate::vmdk_descriptor::hexadecimal(value)?);
-                }
-                "parentFileNameHint" => {
-                    if duplicate {
-                        return Err(invalid("duplicate VMDK parent hint"));
-                    }
-                    let name = value
-                        .strip_prefix('"')
-                        .and_then(|s| s.strip_suffix('"'))
-                        .ok_or_else(|| invalid("invalid VMDK parent hint"))?;
-                    if name.is_empty()
-                        || name.contains([':', '\\', '"'])
-                        || name.chars().any(char::is_control)
-                    {
-                        return Err(unsupported("unsupported VMDK parent hint"));
-                    }
-                    hint = Some(name.to_owned());
-                }
-                "version" => {
-                    if duplicate || value != "1" {
-                        return Err(invalid("invalid VMDK descriptor version"));
-                    }
-                    version = true;
-                }
-                "createType" => {
-                    if duplicate {
-                        return Err(invalid("duplicate VMDK createType"));
-                    }
-                    profile = Some(value.to_owned());
-                }
-                k if k.starts_with("ddb.") => {}
-                _ => return Err(unsupported("unsupported VMDK descriptor property")),
-            }
-        }
-        if !version || profile.is_none() || extent_count == 0 {
-            return Err(invalid("incomplete VMDK chain descriptor"));
-        }
+        let descriptor = crate::vmdk_descriptor::Descriptor::parse(text, || budget.work(1))?;
         Ok(Self {
-            cid: cid.ok_or_else(|| invalid("missing VMDK CID"))?,
-            parent_cid: parent_cid.ok_or_else(|| invalid("missing VMDK parentCID"))?,
-            hint,
-            sectors,
-            extent_count,
-            profile: profile.unwrap(),
-            sparse_extents,
+            cid: descriptor.cid,
+            parent_cid: descriptor.parent_cid,
+            hint: descriptor.hint.map(str::to_owned),
+            sectors: descriptor.sectors,
+            extent_count: descriptor.extent_count,
+            profile: descriptor.profile,
         })
     }
 }
@@ -348,9 +257,7 @@ impl Vmdk {
         source.read_exact_at(sector(u64le(&header, 28))?, &mut bytes)?;
         let link = Link::parse(crate::vmdk_descriptor::text(&bytes)?, budget)?;
         if link.sectors != u64le(&header, 12)
-            || link.extent_count != 1
-            || !link.sparse_extents
-            || link.profile != "\"monolithicSparse\""
+            || link.profile != crate::vmdk_descriptor::Profile::MonolithicSparse
         {
             return Err(invalid(
                 "VMDK embedded descriptor capacity or profile mismatch",
@@ -476,9 +383,7 @@ impl Vmdk {
         let link = Link::parse(text, budget)?;
         if hosted
             && (link.sectors != u64le(&header, 12)
-                || link.extent_count != 1
-                || !link.sparse_extents
-                || link.profile != "\"monolithicSparse\"")
+                || link.profile != crate::vmdk_descriptor::Profile::MonolithicSparse)
         {
             return Err(invalid(
                 "VMDK embedded descriptor capacity or profile mismatch",
@@ -663,93 +568,12 @@ impl Vmdk {
         let mut extents = Vec::new();
         let mut length = 0u64;
         let mut container_set_size = source.len();
-        let mut properties = crate::vmdk_descriptor::Properties::default();
-        let mut parent = false;
-        let mut version = false;
-        let mut cid = false;
-        let mut create_type = false;
-        let mut profile = "";
-        let mut extent_kind = "";
-        for line in text.lines() {
-            budget.work(1)?;
-            let line = line.trim();
-            if line.is_empty() || line.starts_with('#') {
-                continue;
-            }
-            if let Some((key, field)) = crate::vmdk_descriptor::property(line, 0) {
-                let duplicate = properties.duplicate(key);
-                let value = field.text;
-                match key {
-                    "version" => {
-                        if duplicate || value != "1" {
-                            return Err(unsupported("unsupported VMDK descriptor version"));
-                        }
-                        version = true;
-                    }
-                    "CID" => {
-                        if duplicate
-                            || value.is_empty()
-                            || value.len() > 8
-                            || crate::vmdk_descriptor::hexadecimal(value).is_err()
-                        {
-                            return Err(invalid("invalid VMDK CID"));
-                        }
-                        cid = true;
-                    }
-                    "parentCID" => {
-                        if duplicate || (value != "ffffffff" && backing.is_none()) {
-                            return Err(unsupported("VMDK parent requires authorization"));
-                        }
-                        parent = true;
-                    }
-                    "parentFileNameHint" => {
-                        if backing.is_none() {
-                            return Err(unsupported("VMDK parent requires authorization"));
-                        }
-                    }
-                    "createType" => {
-                        if duplicate {
-                            return Err(invalid("duplicate VMDK createType"));
-                        }
-                        create_type = true;
-                        profile = value;
-                        if ![
-                            "\"monolithicFlat\"",
-                            "\"twoGbMaxExtentFlat\"",
-                            "\"twoGbMaxExtentSparse\"",
-                            "\"monolithicSparse\"",
-                        ]
-                        .contains(&value)
-                        {
-                            return Err(unsupported("unsupported VMDK extent profile"));
-                        }
-                    }
-                    k if k.starts_with("ddb.") => {}
-                    _ => return Err(unsupported("unsupported VMDK descriptor property")),
-                }
-                continue;
-            }
-            let extent = crate::vmdk_descriptor::extent(line, 0)?;
-            if extent.access != "RW" {
-                return Err(unsupported("unsupported VMDK extent access"));
-            }
-            if extent_kind.is_empty() {
-                extent_kind = extent.kind;
-            } else if extent_kind != extent.kind {
-                return Err(unsupported("mixed VMDK extent profiles"));
-            }
+        let descriptor = crate::vmdk_descriptor::Descriptor::parse(text, || budget.work(1))?;
+        descriptor.require_parent(backing.is_some())?;
+        for extent in descriptor.extents() {
+            let extent = extent?;
             let size = crate::vmdk_descriptor::sectors(extent.count.text)?;
-            if size == 0 {
-                return Err(invalid("empty VMDK extent"));
-            }
             let name = extent.name;
-            if name.is_empty()
-                || name.contains(':')
-                || name.contains('\\')
-                || name.chars().any(char::is_control)
-            {
-                return Err(unsupported("unsupported VMDK extent name"));
-            }
             let extent_path = path
                 .parent()
                 .ok_or_else(|| invalid("missing descriptor directory"))?
@@ -791,9 +615,6 @@ impl Vmdk {
                     Arc::new(crate::DiskView::new(extent_source, offset, size)?)
                 }
                 "SPARSE" => {
-                    if !tail.is_empty() {
-                        return Err(invalid("unexpected sparse extent offset"));
-                    }
                     let mut disk = Self::parse(extent_source, budget)?;
                     if let Some(parent) = &backing {
                         disk.parent = Some(Arc::new(crate::DiskView::new(
@@ -829,16 +650,6 @@ impl Vmdk {
             length = length
                 .checked_add(size)
                 .ok_or_else(|| invalid("VMDK descriptor capacity overflow"))?;
-        }
-        if !parent || !version || !cid || !create_type || extents.is_empty() {
-            return Err(invalid("incomplete VMDK descriptor"));
-        }
-        let flat = profile.ends_with("Flat\"");
-        if (flat && extent_kind != "FLAT")
-            || (!flat && extent_kind != "SPARSE")
-            || (profile.starts_with("\"monolithic") && extents.len() != 1)
-        {
-            return Err(invalid("VMDK createType does not match extents"));
         }
         let cache = budget.cache(
             (extents.len() as u64)
@@ -907,16 +718,22 @@ impl Vmdk {
             return Err(invalid("duplicate VMDK extent binding"));
         }
         let source = budget.reader(source);
-        let link = Self::descriptor_link(source.clone(), &budget)?;
+        budget.attribute(source.len())?;
+        budget.metadata(source.len())?;
+        let _descriptor_cache = budget.cache(source.len())?;
+        let mut bytes = repeated(0, source.len() as usize)?;
+        source.read_exact_at(0, &mut bytes)?;
+        let text = crate::vmdk_descriptor::text(&bytes)?;
+        let descriptor = crate::vmdk_descriptor::Descriptor::parse(text, || budget.work(1))?;
         if let Some(parent) = &parent {
             Self::validate_parent_identity(source.as_ref(), parent.as_ref(), &budget)?;
-            if Some(link.parent_cid) != parent.cid
-                || link.parent_cid == u32::MAX
-                || link.hint.is_none()
+            if Some(descriptor.parent_cid) != parent.cid
+                || descriptor.parent_cid == u32::MAX
+                || descriptor.hint.is_none()
             {
                 return Err(invalid("VMDK parent CID mismatch"));
             }
-        } else if link.parent_cid != u32::MAX {
+        } else if descriptor.parent_cid != u32::MAX {
             return Err(unsupported("VMDK parent requires supplied handle"));
         }
         let inherited_count = parent
@@ -937,12 +754,6 @@ impl Vmdk {
             inherited_dependencies.extend_from_slice(&parent.dependencies);
         }
         let backing: Option<Arc<dyn ReadAt>> = parent.map(|parent| parent as Arc<dyn ReadAt>);
-        budget.attribute(source.len())?;
-        budget.metadata(source.len())?;
-        let _descriptor_cache = budget.cache(source.len())?;
-        let mut bytes = repeated(0, source.len() as usize)?;
-        source.read_exact_at(0, &mut bytes)?;
-        let text = crate::vmdk_descriptor::text(&bytes)?;
         let mut used = repeated(false, bindings.len())?;
         let identity = source.source_identity().ok_or_else(|| {
             io::Error::new(
@@ -985,93 +796,11 @@ impl Vmdk {
         })?;
         let mut length = 0u64;
         let mut container_set_size = source.len();
-        let mut properties = crate::vmdk_descriptor::Properties::default();
-        let mut parent = false;
-        let mut version = false;
-        let mut cid = false;
-        let mut create_type = false;
-        let mut profile = "";
-        let mut extent_kind = "";
-        for line in text.lines() {
-            budget.work(1)?;
-            let line = line.trim();
-            if line.is_empty() || line.starts_with('#') {
-                continue;
-            }
-            if let Some((key, field)) = crate::vmdk_descriptor::property(line, 0) {
-                let duplicate = properties.duplicate(key);
-                let value = field.text;
-                match key {
-                    "version" => {
-                        if duplicate || value != "1" {
-                            return Err(unsupported("unsupported VMDK descriptor version"));
-                        }
-                        version = true;
-                    }
-                    "CID" => {
-                        if duplicate
-                            || value.is_empty()
-                            || value.len() > 8
-                            || crate::vmdk_descriptor::hexadecimal(value).is_err()
-                        {
-                            return Err(invalid("invalid VMDK CID"));
-                        }
-                        cid = true;
-                    }
-                    "parentCID" => {
-                        if duplicate || (value != "ffffffff" && backing.is_none()) {
-                            return Err(unsupported("VMDK parent requires authorization"));
-                        }
-                        parent = true;
-                    }
-                    "parentFileNameHint" => {
-                        if backing.is_none() {
-                            return Err(unsupported("VMDK parent requires authorization"));
-                        }
-                    }
-                    "createType" => {
-                        if duplicate {
-                            return Err(invalid("duplicate VMDK createType"));
-                        }
-                        create_type = true;
-                        profile = value;
-                        if ![
-                            "\"monolithicFlat\"",
-                            "\"twoGbMaxExtentFlat\"",
-                            "\"twoGbMaxExtentSparse\"",
-                            "\"monolithicSparse\"",
-                        ]
-                        .contains(&value)
-                        {
-                            return Err(unsupported("unsupported VMDK extent profile"));
-                        }
-                    }
-                    k if k.starts_with("ddb.") => {}
-                    _ => return Err(unsupported("unsupported VMDK descriptor property")),
-                }
-                continue;
-            }
-            let extent = crate::vmdk_descriptor::extent(line, 0)?;
-            if extent.access != "RW" {
-                return Err(unsupported("unsupported VMDK extent access"));
-            }
-            if extent_kind.is_empty() {
-                extent_kind = extent.kind;
-            } else if extent_kind != extent.kind {
-                return Err(unsupported("mixed VMDK extent profiles"));
-            }
+        descriptor.require_parent(backing.is_some())?;
+        for extent in descriptor.extents() {
+            let extent = extent?;
             let size = crate::vmdk_descriptor::sectors(extent.count.text)?;
-            if size == 0 {
-                return Err(invalid("empty VMDK extent"));
-            }
             let name = extent.name;
-            if name.is_empty()
-                || name.contains(':')
-                || name.contains('\\')
-                || name.chars().any(char::is_control)
-            {
-                return Err(unsupported("unsupported VMDK extent name"));
-            }
             let index = bindings
                 .iter()
                 .position(|binding| binding.name == name)
@@ -1107,9 +836,6 @@ impl Vmdk {
                     Arc::new(crate::DiskView::new(extent_source, offset, size)?)
                 }
                 "SPARSE" => {
-                    if !tail.is_empty() {
-                        return Err(invalid("unexpected sparse extent offset"));
-                    }
                     let mut disk = Self::parse(extent_source, &budget)?;
                     if let Some(parent) = &backing {
                         disk.parent = Some(Arc::new(crate::DiskView::new(
@@ -1130,16 +856,6 @@ impl Vmdk {
                 .checked_add(size)
                 .ok_or_else(|| invalid("VMDK descriptor capacity overflow"))?;
         }
-        if !parent || !version || !cid || !create_type || extents.is_empty() {
-            return Err(invalid("incomplete VMDK descriptor"));
-        }
-        let flat = profile.ends_with("Flat\"");
-        if (flat && extent_kind != "FLAT")
-            || (!flat && extent_kind != "SPARSE")
-            || (profile.starts_with("\"monolithic") && extents.len() != 1)
-        {
-            return Err(invalid("VMDK createType does not match extents"));
-        }
         if used.iter().any(|used| !used) {
             return Err(invalid("unused VMDK extent binding"));
         }
@@ -1158,7 +874,7 @@ impl Vmdk {
             dependencies: identities,
             extents,
             parent: backing,
-            cid: Some(link.cid),
+            cid: Some(descriptor.cid),
             _identity_cache: Some(identity_cache),
         };
         if disk
@@ -1169,14 +885,6 @@ impl Vmdk {
             return Err(invalid("VMDK parent capacity mismatch"));
         }
         Ok(disk)
-    }
-    fn descriptor_link(source: Arc<dyn ReadAt>, budget: &ReadBudget) -> io::Result<Link> {
-        budget.attribute(source.len())?;
-        budget.metadata(source.len())?;
-        let _scratch = budget.cache(source.len())?;
-        let mut bytes = repeated(0, source.len() as usize)?;
-        source.read_exact_at(0, &mut bytes)?;
-        Link::parse(crate::vmdk_descriptor::text(&bytes)?, budget)
     }
     fn validate_parent_identity(
         source: &dyn ReadAt,
@@ -1421,6 +1129,7 @@ impl ReadAt for Vmdk {
     fn ancestor_identities(&self) -> Vec<crate::SourceIdentity> {
         let mut identities = self.source.ancestor_identities();
         if let Some(parent) = &self.parent {
+            identities.extend(parent.source_identity());
             identities.extend(parent.ancestor_identities());
         }
         identities

@@ -2,6 +2,31 @@
 use virtdisk::{Qcow2, ReadAt, create_qcow2_overlay};
 
 #[test]
+fn raw_parent_counts_toward_chain_depth() {
+    let dir = tempfile::tempdir().unwrap();
+    let parent = dir.path().join("parent.raw");
+    let child = dir.path().join("child.qcow2");
+    std::fs::write(&parent, [7; 512]).unwrap();
+    create_qcow2_overlay(&child, &parent, "raw", 512).unwrap();
+    let limits = virtdisk::ParserLimits {
+        recursion_depth: 1,
+        ..Default::default()
+    };
+    let error = Qcow2::open_chain_with_limits(&child, std::slice::from_ref(&parent), limits)
+        .err()
+        .unwrap();
+    assert_eq!(error.kind(), virtdisk::io::ErrorKind::ResourceLimit);
+    let limits = virtdisk::ParserLimits {
+        recursion_depth: 2,
+        ..Default::default()
+    };
+    let disk = Qcow2::open_chain_with_limits(&child, &[parent], limits).unwrap();
+    let mut bytes = [0; 512];
+    disk.read_exact_at(0, &mut bytes).unwrap();
+    assert_eq!(bytes, [7; 512]);
+}
+
+#[test]
 fn raw_overlay_requires_authorization_and_inherits_parent() {
     let dir = tempfile::tempdir().unwrap();
     let parent = dir.path().join("parent.raw");

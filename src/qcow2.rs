@@ -539,6 +539,7 @@ impl Qcow2 {
             if paths.contains(&backing_path) {
                 return Err(invalid("QCOW2 backing cycle"));
             }
+            budget.recursion(depth as u128 + 2, 32)?;
             let raw = Arc::new(RawDisk::open(&backing_path)?);
             let mut magic = [0; 4];
             if raw.len() >= 4 {

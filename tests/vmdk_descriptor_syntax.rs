@@ -1,13 +1,52 @@
 #![cfg(feature = "std")]
 use std::fs;
-use virtdisk::{Vmdk, VmdkWriter};
+use virtdisk::{ReadAt, Vmdk, VmdkWriter};
+
+#[test]
+fn colon_filename_is_rejected_before_creating_output() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("disk:1.vmdk");
+    let source_path = directory.path().join("source.raw");
+    fs::write(&source_path, [0; 512]).unwrap();
+    let source = virtdisk::RawDisk::open(&source_path).unwrap();
+    for mode in ["allocated", "sparse", "export"] {
+        let result = match mode {
+            "allocated" => VmdkWriter::create(&path, 512).map(drop),
+            "sparse" => VmdkWriter::create_sparse(&path, 512).map(drop),
+            "export" => virtdisk::create_vmdk(&path, &source),
+            _ => unreachable!(),
+        };
+        assert_eq!(
+            result.unwrap_err().kind(),
+            virtdisk::io::ErrorKind::InvalidInput,
+            "{mode}"
+        );
+        assert!(!path.try_exists().unwrap(), "{mode} left an output file");
+    }
+}
+
+#[test]
+fn library_created_filename_with_equals_reopens_as_hosted_chain() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("disk=1.vmdk");
+    let writer = VmdkWriter::create(&path, 65536).unwrap();
+    writer.write_all_at(0, &[7]).unwrap();
+    writer.flush().unwrap();
+    drop(writer);
+    let disk = Vmdk::open_chain(&path, &[]).unwrap();
+    let mut byte = [0];
+    disk.read_exact_at(0, &mut byte).unwrap();
+    assert_eq!(byte, [7]);
+    drop(disk);
+    drop(VmdkWriter::open(&path).unwrap());
+}
 
 #[test]
 fn external_reader_and_writer_profiles_share_descriptor_syntax_checks() {
     for sparse in [false, true] {
         let directory = tempfile::tempdir().unwrap();
         let descriptor = directory.path().join("disk.vmdk");
-        let extent = directory.path().join("extent with spaces.vmdk");
+        let extent = directory.path().join("extent with spaces=1.vmdk");
         let (profile, kind, tail) = if sparse {
             drop(VmdkWriter::create(&extent, 65536).unwrap());
             ("twoGbMaxExtentSparse", "SPARSE", "")
@@ -16,7 +55,7 @@ fn external_reader_and_writer_profiles_share_descriptor_syntax_checks() {
             ("monolithicFlat", "FLAT", " 0")
         };
         let text = format!(
-            "version = 1\r\n CID = 012a \r\nparentCID=ffffffff\r\ncreateType=\"{profile}\"\r\nRW 128 {kind} \"extent with spaces.vmdk\"{tail}\r\n"
+            "version = 1\r\n CID = 012a \r\nparentCID=ffffffff\r\ncreateType=\"{profile}\"\r\nRW 128 {kind} \"extent with spaces=1.vmdk\"{tail}\r\n"
         );
         fs::write(&descriptor, format!("{text}\0\0")).unwrap();
         let authorized = std::slice::from_ref(&extent);
@@ -34,7 +73,18 @@ fn external_reader_and_writer_profiles_share_descriptor_syntax_checks() {
         }
         for malformed in [
             format!("{text}CID=012a\n"),
-            text.replace("\"extent with spaces.vmdk\"", "\"extent with spaces.vmdk"),
+            text.replace(
+                "\"extent with spaces=1.vmdk\"",
+                "\"extent with spaces=1.vmdk",
+            ),
+            format!("{text}version=1\n"),
+            text.replace("parentCID=ffffffff", "parentCID=not-hex"),
+            text.replace("RW 128", "RDONLY 128"),
+            text.replace("RW 128", "RW 0"),
+            text.replace(
+                &format!("createType=\"{profile}\""),
+                "createType=\"unsupported\"",
+            ),
             format!("{text}\0CID=1234\n"),
         ] {
             fs::write(&descriptor, malformed).unwrap();

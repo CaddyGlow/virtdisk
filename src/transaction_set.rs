@@ -1,5 +1,6 @@
 //! Linux bounded multi-file transactions, validated as a complete set.
 use crate::io;
+use crate::sidecar::{publish_new as publish, sync_parent};
 use crate::{
     RawWriter, ReadAt,
     transaction::{self, Record},
@@ -26,9 +27,6 @@ fn invalid() -> io::Error {
         io::ErrorKind::InvalidData,
         "invalid hosted image transaction set",
     )
-}
-fn sync_parent(path: &Path) -> io::Result<()> {
-    Ok(std::fs::File::open(path.parent().ok_or_else(invalid)?)?.sync_all()?)
 }
 
 pub(super) struct File {
@@ -567,27 +565,7 @@ fn validate(
 fn read_sidecar(path: &Path) -> io::Result<Option<Vec<u8>>> {
     crate::sidecar::read_bounded(path, LIMIT, invalid)
 }
-fn publish(path: &Path, bytes: &[u8]) -> io::Result<()> {
-    use io::Write;
-    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-    let mut name = path.as_os_str().to_owned();
-    name.push(format!(
-        ".tmp-{}-{}",
-        std::process::id(),
-        NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-    ));
-    let temporary = PathBuf::from(name);
-    let mut file = std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&temporary)?;
-    file.write_all(bytes)?;
-    file.sync_all()?;
-    std::fs::hard_link(&temporary, path)?;
-    sync_parent(path)?;
-    std::fs::remove_file(temporary)?;
-    sync_parent(path)
-}
+
 fn interrupt(stage: usize, cut: Option<usize>) -> io::Result<()> {
     if cut == Some(stage) {
         Err(io::Error::new(

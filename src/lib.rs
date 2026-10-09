@@ -239,6 +239,21 @@ impl RawDisk {
             container: Some(path.to_string_lossy().into_owned()),
             ..Default::default()
         };
+        // Inspect the opened handle before accepting it. Nonblocking opening
+        // lets us reject FIFOs without waiting for another process to connect.
+        #[cfg(unix)]
+        let file: File = rustix::fs::open(
+            path,
+            rustix::fs::OFlags::RDONLY | rustix::fs::OFlags::CLOEXEC | rustix::fs::OFlags::NONBLOCK,
+            rustix::fs::Mode::empty(),
+        )
+        .map_err(|e| {
+            context
+                .clone()
+                .error("open raw image", std::io::Error::from(e))
+        })?
+        .into();
+        #[cfg(not(unix))]
         let file = File::open(path).map_err(|e| context.clone().error("open raw image", e))?;
         let metadata = file
             .metadata()
@@ -249,12 +264,14 @@ impl RawDisk {
                 "raw image must be a regular file",
             ));
         }
+        let canonical = path.canonicalize()?;
+        let container = canonical.to_string_lossy().into_owned();
         Ok(Self {
-            host: HostSourceContext::new(path.canonicalize()?, &file)?,
+            host: HostSourceContext::new(canonical, &file)?,
             file: Mutex::new(file),
             length: metadata.len(),
             context: ReadContext {
-                container: Some(path.canonicalize()?.to_string_lossy().into_owned()),
+                container: Some(container),
                 ..context
             },
         })

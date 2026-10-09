@@ -2,6 +2,7 @@
 
 use crate::ReadAt;
 use crate::io;
+use crate::sidecar::sync_parent;
 use sha2::{Digest, Sha256};
 
 const LIMIT: usize = 4 * 1024 * 1024;
@@ -270,26 +271,6 @@ pub(super) fn sidecar(path: &std::path::Path) -> std::path::PathBuf {
     name.into()
 }
 
-fn sync_parent(path: &std::path::Path) -> io::Result<()> {
-    #[cfg(target_os = "linux")]
-    {
-        Ok(std::fs::File::open(
-            path.parent()
-                .filter(|p| !p.as_os_str().is_empty())
-                .unwrap_or(std::path::Path::new(".")),
-        )?
-        .sync_all()?)
-    }
-    #[cfg(not(target_os = "linux"))]
-    {
-        let _ = path;
-        Err(io::Error::new(
-            io::ErrorKind::Unsupported,
-            "QCOW2 journal directory durability currently requires Linux",
-        ))
-    }
-}
-
 struct OwnedPatched {
     source: std::sync::Arc<dyn ReadAt>,
     record: std::sync::Arc<Record>,
@@ -383,7 +364,12 @@ fn replay(
     raw.flush()?;
     interrupt(5, cut)?;
     std::fs::remove_file(sidecar(path))?;
+    interrupt(8, cut)?; // Metadata committed, but directory durability is still uncertain.
     sync_parent(path)
+}
+
+pub(super) fn requires_reopen(error: &io::Error, path: &std::path::Path) -> bool {
+    crate::sidecar::publication_requires_reopen(error) || sidecar(path).try_exists().unwrap_or(true)
 }
 
 pub(super) fn commit_authorized(
@@ -393,30 +379,17 @@ pub(super) fn commit_authorized(
     cut: Option<usize>,
     authorized: &[std::path::PathBuf],
 ) -> io::Result<()> {
-    use crate::io::Write;
     validate_states(path, authorized, raw.clone(), &record)?;
     sync_parent(path)?; // Reject unsupported directory persistence before mutation.
     let bytes = record.encode()?;
-    let journal = sidecar(path);
-    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-    let mut temporary = journal.as_os_str().to_owned();
-    temporary.push(format!(
-        ".tmp-{}-{}",
-        std::process::id(),
-        NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-    ));
-    let temporary = std::path::PathBuf::from(temporary);
-    let mut file = std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&temporary)?;
-    file.write_all(&bytes)?;
-    file.sync_all()?;
-    std::fs::hard_link(&temporary, &journal)?; // Atomic no-overwrite publication.
-    sync_parent(path)?;
-    std::fs::remove_file(&temporary)?;
-    interrupt(0, cut)?;
-    replay(path, raw, &record, cut, authorized)
+    crate::sidecar::publish_new(&sidecar(path), &bytes)?;
+    // Once publication succeeds, every failure invalidates the caller's cached
+    // mappings. Journal presence alone is insufficient after replay removes it.
+    (|| {
+        interrupt(0, cut)?;
+        replay(path, raw, &record, cut, authorized)
+    })()
+    .map_err(crate::sidecar::published_error)
 }
 
 pub(super) fn recover_authorized(
@@ -458,6 +431,16 @@ fn recover(path: &std::path::Path, raw: std::sync::Arc<crate::RawWriter>) -> io:
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn published_transaction_error_preserves_host_cause_and_classification() {
+        let original: io::Error = std::io::Error::from_raw_os_error(5).into();
+        let kind = original.kind();
+        let error = crate::sidecar::published_error(original);
+        assert_eq!(error.kind(), kind);
+        assert_eq!(error.raw_os_error(), Some(5));
+        assert!(requires_reopen(&error, std::path::Path::new("unused")));
+    }
 
     #[test]
     #[cfg(target_os = "linux")]

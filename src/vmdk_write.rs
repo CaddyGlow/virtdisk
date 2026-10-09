@@ -54,11 +54,11 @@ pub(crate) fn export_vmdk(
     })?;
     if name
         .chars()
-        .any(|c| c.is_control() || c == '"' || c == '\\')
+        .any(|c| c.is_control() || matches!(c, ':' | '"' | '\\'))
     {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            "VMDK filename contains descriptor delimiters",
+            "VMDK filename contains unsupported descriptor characters",
         ));
     }
     let grains = length.div_ceil(65536);

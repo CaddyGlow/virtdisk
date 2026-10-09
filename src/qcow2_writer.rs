@@ -305,6 +305,15 @@ impl Qcow2Writer {
     /// A transaction above the bounded patch budget fails before mutation;
     /// interrupted mutation requires reopening for complete capacity recovery.
     pub fn resize(&mut self, new_size: u64, policy: crate::ShrinkPolicy) -> io::Result<()> {
+        self.resize_inner(new_size, policy, None)
+    }
+
+    fn resize_inner(
+        &mut self,
+        new_size: u64,
+        policy: crate::ShrinkPolicy,
+        cut: Option<usize>,
+    ) -> io::Result<()> {
         Self::check_size(new_size)?;
         let next = {
             let _guard = self.operation()?;
@@ -330,14 +339,11 @@ impl Qcow2Writer {
                 self.size,
                 new_size,
                 policy,
-                None,
+                cut,
             ) {
                 Ok(next) => next,
                 Err(error) => {
-                    if journal_path(&self.context.path)
-                        .try_exists()
-                        .unwrap_or(true)
-                    {
+                    if journal::requires_reopen(&error, &self.context.path) {
                         self.recovery_required
                             .store(true, std::sync::atomic::Ordering::Relaxed);
                     }

@@ -1,4 +1,4 @@
-//! Shared VMDK descriptor syntax; supported profiles are checked by callers.
+//! Shared VMDK descriptor syntax and native profile validation.
 use crate::io;
 use core::ops::Range;
 
@@ -46,6 +46,11 @@ pub(crate) struct Field<'a> {
 
 pub(crate) fn property(line: &str, offset: usize) -> Option<(&str, Field<'_>)> {
     let (key, value) = line.split_once('=')?;
+    // An extent filename may contain '='. Only a single property token may
+    // appear before the assignment operator (with surrounding whitespace).
+    if key.trim().is_empty() || key.trim().chars().any(char::is_whitespace) || key.contains('"') {
+        return None;
+    }
     let start = offset + key.len() + 1 + value.len() - value.trim_start().len();
     let value = value.trim();
     Some((
@@ -101,6 +106,202 @@ pub(crate) fn hexadecimal(value: &str) -> io::Result<u32> {
         return Err(invalid());
     }
     u32::from_str_radix(value, 16).map_err(|_| invalid())
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Profile {
+    MonolithicFlat,
+    SplitFlat,
+    MonolithicSparse,
+    SplitSparse,
+}
+impl Profile {
+    pub(crate) fn sparse(self) -> bool {
+        matches!(self, Self::MonolithicSparse | Self::SplitSparse)
+    }
+    fn monolithic(self) -> bool {
+        matches!(self, Self::MonolithicFlat | Self::MonolithicSparse)
+    }
+}
+
+/// Validated descriptor semantics borrowing the original bytes. Extents are
+/// revisited without allocating, and native field spans remain available for
+/// writers that patch a descriptor while preserving its other bytes.
+pub(crate) struct Descriptor<'a> {
+    text: &'a str,
+    pub(crate) cid: u32,
+    #[cfg_attr(not(feature = "std"), allow(dead_code))]
+    pub(crate) cid_range: Range<usize>,
+    pub(crate) parent_cid: u32,
+    pub(crate) hint: Option<&'a str>,
+    pub(crate) profile: Profile,
+    pub(crate) sectors: u64,
+    pub(crate) extent_count: u64,
+}
+impl<'a> Descriptor<'a> {
+    pub(crate) fn parse(
+        text: &'a str,
+        mut work: impl FnMut() -> io::Result<()>,
+    ) -> io::Result<Self> {
+        let mut properties = Properties::default();
+        let mut cid = None;
+        let mut cid_range = 0..0;
+        let mut parent_cid = None;
+        let mut hint = None;
+        let mut version = false;
+        let mut profile = None;
+        let mut sectors = 0u64;
+        let mut extent_count = 0u64;
+        let mut extent_kind = None;
+        let mut offset = 0;
+        for original in text.split_inclusive('\n') {
+            work()?;
+            let line = original.trim();
+            if line.is_empty() || line.starts_with('#') {
+                offset += original.len();
+                continue;
+            }
+            if let Some((key, field)) = property(original, offset) {
+                if properties.duplicate(key) {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "duplicate VMDK descriptor property",
+                    ));
+                }
+                match key {
+                    "version" if field.text == "1" => version = true,
+                    "version" => {
+                        return Err(io::Error::new(
+                            io::ErrorKind::Unsupported,
+                            "unsupported VMDK descriptor version",
+                        ));
+                    }
+                    "CID" => {
+                        cid = Some(hexadecimal(field.text)?);
+                        cid_range = field.range;
+                    }
+                    "parentCID" => parent_cid = Some(hexadecimal(field.text)?),
+                    "parentFileNameHint" => {
+                        let name = field
+                            .text
+                            .strip_prefix('"')
+                            .and_then(|s| s.strip_suffix('"'))
+                            .ok_or_else(invalid)?;
+                        if name.is_empty()
+                            || name.contains([':', '\\', '"'])
+                            || name.chars().any(char::is_control)
+                        {
+                            return Err(io::Error::new(
+                                io::ErrorKind::Unsupported,
+                                "unsupported VMDK parent hint",
+                            ));
+                        }
+                        hint = Some(name);
+                    }
+                    "createType" => {
+                        profile = Some(match field.text {
+                            "\"monolithicFlat\"" => Profile::MonolithicFlat,
+                            "\"twoGbMaxExtentFlat\"" => Profile::SplitFlat,
+                            "\"monolithicSparse\"" => Profile::MonolithicSparse,
+                            "\"twoGbMaxExtentSparse\"" => Profile::SplitSparse,
+                            _ => {
+                                return Err(io::Error::new(
+                                    io::ErrorKind::Unsupported,
+                                    "unsupported VMDK extent profile",
+                                ));
+                            }
+                        })
+                    }
+                    key if key.starts_with("ddb.") => {}
+                    _ => {
+                        return Err(io::Error::new(
+                            io::ErrorKind::Unsupported,
+                            "unsupported VMDK descriptor property",
+                        ));
+                    }
+                }
+            } else {
+                let extent = extent(original, offset)?;
+                if extent.access != "RW" || !matches!(extent.kind, "FLAT" | "SPARSE") {
+                    return Err(io::Error::new(
+                        io::ErrorKind::Unsupported,
+                        "unsupported VMDK extent profile",
+                    ));
+                }
+                if extent_kind.is_some_and(|kind| kind != extent.kind) {
+                    return Err(io::Error::new(
+                        io::ErrorKind::Unsupported,
+                        "mixed VMDK extent profiles",
+                    ));
+                }
+                extent_kind = Some(extent.kind);
+                if extent.name.is_empty()
+                    || extent.name.contains([':', '\\'])
+                    || extent.name.chars().any(char::is_control)
+                {
+                    return Err(io::Error::new(
+                        io::ErrorKind::Unsupported,
+                        "unsupported VMDK extent name",
+                    ));
+                }
+                let count = number(extent.count.text)?;
+                if count == 0 {
+                    return Err(invalid());
+                }
+                if extent.kind == "FLAT" {
+                    self::sectors(extent.tail)?;
+                } else if !extent.tail.is_empty() {
+                    return Err(invalid());
+                }
+                sectors = sectors.checked_add(count).ok_or_else(invalid)?;
+                sectors.checked_mul(512).ok_or_else(invalid)?;
+                extent_count += 1;
+            }
+            offset += original.len();
+        }
+        let profile = profile.ok_or_else(invalid)?;
+        if !version
+            || extent_count == 0
+            || (profile.monolithic() && extent_count != 1)
+            || profile.sparse() != (extent_kind == Some("SPARSE"))
+        {
+            return Err(invalid());
+        }
+        Ok(Self {
+            text,
+            cid: cid.ok_or_else(invalid)?,
+            cid_range,
+            parent_cid: parent_cid.ok_or_else(invalid)?,
+            hint,
+            profile,
+            sectors,
+            extent_count,
+        })
+    }
+
+    pub(crate) fn require_parent(&self, allow_parent: bool) -> io::Result<()> {
+        if !allow_parent && (self.parent_cid != u32::MAX || self.hint.is_some()) {
+            return Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "VMDK parent requires authorization",
+            ));
+        }
+        Ok(())
+    }
+
+    pub(crate) fn extents(&self) -> impl Iterator<Item = io::Result<Extent<'a>>> + '_ {
+        let mut offset = 0;
+        self.text.split_inclusive('\n').filter_map(move |original| {
+            let start = offset;
+            offset += original.len();
+            let line = original.trim();
+            if line.is_empty() || line.starts_with('#') || property(original, start).is_some() {
+                None
+            } else {
+                Some(extent(original, start))
+            }
+        })
+    }
 }
 
 #[cfg(test)]

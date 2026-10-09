@@ -1,6 +1,9 @@
 //! Offline image inspection, conversion, and logical comparison.
 #[path = "virtdisk/capabilities_output.rs"]
 mod capabilities_output;
+#[path = "virtdisk/command.rs"]
+mod command;
+use command::{Access, Command};
 #[path = "virtdisk/error_output.rs"]
 mod error_output;
 #[path = "virtdisk/graph_output.rs"]
@@ -12,26 +15,12 @@ use std::{env, ffi::OsStr, path::PathBuf, process::ExitCode};
 use std::{io::Write as _, ops::ControlFlow};
 use virtdisk::io;
 use virtdisk::{
-    DiscardPolicy, DiscardResult, Image, ImageFormat, ImageWriter, InspectImage, OperationContext,
+    DiscardResult, Image, ImageFormat, ImageWriter, InspectImage, OperationContext,
     OperationLimits, ParserLimits, ReadAt, ReadRecoveryPolicy, ReaderOpenOptions, RecoveryPolicy,
-    ShrinkPolicy, WriteAt, WriterOpenOptions, compact_image_with_context,
-    compare_images_with_context, convert_image, convert_image_with_context,
-    hash_image_with_context, resize_image_with_context, zero_image_with_context,
+    WriteAt, WriterOpenOptions, compact_image_with_context, compare_images_with_context,
+    convert_image, convert_image_with_context, hash_image_with_context, resize_image_with_context,
+    zero_image_with_context,
 };
-
-fn format(value: &OsStr) -> io::Result<ImageFormat> {
-    match value.to_str() {
-        Some("raw") => Ok(ImageFormat::Raw),
-        Some("qcow2") => Ok(ImageFormat::Qcow2),
-        Some("vdi") => Ok(ImageFormat::Vdi),
-        Some("vmdk") => Ok(ImageFormat::Vmdk),
-        Some("vhdx") => Ok(ImageFormat::Vhdx),
-        _ => Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "unknown format",
-        )),
-    }
-}
 
 fn run(args: &[std::ffi::OsString]) -> io::Result<bool> {
     let (controls, args) = reader_controls(args)?;
@@ -79,7 +68,7 @@ fn run(args: &[std::ffi::OsString]) -> io::Result<bool> {
             args => (RecoveryPolicy::RejectPending, args),
         };
         run_command(
-            args,
+            Command::parse(args)?,
             &reader_options,
             recovery,
             controls.execution,
@@ -126,23 +115,20 @@ fn write_progress(progress: virtdisk::OperationProgress) -> io::Result<()> {
 }
 
 fn run_command(
-    args: &[std::ffi::OsString],
+    command: Command<'_>,
     reader_options: &ReaderOpenOptions,
     recovery: RecoveryPolicy,
     execution: MutationExecution,
     context: &mut OperationContext<'_>,
 ) -> io::Result<bool> {
-    match args {
-        [
-            command,
-            action,
+    match command {
+        Command::GraphSnapshot {
             manifest,
             parent,
             directory,
             family,
-            authorized @ ..,
-        ] if command == "graph" && action == "snapshot" => {
-            let family = format(family)?;
+            authorized,
+        } => {
             let mut graph = open_graph(manifest, authorized, reader_options)?;
             let published =
                 graph.snapshot_generation_with_context(parent, directory, family, context)?;
@@ -153,48 +139,41 @@ fn run_command(
             )?;
             Ok(true)
         }
-        [
-            command,
-            action,
+        Command::GraphFlatten {
             manifest,
             source,
             output,
             family,
-            authorized @ ..,
-        ] if command == "graph" && action == "flatten" => {
-            let family = format(family)?;
+            authorized,
+        } => {
             let graph = open_graph(manifest, authorized, reader_options)?;
             graph.flatten_with_context(source, output, family, context)?;
             writeln!(io::stdout().lock(), "{{\"method\":\"flatten\"}}")?;
             Ok(true)
         }
-        [
-            command,
-            action,
+        Command::GraphMerge {
             manifest,
             source,
             ancestor,
             output,
             family,
-            authorized @ ..,
-        ] if command == "graph" && action == "merge" => {
-            let family = format(family)?;
+            authorized,
+        } => {
             let graph = open_graph(manifest, authorized, reader_options)?;
             graph.merge_to_with_context(source, ancestor, output, family, context)?;
             writeln!(io::stdout().lock(), "{{\"method\":\"new-output-merge\"}}")?;
             Ok(true)
         }
-        [
-            command,
-            action,
+        Command::GraphRebase {
             manifest,
             source,
             parent,
             output,
-            authorized @ ..,
-        ] if command == "graph" && (action == "rebase" || action == "rebase-generation") => {
+            authorized,
+            generation,
+        } => {
             let mut graph = open_graph(manifest, authorized, reader_options)?;
-            if action == "rebase-generation" {
+            if generation {
                 let published =
                     graph.rebase_generation_with_context(source, parent, output, context)?;
                 writeln!(
@@ -211,9 +190,11 @@ fn run_command(
             )?;
             Ok(true)
         }
-        [command, action, path, selected, authorized @ ..]
-            if command == "graph" && action == "select-in-place" =>
-        {
+        Command::GraphSelectInPlace {
+            path,
+            selected,
+            authorized,
+        } => {
             let expected = virtdisk::GraphManifest::open(path)?;
             let graph = open_graph_declaration(&expected, authorized, reader_options)?;
             let next = graph.manifest(Some(std::path::Path::new(selected)))?;
@@ -225,9 +206,12 @@ fn run_command(
             )?;
             Ok(true)
         }
-        [command, action, manifest, selected, output, authorized @ ..]
-            if command == "graph" && action == "select" =>
-        {
+        Command::GraphSelect {
+            manifest,
+            selected,
+            output,
+            authorized,
+        } => {
             let graph = open_graph(manifest, authorized, reader_options)?;
             let manifest = graph.save_manifest_with_context(
                 Some(std::path::Path::new(selected)),
@@ -241,23 +225,26 @@ fn run_command(
             )?;
             Ok(true)
         }
-        [command, action, manifest, authorized @ ..] if command == "graph" && action == "info" => {
+        Command::GraphInfo {
+            manifest,
+            authorized,
+        } => {
             let manifest = virtdisk::GraphManifest::open(manifest)?;
             let graph = open_graph_declaration(&manifest, authorized, reader_options)?;
             graph_output::write_json(&mut io::stdout().lock(), &manifest, &graph)?;
             Ok(true)
         }
-        [command, action, path, id, parents @ ..]
-            if command == "snapshot" && (action == "delete" || action == "revert") =>
-        {
-            let id = snapshot_bytes(id)?;
-            let mut writer = open_writer(path, OsStr::new("qcow2"), parents, recovery)?;
+        Command::SnapshotChange {
+            path,
+            id,
+            parents,
+            delete,
+        } => {
+            let mut writer = open_writer(path, ImageFormat::Qcow2, parents, recovery)?;
             let snapshot = match execution {
-                MutationExecution::WholeCall if action == "delete" => {
-                    writer.delete_snapshot(&id)?
-                }
+                MutationExecution::WholeCall if delete => writer.delete_snapshot(&id)?,
                 MutationExecution::WholeCall => writer.revert_snapshot(&id)?,
-                MutationExecution::Bounded if action == "delete" => {
+                MutationExecution::Bounded if delete => {
                     writer.delete_snapshot_with_context(&id, context)?
                 }
                 MutationExecution::Bounded => writer.revert_snapshot_with_context(&id, context)?,
@@ -270,12 +257,13 @@ fn run_command(
             );
             Ok(true)
         }
-        [command, action, path, id, name, parents @ ..]
-            if command == "snapshot" && action == "create" =>
-        {
-            let id = snapshot_bytes(id)?;
-            let name = snapshot_bytes(name)?;
-            let mut writer = open_writer(path, OsStr::new("qcow2"), parents, recovery)?;
+        Command::SnapshotCreate {
+            path,
+            id,
+            name,
+            parents,
+        } => {
+            let mut writer = open_writer(path, ImageFormat::Qcow2, parents, recovery)?;
             let snapshot = match execution {
                 MutationExecution::WholeCall => writer.create_snapshot(&id, &name)?,
                 MutationExecution::Bounded => {
@@ -290,22 +278,15 @@ fn run_command(
             );
             Ok(true)
         }
-        [command, path, selected, mode, parents @ ..] if command == "check" => {
-            let options = virtdisk::CheckOptions {
-                payload: match mode.to_str() {
-                    Some("structure") => false,
-                    Some("payload") => true,
-                    _ => {
-                        return Err(io::Error::new(
-                            io::ErrorKind::InvalidInput,
-                            "check mode must be structure or payload",
-                        ));
-                    }
-                },
-            };
+        Command::Check {
+            path,
+            selected,
+            options,
+            parents,
+        } => {
             let report = virtdisk::check_image_with_limits_and_context(
                 path,
-                format(selected)?,
+                selected,
                 &parents.iter().map(PathBuf::from).collect::<Vec<_>>(),
                 options,
                 reader_options.limits(),
@@ -323,7 +304,7 @@ fn run_command(
             );
             Ok(true)
         }
-        [command, action, path, parents @ ..] if command == "snapshot" && action == "list" => {
+        Command::SnapshotList { path, parents } => {
             let image = virtdisk::Qcow2::open_chain_with_limits(
                 path,
                 &parents.iter().map(PathBuf::from).collect::<Vec<_>>(),
@@ -348,22 +329,29 @@ fn run_command(
             println!("]");
             Ok(true)
         }
-        [command, action, path, id, output, selected, parents @ ..]
-            if command == "snapshot" && action == "export" =>
-        {
-            let id = snapshot_bytes(id)?;
+        Command::SnapshotExport {
+            path,
+            id,
+            output,
+            selected,
+            parents,
+        } => {
             let image = Arc::new(virtdisk::Qcow2::open_chain_with_limits(
                 path,
                 &parents.iter().map(PathBuf::from).collect::<Vec<_>>(),
                 reader_options.limits(),
             )?);
             let view = image.open_snapshot(&id)?;
-            convert_image(&view, output, format(selected)?)?;
+            convert_image(&view, output, selected)?;
             Ok(true)
         }
-        [command, path, selected, size, policy, parents @ ..] if command == "resize-native" => {
-            let size = byte_count(size)?;
-            let policy = shrink_policy(policy)?;
+        Command::ResizeNative {
+            path,
+            selected,
+            size,
+            policy,
+            parents,
+        } => {
             let mut writer = open_writer(path, selected, parents, recovery)?;
             match execution {
                 MutationExecution::WholeCall => writer.resize(size, policy)?,
@@ -373,9 +361,12 @@ fn run_command(
             println!("{{\"virtual_size\":{size}}}");
             Ok(true)
         }
-        [command, path, selected, offset, length] if command == "preallocate" => {
-            let offset = byte_count(offset)?;
-            let length = byte_count(length)?;
+        Command::Preallocate {
+            path,
+            selected,
+            offset,
+            length,
+        } => {
             let writer = open_writer(path, selected, &[], recovery)?;
             match execution {
                 MutationExecution::WholeCall => writer.preallocate(offset, length)?,
@@ -387,38 +378,29 @@ fn run_command(
             println!("{{\"offset\":{offset},\"length\":{length},\"method\":\"preallocated\"}}");
             Ok(true)
         }
-        [command, path, selected, size] if command == "create" || command == "create-sparse" => {
-            let size = byte_count(size)?;
-            let writer = if command == "create-sparse" {
-                ImageWriter::create_sparse(path, format(selected)?, size)?
+        Command::Create {
+            path,
+            selected,
+            size,
+            sparse,
+        } => {
+            let writer = if sparse {
+                ImageWriter::create_sparse(path, selected, size)?
             } else {
-                ImageWriter::create(path, format(selected)?, size)?
+                ImageWriter::create(path, selected, size)?
             };
             writer.flush()?;
             println!("{{\"virtual_size\":{size}}}");
             Ok(true)
         }
-        [
-            command,
+        Command::Trim {
             path,
             selected,
             offset,
             length,
             policy,
-            parents @ ..,
-        ] if command == "trim" => {
-            let offset = byte_count(offset)?;
-            let length = byte_count(length)?;
-            let policy = match policy.to_str() {
-                Some("require") => DiscardPolicy::RequireDeallocation,
-                Some("zero-fallback") => DiscardPolicy::AllowZeroFallback,
-                _ => {
-                    return Err(io::Error::new(
-                        io::ErrorKind::InvalidInput,
-                        "discard policy must be require or zero-fallback",
-                    ));
-                }
-            };
+            parents,
+        } => {
             let writer = open_writer(path, selected, parents, recovery)?;
             let result = match execution {
                 MutationExecution::WholeCall => writer.discard(offset, length, policy)?,
@@ -434,9 +416,13 @@ fn run_command(
             println!("{{\"offset\":{offset},\"length\":{length},\"method\":\"{method}\"}}");
             Ok(true)
         }
-        [command, path, selected, offset, length, parents @ ..] if command == "zero" => {
-            let offset = byte_count(offset)?;
-            let length = byte_count(length)?;
+        Command::Zero {
+            path,
+            selected,
+            offset,
+            length,
+            parents,
+        } => {
             let writer = open_writer(path, selected, parents, recovery)?;
             match execution {
                 MutationExecution::WholeCall => writer.write_zeroes(offset, length)?,
@@ -448,7 +434,11 @@ fn run_command(
             println!("{{\"offset\":{offset},\"length\":{length},\"method\":\"zeroed\"}}");
             Ok(true)
         }
-        [command, path, selected, parents @ ..] if command == "hash" => {
+        Command::Hash {
+            path,
+            selected,
+            parents,
+        } => {
             let image = open_reader(path, selected, parents, reader_options)?;
             for byte in hash_image_with_context(&image, context)? {
                 print!("{byte:02x}");
@@ -456,7 +446,11 @@ fn run_command(
             println!();
             Ok(true)
         }
-        [command, path, selected, parents @ ..] if command == "map" => {
+        Command::Map {
+            path,
+            selected,
+            parents,
+        } => {
             let image = open_reader(path, selected, parents, reader_options)?;
             image.visit_extents(&mut |extent| {
                 let kind = match extent.kind {
@@ -473,48 +467,48 @@ fn run_command(
             })?;
             Ok(true)
         }
-        [command, input, from, output, to, size, policy] if command == "resize" => {
-            let size = size
-                .to_str()
-                .and_then(|s| s.parse::<u64>().ok())
-                .ok_or_else(|| {
-                    io::Error::new(
-                        io::ErrorKind::InvalidInput,
-                        "size must be an integer byte count",
-                    )
-                })?;
-            let policy = shrink_policy(policy)?;
+        Command::Resize {
+            input,
+            from,
+            output,
+            to,
+            size,
+            policy,
+        } => {
             resize_image_with_context(
                 &open_reader(input, from, &[], reader_options)?,
                 output,
-                format(to)?,
+                to,
                 size,
                 policy,
                 context,
             )?;
             Ok(true)
         }
-        [command, access, path, selected, parents @ ..] if command == "capabilities" => {
-            match access.to_str() {
-                Some("read") => capabilities_output::write_json(
+        Command::Capabilities {
+            access,
+            path,
+            selected,
+            parents,
+        } => {
+            match access {
+                Access::Read => capabilities_output::write_json(
                     &mut io::stdout().lock(),
                     open_reader(path, selected, parents, reader_options)?.inspection(),
                 )?,
-                Some("write") => {
+                Access::Write => {
                     let writer =
                         open_writer(path, selected, parents, RecoveryPolicy::RejectPending)?;
                     capabilities_output::write_json(&mut io::stdout().lock(), writer.inspection())?;
                 }
-                _ => {
-                    return Err(io::Error::new(
-                        io::ErrorKind::InvalidInput,
-                        "capabilities access must be read or write",
-                    ));
-                }
             }
             Ok(true)
         }
-        [command, path, selected, parents @ ..] if command == "info" => {
+        Command::Info {
+            path,
+            selected,
+            parents,
+        } => {
             let image = open_reader(path, selected, parents, reader_options)?;
             let info = image.info();
             let inspection = image.inspection();
@@ -543,31 +537,40 @@ fn run_command(
             );
             Ok(true)
         }
-        [command, input, from, output, to] if command == "convert" => {
+        Command::Convert {
+            input,
+            from,
+            output,
+            to,
+        } => {
             let image = open_reader(input, from, &[], reader_options)?;
-            convert_image_with_context(&image, output, format(to)?, context)?;
+            convert_image_with_context(&image, output, to, context)?;
             Ok(true)
         }
-        [command, input, from, output, to] if command == "compact" => {
+        Command::Compact {
+            input,
+            from,
+            output,
+            to,
+        } => {
             compact_image_with_context(
                 &open_reader(input, from, &[], reader_options)?,
                 output,
-                format(to)?,
+                to,
                 context,
             )?;
             Ok(true)
         }
-        [command, left, left_format, right, right_format] if command == "compare" => {
-            compare_images_with_context(
-                &open_reader(left, left_format, &[], reader_options)?,
-                &open_reader(right, right_format, &[], reader_options)?,
-                context,
-            )
-        }
-        _ => Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "usage: virtdisk graph info MANIFEST AUTHORIZED_IMAGE... | graph select-in-place MANIFEST STATE AUTHORIZED_IMAGE... | graph select MANIFEST STATE OUTPUT_MANIFEST AUTHORIZED_IMAGE... | graph rebase-generation MANIFEST SOURCE PARENT DIRECTORY AUTHORIZED_IMAGE... | graph flatten MANIFEST SOURCE OUTPUT FORMAT AUTHORIZED_IMAGE... | graph merge MANIFEST CHILD ANCESTOR OUTPUT FORMAT AUTHORIZED_IMAGE... | graph rebase MANIFEST SOURCE PARENT OUTPUT AUTHORIZED_IMAGE... | graph snapshot MANIFEST PARENT DIRECTORY FORMAT AUTHORIZED_IMAGE... | capabilities read|write IMAGE FORMAT [PARENT...] | check IMAGE FORMAT structure|payload [PARENT...] | snapshot create IMAGE ID NAME [PARENT...] | snapshot delete|revert IMAGE ID [PARENT...] | snapshot list IMAGE [PARENT...] | snapshot export IMAGE ID OUTPUT FORMAT [PARENT...] | create|create-sparse OUTPUT FORMAT SIZE | preallocate IMAGE FORMAT OFFSET LENGTH | info|hash|map IMAGE FORMAT [PARENT...] | convert|compact INPUT INPUT_FORMAT OUTPUT OUTPUT_FORMAT | compare LEFT LEFT_FORMAT RIGHT RIGHT_FORMAT | resize INPUT INPUT_FORMAT OUTPUT OUTPUT_FORMAT SIZE reject|zero-tail|allow-loss | resize-native IMAGE FORMAT SIZE reject|zero-tail|allow-loss [PARENT...] | zero IMAGE FORMAT OFFSET LENGTH [PARENT...] | trim IMAGE FORMAT OFFSET LENGTH require|zero-fallback [PARENT...]",
-        )),
+        Command::Compare {
+            left,
+            left_format,
+            right,
+            right_format,
+        } => compare_images_with_context(
+            &open_reader(left, left_format, &[], reader_options)?,
+            &open_reader(right, right_format, &[], reader_options)?,
+            context,
+        ),
     }
 }
 
@@ -602,47 +605,6 @@ fn open_graph_declaration(
     manifest.open_graph_with_limits(&paths, options.limits())
 }
 
-fn snapshot_bytes(value: &OsStr) -> io::Result<Vec<u8>> {
-    let value = value.to_str().ok_or_else(|| {
-        io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "snapshot bytes require UTF-8 or hex:HEX_BYTES",
-        )
-    })?;
-    let Some(encoded) = value.strip_prefix("hex:") else {
-        return Ok(value.as_bytes().to_vec());
-    };
-    if encoded.len() % 2 != 0 || encoded.len() > 131070 {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "invalid hexadecimal snapshot bytes",
-        ));
-    }
-    encoded
-        .as_bytes()
-        .as_chunks::<2>()
-        .0
-        .iter()
-        .map(|pair| {
-            let digit = |byte: u8| match byte {
-                b'0'..=b'9' => Some(byte - b'0'),
-                b'a'..=b'f' => Some(byte - b'a' + 10),
-                b'A'..=b'F' => Some(byte - b'A' + 10),
-                _ => None,
-            };
-            digit(pair[0])
-                .zip(digit(pair[1]))
-                .map(|(high, low)| high * 16 + low)
-                .ok_or_else(|| {
-                    io::Error::new(
-                        io::ErrorKind::InvalidInput,
-                        "invalid hexadecimal snapshot bytes",
-                    )
-                })
-        })
-        .collect()
-}
-
 fn hex(bytes: &[u8]) -> String {
     use std::fmt::Write;
     let mut output = String::with_capacity(bytes.len() * 2);
@@ -652,37 +614,13 @@ fn hex(bytes: &[u8]) -> String {
     output
 }
 
-fn byte_count(value: &OsStr) -> io::Result<u64> {
-    value
-        .to_str()
-        .and_then(|value| value.parse().ok())
-        .ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "range values must be integer byte counts",
-            )
-        })
-}
-
-fn shrink_policy(value: &OsStr) -> io::Result<ShrinkPolicy> {
-    match value.to_str() {
-        Some("reject") => Ok(ShrinkPolicy::Reject),
-        Some("zero-tail") => Ok(ShrinkPolicy::RequireZero),
-        Some("allow-loss") => Ok(ShrinkPolicy::AllowDataLoss),
-        _ => Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "shrink policy must be reject, zero-tail or allow-loss",
-        )),
-    }
-}
-
 fn open_reader(
     path: &OsStr,
-    selected: &OsStr,
+    selected: ImageFormat,
     parents: &[std::ffi::OsString],
     options: &ReaderOpenOptions,
 ) -> io::Result<Image> {
-    let mut options = options.clone().format(format(selected)?);
+    let mut options = options.clone().format(selected);
     if !parents.is_empty() {
         options = options.authorized_paths(parents.iter().map(PathBuf::from));
     }
@@ -940,11 +878,10 @@ fn reader_controls(
 
 fn open_writer(
     path: &OsStr,
-    selected: &OsStr,
+    selected: ImageFormat,
     parents: &[std::ffi::OsString],
     recovery: RecoveryPolicy,
 ) -> io::Result<ImageWriter> {
-    let selected = format(selected)?;
     let mut options = WriterOpenOptions::default().recovery_policy(recovery);
     if !parents.is_empty() {
         options = options.authorized_paths(parents.iter().map(PathBuf::from));

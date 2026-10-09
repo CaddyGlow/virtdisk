@@ -320,7 +320,9 @@ impl<'a> OperationContext<'a> {
 
 pub(crate) fn scratch_buffer(bytes: usize) -> io::Result<Vec<u8>> {
     let mut buffer = Vec::new();
-    buffer.try_reserve_exact(bytes).map_err(io::Error::other)?;
+    buffer
+        .try_reserve_exact(bytes)
+        .map_err(|error| io::Error::new(io::ErrorKind::OutOfMemory, error))?;
     buffer.resize(bytes, 0);
     Ok(buffer)
 }

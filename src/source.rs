@@ -27,7 +27,7 @@ impl ReadAt for FileSource {
         let mut file = self
             .file
             .lock()
-            .map_err(|_| io::Error::other("VHDX source mutex poisoned"))?;
+            .map_err(|_| io::Error::other("source mutex poisoned"))?;
         file.seek(SeekFrom::Start(offset))?;
         Ok(file.read_exact(dst)?)
     }

@@ -45,7 +45,7 @@ impl Qcow2Writer {
             cut,
             &self.context.authorized,
         ) {
-            if journal::sidecar(&self.context.path).exists() {
+            if journal::requires_reopen(&error, &self.context.path) {
                 self.recovery_required
                     .store(true, std::sync::atomic::Ordering::Relaxed);
             }
@@ -239,7 +239,7 @@ impl Qcow2Writer {
             cut,
             &self.context.authorized,
         ) {
-            if journal::sidecar(&self.context.path).exists() {
+            if journal::requires_reopen(&error, &self.context.path) {
                 self.recovery_required
                     .store(true, std::sync::atomic::Ordering::Relaxed);
             }
@@ -274,6 +274,68 @@ impl Qcow2Writer {
 mod recovery_tests {
     use super::*;
     use crate::{RawDisk, ReadAt};
+    #[test]
+    fn final_directory_sync_failure_invalidates_cached_snapshot_and_resize_state() {
+        let _test_guard = crate::test_sync::writer_test();
+        for action in ["create", "delete", "revert", "resize"] {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("disk.qcow2");
+            let mut writer = Qcow2Writer::create(&path, 2 * CLUSTER).unwrap();
+            writer.write_all_at(0, &[7]).unwrap();
+            if action != "create" {
+                writer.create_snapshot(b"saved", b"saved").unwrap();
+                writer.write_all_at(0, &[9]).unwrap();
+            }
+            let error = match action {
+                "create" => writer
+                    .create_snapshot_inner(b"saved", b"saved", Some(8))
+                    .unwrap_err(),
+                "delete" => writer
+                    .lifecycle_inner(b"saved", Lifecycle::Delete, Some(8))
+                    .unwrap_err(),
+                "revert" => writer
+                    .lifecycle_inner(b"saved", Lifecycle::Revert, Some(8))
+                    .unwrap_err(),
+                "resize" => writer
+                    .resize_inner(CLUSTER, crate::ShrinkPolicy::AllowDataLoss, Some(8))
+                    .unwrap_err(),
+                _ => unreachable!(),
+            };
+            assert_eq!(error.kind(), io::ErrorKind::Interrupted, "{action}");
+            assert!(!journal::sidecar(&path).exists(), "{action}");
+            assert!(writer.write_all_at(0, &[42]).is_err(), "{action}");
+            assert!(writer.read_exact_at(0, &mut [0]).is_err(), "{action}");
+            assert!(writer.flush().is_err(), "{action}");
+            drop(writer);
+
+            // The transaction completed on disk even though directory durability
+            // failed. Reopening must refresh mappings, ownership, and capacity.
+            let reopened = Qcow2Writer::open(&path).unwrap();
+            assert_eq!(
+                reopened.len(),
+                if action == "resize" {
+                    CLUSTER
+                } else {
+                    2 * CLUSTER
+                },
+                "{action}"
+            );
+            reopened.write_all_at(0, &[42]).unwrap();
+            reopened.flush().unwrap();
+            drop(reopened);
+            let disk = Arc::new(Qcow2::open(Arc::new(RawDisk::open(&path).unwrap())).unwrap());
+            disk.validate_active_mapping().unwrap();
+            if action == "delete" {
+                assert!(disk.list_snapshots().unwrap().is_empty());
+            } else {
+                let saved = disk.open_snapshot(b"saved").unwrap();
+                let mut byte = [0];
+                saved.read_exact_at(0, &mut byte).unwrap();
+                assert_eq!(byte, [7], "{action}");
+            }
+        }
+    }
+
     #[test]
     fn native_snapshot_creation_recovers_each_persistence_and_metadata_patch_cut() {
         let _test_guard = crate::test_sync::writer_test();

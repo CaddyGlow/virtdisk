@@ -34,6 +34,108 @@ fn memory(bytes: Vec<u8>, storage: u128) -> Arc<dyn ReadAt> {
 fn descriptor() -> Arc<dyn ReadAt> {
     memory(b"version=1\nCID=12345678\nparentCID=ffffffff\ncreateType=\"twoGbMaxExtentFlat\"\nRW 1 FLAT \"a\" 0\nRW 1 FLAT \"b\" 1\n".to_vec(), 1)
 }
+fn flat_chain_descriptor(cid: u32, parent_cid: u32, storage: u128) -> Arc<dyn ReadAt> {
+    let hint = if parent_cid == u32::MAX {
+        ""
+    } else {
+        "parentFileNameHint=\"untrusted\"\n"
+    };
+    let mut bytes = format!(
+        "version=1\nCID={cid:08x}\nparentCID={parent_cid:08x}\n{hint}createType=\"monolithicFlat\"\nRW 1 FLAT \"extent\" 0\n"
+    )
+    .into_bytes();
+    bytes.resize(512, 0);
+    memory(bytes, storage)
+}
+fn flat_chain_bindings(storage: u128) -> [VmdkExtentBinding; 1] {
+    [VmdkExtentBinding {
+        name: "extent".into(),
+        source: memory(vec![0; 512], storage),
+    }]
+}
+#[test]
+fn supplied_vmdk_chain_counts_every_ancestor_toward_depth_limit() {
+    let limits = ParserLimits {
+        recursion_depth: 2,
+        ..Default::default()
+    };
+    let base = Arc::new(
+        Vmdk::open_descriptor_bound(
+            flat_chain_descriptor(1, u32::MAX, 1),
+            &flat_chain_bindings(101),
+            None,
+            limits,
+        )
+        .unwrap(),
+    );
+    let child = Arc::new(
+        Vmdk::open_descriptor_bound(
+            flat_chain_descriptor(2, 1, 2),
+            &flat_chain_bindings(102),
+            Some(base.clone()),
+            limits,
+        )
+        .unwrap(),
+    );
+    assert_eq!(
+        child.ancestor_identities(),
+        vec![base.source_identity().unwrap()]
+    );
+    assert!(
+        Vmdk::open_descriptor_bound(
+            flat_chain_descriptor(3, 2, 3),
+            &flat_chain_bindings(103),
+            Some(child),
+            limits,
+        )
+        .is_err()
+    );
+}
+#[test]
+fn supplied_vmdk_chain_retains_grandparent_identity_and_rejects_alias() {
+    let limits = ParserLimits::default();
+    let base = Arc::new(
+        Vmdk::open_descriptor_bound(
+            flat_chain_descriptor(1, u32::MAX, 1),
+            &flat_chain_bindings(101),
+            None,
+            limits,
+        )
+        .unwrap(),
+    );
+    let child = Arc::new(
+        Vmdk::open_descriptor_bound(
+            flat_chain_descriptor(2, 1, 2),
+            &flat_chain_bindings(102),
+            Some(base.clone()),
+            limits,
+        )
+        .unwrap(),
+    );
+    let grandchild = Vmdk::open_descriptor_bound(
+        flat_chain_descriptor(3, 2, 3),
+        &flat_chain_bindings(103),
+        Some(child.clone()),
+        limits,
+    )
+    .unwrap();
+    assert_eq!(
+        grandchild.ancestor_identities(),
+        vec![
+            child.source_identity().unwrap(),
+            base.source_identity().unwrap(),
+        ]
+    );
+    assert!(
+        Vmdk::open_descriptor_bound(
+            flat_chain_descriptor(3, 2, 1),
+            &flat_chain_bindings(103),
+            Some(child),
+            limits,
+        )
+        .is_err()
+    );
+}
 #[test]
 fn portable_flat_bindings_read_and_reject_aliases() {
     let a = memory(vec![42; 512], 2);

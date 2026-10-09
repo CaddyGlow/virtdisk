@@ -98,8 +98,7 @@ impl PinnedParentGraph {
                 .ok_or_else(|| invalid("missing VMDK parent topology"))?
                 .cid
             || sector(link.sectors)? != self.reader.len()
-            || link.profile != "\"twoGbMaxExtentSparse\""
-            || !link.sparse_extents
+            || link.profile != crate::vmdk_descriptor::Profile::SplitSparse
         {
             return Err(invalid(
                 "VMDK child parent CID, capacity or profile mismatch",
@@ -374,7 +373,7 @@ impl Vmdk {
         child_physical: u64,
     ) -> io::Result<Option<PinnedParentGraph>> {
         let link = descriptor_link(source, budget)?;
-        if link.profile != "\"twoGbMaxExtentSparse\"" || !link.sparse_extents {
+        if link.profile != crate::vmdk_descriptor::Profile::SplitSparse {
             return Err(unsupported(
                 "pinned writer graph requires split hosted sparse child",
             ));

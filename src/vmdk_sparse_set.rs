@@ -43,79 +43,25 @@ fn descriptor_mode(source: &dyn ReadAt, allow_parent: bool) -> io::Result<Descri
     let mut bytes = vec![0; source.len() as usize];
     source.read_exact_at(0, &mut bytes)?;
     let text = crate::vmdk_descriptor::text(&bytes)?;
-    let mut properties = crate::vmdk_descriptor::Properties::default();
-    let mut version = false;
-    let mut parent = false;
-    let mut profile = false;
-    let mut cid = None;
-    let mut specs = Vec::new();
-    let mut cursor = 0;
-    for original in text.split_inclusive('\n') {
-        let line = original.trim();
-        if line.is_empty() || line.starts_with('#') {
-            cursor += original.len();
-            continue;
-        }
-        if let Some((key, value)) = crate::vmdk_descriptor::property(original, cursor) {
-            let duplicate = properties.duplicate(key);
-            let field_range = value.range;
-            let value = value.text;
-            match key {
-                "version" if !duplicate && value == "1" => version = true,
-                "parentCID"
-                    if !duplicate
-                        && (value == "ffffffff"
-                            || (allow_parent
-                                && value.len() == 8
-                                && value.bytes().all(|byte| byte.is_ascii_hexdigit()))) =>
-                {
-                    parent = true
-                }
-                "parentFileNameHint"
-                    if allow_parent
-                        && !duplicate
-                        && value.starts_with('"')
-                        && value.ends_with('"') =>
-                {
-                    // Profile permits one quoted parent hint.
-                }
-                "createType" if !duplicate && value == "\"twoGbMaxExtentSparse\"" => profile = true,
-                "CID" if !duplicate && crate::vmdk_descriptor::hexadecimal(value).is_ok() => {
-                    cid = Some((field_range.start as u64, field_range.len()));
-                }
-                key if key.starts_with("ddb.") => {}
-                _ => return Err(unsupported()),
-            }
-        } else {
-            let extent = crate::vmdk_descriptor::extent(line, 0)?;
-            if extent.access != "RW"
-                || extent.kind != "SPARSE"
-                || !extent.tail.is_empty()
-                || specs.len() >= 256
-            {
-                return Err(unsupported());
-            }
-            let size = crate::vmdk_descriptor::sectors(extent.count.text)?;
-            let name = extent.name;
-            if size == 0
-                || size > 2 * 1024 * 1024 * 1024
-                || name.is_empty()
-                || name.contains([':', '\\'])
-                || name.chars().any(char::is_control)
-            {
-                return Err(unsupported());
-            }
-            specs.push(Spec {
-                name: name.to_owned(),
-                size,
-            });
-        }
-        cursor += original.len();
-    }
-    if !version || !parent || !profile || specs.is_empty() {
+    let parsed = crate::vmdk_descriptor::Descriptor::parse(text, || Ok(()))?;
+    parsed.require_parent(allow_parent)?;
+    if parsed.profile != crate::vmdk_descriptor::Profile::SplitSparse {
         return Err(unsupported());
     }
-    let (cid_offset, cid_width) = cid.ok_or_else(invalid)?;
+    let mut specs = Vec::new();
+    for extent in parsed.extents() {
+        let extent = extent?;
+        let size = crate::vmdk_descriptor::sectors(extent.count.text)?;
+        if specs.len() >= 256 || size > 2 * 1024 * 1024 * 1024 {
+            return Err(unsupported());
+        }
+        specs.push(Spec {
+            name: extent.name.to_owned(),
+            size,
+        });
+    }
+    let cid_offset = parsed.cid_range.start as u64;
+    let cid_width = parsed.cid_range.len();
     let size = specs.iter().try_fold(0u64, |sum, spec| {
         sum.checked_add(spec.size).ok_or_else(invalid)
     })?;
@@ -190,8 +136,8 @@ pub(super) fn matches_profile(path: &Path) -> io::Result<bool> {
     source.read_exact_at(0, &mut bytes)?;
     Ok(std::str::from_utf8(&bytes).is_ok_and(|text| {
         text.lines().any(|line| {
-            line.split_once('=').is_some_and(|(key, value)| {
-                key.trim() == "createType" && value.trim() == "\"twoGbMaxExtentSparse\""
+            crate::vmdk_descriptor::property(line, 0).is_some_and(|(key, value)| {
+                key == "createType" && value.text == "\"twoGbMaxExtentSparse\""
             })
         })
     }))

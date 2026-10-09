@@ -2,6 +2,7 @@
 
 use crate::ReadAt;
 use crate::io;
+use crate::sidecar::sync_parent;
 use crate::source::LockedSource;
 use sha2::{Digest, Sha256};
 
@@ -296,25 +297,6 @@ pub(crate) fn pending(path: &std::path::Path) -> io::Result<bool> {
         Err(e) => Err(e.into()),
     }
 }
-fn sync_parent(path: &std::path::Path) -> io::Result<()> {
-    #[cfg(target_os = "linux")]
-    {
-        Ok(std::fs::File::open(
-            path.parent()
-                .filter(|p| !p.as_os_str().is_empty())
-                .unwrap_or(std::path::Path::new(".")),
-        )?
-        .sync_all()?)
-    }
-    #[cfg(not(target_os = "linux"))]
-    {
-        let _ = path;
-        Err(io::Error::new(
-            io::ErrorKind::Unsupported,
-            "hosted image journal directory durability currently requires Linux",
-        ))
-    }
-}
 
 struct OwnedPatched {
     source: std::sync::Arc<dyn ReadAt>,
@@ -427,29 +409,11 @@ pub(crate) fn commit(
     cut: Option<usize>,
     validator: &dyn Fn(std::sync::Arc<dyn ReadAt>) -> io::Result<()>,
 ) -> io::Result<()> {
-    use crate::io::Write;
     raw.require_single_link_for_journal()?;
     validate_states(raw.clone(), &record, validator)?;
     sync_parent(path)?; // Reject unsupported directory persistence before mutation.
     let bytes = record.encode()?;
-    let journal = sidecar(path);
-    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-    let mut temporary = journal.as_os_str().to_owned();
-    temporary.push(format!(
-        ".tmp-{}-{}",
-        std::process::id(),
-        NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-    ));
-    let temporary = std::path::PathBuf::from(temporary);
-    let mut file = std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&temporary)?;
-    file.write_all(&bytes)?;
-    file.sync_all()?;
-    std::fs::hard_link(&temporary, &journal)?; // Atomic no-overwrite publication.
-    sync_parent(path)?;
-    std::fs::remove_file(&temporary)?;
+    crate::sidecar::publish_new(&sidecar(path), &bytes)?;
     interrupt(0, cut)?;
     replay(path, raw, &record, cut, validator)
 }
