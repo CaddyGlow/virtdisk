@@ -257,19 +257,26 @@ fn writer_factory_reports_parent_and_applies_discard_policy() {
                 .kind(),
             virtdisk::io::ErrorKind::Unsupported
         );
+        assert!(writer.flush().is_err());
+        drop(writer);
+        let reader = virtdisk::Image::open_chain(
+            &child,
+            Some(ImageFormat::Qcow2),
+            std::slice::from_ref(&raw),
+        )
+        .unwrap();
+        let mut bytes = [0; 512];
+        virtdisk::ReadAt::read_exact_at(&reader, 0, &mut bytes).unwrap();
+        assert_eq!(bytes, [7; 512]);
+        assert_eq!(std::fs::read(child).unwrap(), child_before);
+        assert_eq!(std::fs::read(raw).unwrap(), vec![7; 65536]);
+        return;
     }
     writer.flush().unwrap();
     let mut bytes = [1; 512];
     writer.read_exact_at(0, &mut bytes).unwrap();
-    if cfg!(target_os = "linux") {
-        assert_eq!(bytes, [0; 512]);
-    } else {
-        assert_eq!(bytes, [7; 512]);
-    }
+    assert_eq!(bytes, [0; 512]);
     drop(writer);
-    if !cfg!(target_os = "linux") {
-        assert_eq!(std::fs::read(child).unwrap(), child_before);
-    }
     assert_eq!(std::fs::read(raw).unwrap(), vec![7; 65536]);
 }
 
