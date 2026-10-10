@@ -166,7 +166,14 @@ mod write;
 #[cfg(feature = "std")]
 pub use write::{DiscardPolicy, DiscardResult, WriteAt, zero_image_with_context};
 #[cfg(feature = "std")]
+mod forensic_metadata;
+#[cfg(feature = "std")]
 mod info;
+#[cfg(feature = "std")]
+pub use forensic_metadata::{
+    ContainerMetadata, InspectMetadata, VdiMetadata, VhdxHeaderMetadata, VhdxMetadata,
+    VmdkExtentMetadata, VmdkMetadata,
+};
 #[cfg(feature = "std")]
 pub use info::{
     Capability, DiskGeometry, ImageCapabilities, ImageInspection, ImageOperation, ImageProfile,

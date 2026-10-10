@@ -20,6 +20,11 @@ impl Access {
 }
 
 pub(super) enum Command<'a> {
+    Metadata {
+        path: &'a OsStr,
+        selected: ImageFormat,
+        parents: &'a [OsString],
+    },
     GraphSnapshot {
         manifest: &'a OsStr,
         parent: &'a OsStr,
@@ -180,6 +185,13 @@ pub(super) enum Command<'a> {
 impl<'a> Command<'a> {
     pub(super) fn parse(args: &'a [OsString]) -> io::Result<Self> {
         match args {
+            [command, path, selected, parents @ ..] if command == "metadata" => {
+                Ok(Command::Metadata {
+                    path,
+                    selected: format(selected)?,
+                    parents,
+                })
+            }
             [
                 command,
                 action,
@@ -454,7 +466,7 @@ impl<'a> Command<'a> {
             }
             _ => Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
-                "usage: virtdisk graph info MANIFEST AUTHORIZED_IMAGE... | graph select-in-place MANIFEST STATE AUTHORIZED_IMAGE... | graph select MANIFEST STATE OUTPUT_MANIFEST AUTHORIZED_IMAGE... | graph rebase-generation MANIFEST SOURCE PARENT DIRECTORY AUTHORIZED_IMAGE... | graph flatten MANIFEST SOURCE OUTPUT FORMAT AUTHORIZED_IMAGE... | graph merge MANIFEST CHILD ANCESTOR OUTPUT FORMAT AUTHORIZED_IMAGE... | graph rebase MANIFEST SOURCE PARENT OUTPUT AUTHORIZED_IMAGE... | graph snapshot MANIFEST PARENT DIRECTORY FORMAT AUTHORIZED_IMAGE... | capabilities read|write IMAGE FORMAT [PARENT...] | check IMAGE FORMAT structure|payload [PARENT...] | snapshot create IMAGE ID NAME [PARENT...] | snapshot delete|revert IMAGE ID [PARENT...] | snapshot list IMAGE [PARENT...] | snapshot export IMAGE ID OUTPUT FORMAT [PARENT...] | create|create-sparse OUTPUT FORMAT SIZE | preallocate IMAGE FORMAT OFFSET LENGTH | info|hash|map IMAGE FORMAT [PARENT...] | convert|compact INPUT INPUT_FORMAT OUTPUT OUTPUT_FORMAT | compare LEFT LEFT_FORMAT RIGHT RIGHT_FORMAT | resize INPUT INPUT_FORMAT OUTPUT OUTPUT_FORMAT SIZE reject|zero-tail|allow-loss | resize-native IMAGE FORMAT SIZE reject|zero-tail|allow-loss [PARENT...] | zero IMAGE FORMAT OFFSET LENGTH [PARENT...] | trim IMAGE FORMAT OFFSET LENGTH require|zero-fallback [PARENT...]",
+                "usage: virtdisk graph info MANIFEST AUTHORIZED_IMAGE... | graph select-in-place MANIFEST STATE AUTHORIZED_IMAGE... | graph select MANIFEST STATE OUTPUT_MANIFEST AUTHORIZED_IMAGE... | graph rebase-generation MANIFEST SOURCE PARENT DIRECTORY AUTHORIZED_IMAGE... | graph flatten MANIFEST SOURCE OUTPUT FORMAT AUTHORIZED_IMAGE... | graph merge MANIFEST CHILD ANCESTOR OUTPUT FORMAT AUTHORIZED_IMAGE... | graph rebase MANIFEST SOURCE PARENT OUTPUT AUTHORIZED_IMAGE... | graph snapshot MANIFEST PARENT DIRECTORY FORMAT AUTHORIZED_IMAGE... | capabilities read|write IMAGE FORMAT [PARENT...] | check IMAGE FORMAT structure|payload [PARENT...] | snapshot create IMAGE ID NAME [PARENT...] | snapshot delete|revert IMAGE ID [PARENT...] | snapshot list IMAGE [PARENT...] | snapshot export IMAGE ID OUTPUT FORMAT [PARENT...] | create|create-sparse OUTPUT FORMAT SIZE | preallocate IMAGE FORMAT OFFSET LENGTH | info|metadata|hash|map IMAGE FORMAT [PARENT...] | convert|compact INPUT INPUT_FORMAT OUTPUT OUTPUT_FORMAT | compare LEFT LEFT_FORMAT RIGHT RIGHT_FORMAT | resize INPUT INPUT_FORMAT OUTPUT OUTPUT_FORMAT SIZE reject|zero-tail|allow-loss | resize-native IMAGE FORMAT SIZE reject|zero-tail|allow-loss [PARENT...] | zero IMAGE FORMAT OFFSET LENGTH [PARENT...] | trim IMAGE FORMAT OFFSET LENGTH require|zero-fallback [PARENT...]",
             )),
         }
     }

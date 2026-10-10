@@ -1118,6 +1118,78 @@ impl Vmdk {
         })
     }
 }
+#[cfg(feature = "std")]
+impl crate::InspectMetadata for Vmdk {
+    fn metadata(&self) -> io::Result<crate::ContainerMetadata> {
+        let budget = self
+            .source
+            .budget()
+            .ok_or_else(|| invalid("VMDK lacks budget"))?;
+        budget.metadata(512)?;
+        budget.work(1)?;
+        let mut header = [0; 512];
+        // Text descriptors can be shorter than a sector.
+        let prefix = self.source.len().min(512) as usize;
+        self.source.read_exact_at(0, &mut header[..prefix])?;
+        let (offset, length) = if &header[..4] == b"KDMV" {
+            (sector(u64le(&header, 28))?, sector(u64le(&header, 36))?)
+        } else {
+            (0, self.source.len())
+        };
+        if length == 0 {
+            return Ok(crate::ContainerMetadata::Vmdk(None));
+        }
+        budget.attribute(length)?;
+        budget.metadata(length)?;
+        let _scratch = budget.cache(
+            length
+                .checked_mul(16)
+                .ok_or_else(|| invalid("VMDK metadata overflow"))?,
+        )?;
+        let mut bytes = repeated(
+            0,
+            usize::try_from(length).map_err(|_| invalid("VMDK descriptor too large"))?,
+        )?;
+        self.source.read_exact_at(offset, &mut bytes)?;
+        let text = crate::vmdk_descriptor::text(&bytes)?;
+        if text.is_empty() {
+            return Ok(crate::ContainerMetadata::Vmdk(None));
+        }
+        let parsed = crate::vmdk_descriptor::Descriptor::parse(text, || budget.work(1))?;
+        let mut properties = Vec::new();
+        for line in text.lines() {
+            budget.work(1)?;
+            if line.trim_start().starts_with('#') {
+                continue;
+            }
+            if let Some((key, value)) = crate::vmdk_descriptor::property(line, 0) {
+                properties.push((key.to_owned(), value.text.to_owned()));
+            }
+        }
+        let mut extents = Vec::new();
+        for extent in parsed.extents() {
+            budget.work(1)?;
+            let extent = extent?;
+            extents.push(crate::VmdkExtentMetadata {
+                access: extent.access.to_owned(),
+                sectors: crate::vmdk_descriptor::number(extent.count.text)?,
+                kind: extent.kind.to_owned(),
+                name: extent.name.to_owned(),
+                offset_sectors: if extent.kind == "FLAT" {
+                    Some(crate::vmdk_descriptor::number(extent.tail)?)
+                } else {
+                    None
+                },
+            });
+        }
+        Ok(crate::ContainerMetadata::Vmdk(Some(crate::VmdkMetadata {
+            cid: parsed.cid,
+            parent_cid: parsed.parent_cid,
+            properties,
+            extents,
+        })))
+    }
+}
 impl ReadAt for Vmdk {
     #[cfg(feature = "std")]
     fn host_context(&self) -> Option<&dyn core::any::Any> {

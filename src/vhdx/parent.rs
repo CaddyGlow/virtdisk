@@ -8,6 +8,8 @@ const TYPE: [u8; 16] = [
     0xb7, 0xef, 0x4a, 0xb0, 0x9e, 0xd1, 0x81, 0x4a, 0xb7, 0x89, 0x25, 0xb8, 0xe9, 0x44, 0x59, 0x13,
 ];
 pub(super) struct Locator {
+    #[cfg(feature = "std")]
+    pub(super) entries: BTreeMap<String, String>,
     pub(super) linkage: Vec<[u8; 16]>,
     #[cfg_attr(not(feature = "std"), allow(dead_code))]
     pub(super) paths: Vec<String>,
@@ -99,12 +101,17 @@ pub(super) fn parse(bytes: &[u8]) -> io::Result<Locator> {
     }
     let paths = ["relative_path", "volume_path", "absolute_win32_path"]
         .iter()
-        .filter_map(|k| values.remove(*k))
+        .filter_map(|k| values.get(*k).cloned())
         .collect::<Vec<_>>();
     if paths.is_empty() {
         return Err(invalid("missing VHDX parent path"));
     }
-    Ok(Locator { linkage, paths })
+    Ok(Locator {
+        linkage,
+        paths,
+        #[cfg(feature = "std")]
+        entries: values,
+    })
 }
 fn guid(s: &str) -> io::Result<[u8; 16]> {
     let b = s.as_bytes();
@@ -453,6 +460,21 @@ impl super::Vhdx {
 #[cfg(all(test, feature = "std"))]
 mod tests {
     use super::*;
+    #[test]
+    fn locator_preserves_unknown_declarations_without_using_them_as_paths() {
+        let locator = parse(&fixture(&[
+            ("parent_linkage", "{00112233-4455-6677-8899-aabbccddeeff}"),
+            ("relative_path", r".\parent.vhdx"),
+            ("vendor_note", "recorded \"text\""),
+        ]))
+        .unwrap();
+        assert_eq!(locator.entries["vendor_note"], "recorded \"text\"");
+        assert_eq!(
+            locator.entries["parent_linkage"],
+            "{00112233-4455-6677-8899-aabbccddeeff}"
+        );
+        assert_eq!(locator.paths, [r".\parent.vhdx"]);
+    }
     fn fixture(pairs: &[(&str, &str)]) -> Vec<u8> {
         let mut b = vec![0; 20 + pairs.len() * 12];
         b[..16].copy_from_slice(&TYPE);

@@ -3,6 +3,8 @@
 mod capabilities_output;
 #[path = "virtdisk/command.rs"]
 mod command;
+#[path = "virtdisk/metadata_output.rs"]
+mod metadata_output;
 use command::{Access, Command};
 #[path = "virtdisk/error_output.rs"]
 mod error_output;
@@ -122,6 +124,17 @@ fn run_command(
     context: &mut OperationContext<'_>,
 ) -> io::Result<bool> {
     match command {
+        Command::Metadata {
+            path,
+            selected,
+            parents,
+        } => {
+            use virtdisk::InspectMetadata;
+            let image = open_reader(path, selected, parents, reader_options)?;
+            let metadata = image.metadata()?;
+            metadata_output::write_json(&mut io::stdout().lock(), &metadata)?;
+            Ok(true)
+        }
         Command::GraphSnapshot {
             manifest,
             parent,

@@ -33,6 +33,7 @@ pub struct Image {
     reader: Arc<dyn ReadAt>,
     info: ImageInfo,
     inspection: ImageInspection,
+    metadata_reader: Option<Arc<dyn crate::InspectMetadata + Send + Sync>>,
 }
 
 impl Image {
@@ -71,11 +72,14 @@ impl Image {
             ($image:expr) => {{
                 let image = $image;
                 let inspection = image.inspection();
-                (Arc::new(image) as Arc<dyn ReadAt>, inspection)
+                let image = Arc::new(image);
+                let metadata_reader =
+                    Some(image.clone() as Arc<dyn crate::InspectMetadata + Send + Sync>);
+                (image as Arc<dyn ReadAt>, inspection, metadata_reader)
             }};
         }
         let limits = options.limits;
-        let (reader, mut inspection): (Arc<dyn ReadAt>, ImageInspection) =
+        let (reader, mut inspection, metadata_reader) =
             match (format, options.authorized.as_deref()) {
                 (ImageFormat::Raw, paths) => {
                     if paths.is_some_and(|paths| !paths.is_empty()) {
@@ -85,7 +89,7 @@ impl Image {
                         ));
                     }
                     let inspection = source.inspection();
-                    (ReadBudget::new(limits)?.reader(source), inspection)
+                    (ReadBudget::new(limits)?.reader(source), inspection, None)
                 }
                 (ImageFormat::Qcow2, None) => opened!(Qcow2::open_with_limits(source, limits)?),
                 (ImageFormat::Vdi, None) => opened!(Vdi::open_with_limits(source, limits)?),
@@ -124,6 +128,7 @@ impl Image {
             },
             reader,
             inspection,
+            metadata_reader,
         })
     }
     /// Open an immutable image with only explicitly authorized parent paths.
@@ -154,10 +159,13 @@ impl Image {
             ($image:expr) => {{
                 let image = $image;
                 let inspection = image.inspection();
-                (Arc::new(image) as Arc<dyn ReadAt>, inspection)
+                let image = Arc::new(image);
+                let metadata_reader =
+                    Some(image.clone() as Arc<dyn crate::InspectMetadata + Send + Sync>);
+                (image as Arc<dyn ReadAt>, inspection, metadata_reader)
             }};
         }
-        let (reader, inspection) = match format {
+        let (reader, inspection, metadata_reader) = match format {
             ImageFormat::Raw => {
                 if !authorized_paths.is_empty() {
                     return Err(io::Error::new(
@@ -180,6 +188,7 @@ impl Image {
             },
             reader,
             inspection,
+            metadata_reader,
         })
     }
     /// Open a regular image with bounded format recognition.
@@ -203,13 +212,16 @@ impl Image {
             ($image:expr) => {{
                 let image = $image;
                 let inspection = image.inspection();
-                (Arc::new(image) as Arc<dyn ReadAt>, inspection)
+                let image = Arc::new(image);
+                let metadata_reader =
+                    Some(image.clone() as Arc<dyn crate::InspectMetadata + Send + Sync>);
+                (image as Arc<dyn ReadAt>, inspection, metadata_reader)
             }};
         }
-        let (reader, inspection): (Arc<dyn ReadAt>, ImageInspection) = match format {
+        let (reader, inspection, metadata_reader) = match format {
             ImageFormat::Raw => {
                 let inspection = source.inspection();
-                (source, inspection)
+                (source as Arc<dyn ReadAt>, inspection, None)
             }
             ImageFormat::Qcow2 => opened!(Qcow2::open(source)?),
             ImageFormat::Vdi => opened!(Vdi::open(source)?),
@@ -225,6 +237,7 @@ impl Image {
             reader,
             info,
             inspection,
+            metadata_reader,
         })
     }
 
@@ -740,5 +753,14 @@ impl ReadAt for Resized<'_> {
     }
     fn budget(&self) -> Option<ReadBudget> {
         self.source.budget()
+    }
+}
+
+impl crate::InspectMetadata for Image {
+    fn metadata(&self) -> io::Result<crate::ContainerMetadata> {
+        match &self.metadata_reader {
+            Some(reader) => reader.metadata(),
+            None => Ok(crate::ContainerMetadata::Raw),
+        }
     }
 }

@@ -103,6 +103,7 @@ virtdisk snapshot export IMAGE ID OUTPUT OUTPUT_FORMAT [PARENT...]
 virtdisk preallocate IMAGE raw OFFSET LENGTH
 virtdisk resize-native IMAGE FORMAT SIZE reject|zero-tail|allow-loss [PARENT...]
 virtdisk info IMAGE FORMAT [PARENT...]
+virtdisk metadata IMAGE FORMAT [AUTHORIZED_PARENT_OR_EXTENT...]
 virtdisk capabilities read IMAGE FORMAT [PARENT...]
 virtdisk capabilities write IMAGE FORMAT [PARENT...]
 virtdisk map IMAGE FORMAT [PARENT...]
@@ -114,6 +115,12 @@ virtdisk resize INPUT INPUT_FORMAT OUTPUT OUTPUT_FORMAT SIZE reject
 virtdisk zero IMAGE FORMAT OFFSET LENGTH [PARENT...]
 virtdisk trim IMAGE FORMAT OFFSET LENGTH require|zero-fallback [PARENT...]
 ```
+
+For native identifiers, descriptor declarations, VHDX headers and parent
+locators, and QCOW2 snapshot timestamps, see
+[forensic metadata](docs/forensic-metadata.md). The guide explains how to read
+the CLI/Rust reports, distinguish declared hints from authorized parents, and
+interpret timestamps and logical versus original-file hashes.
 
 Existing-image mutation commands reject pending recovery by default.
 Place `--recover` before `zero`, `trim`, `preallocate`, `resize-native`, or

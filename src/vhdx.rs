@@ -87,7 +87,10 @@ pub struct Vhdx {
     bitmaps: Vec<u64>,
     parent: Option<Arc<Vhdx>>,
     locator: Option<parent::Locator>,
+    _locator_cache: Option<CacheReservation>,
     data_guid: [u8; 16],
+    #[cfg(feature = "std")]
+    virtual_disk_id: [u8; 16],
     #[cfg_attr(not(feature = "std"), allow(dead_code))]
     metadata_offset: u64,
     #[cfg_attr(not(feature = "std"), allow(dead_code))]
@@ -421,6 +424,7 @@ impl Vhdx {
         let mut known = [const { None }; 5];
         let mut size_offset = 0;
         let mut locator = None;
+        let mut locator_cache = None;
         let guids = [PARAM, SIZE, ID, LOGICAL, PHYSICAL];
         let sizes = [8, 8, 16, 4, 4];
         let _seen = budget.cache(u16le(&metadata, 10) as u64 * 128)?;
@@ -467,7 +471,7 @@ impl Vhdx {
                     return Err(invalid("invalid required VHDX parent locator"));
                 }
                 budget.work(len * 20)?;
-                let _locator_cache = budget.cache(len * 8)?;
+                locator_cache = Some(budget.cache(len * 8)?);
                 locator = Some(parent::parse(&read(
                     source.as_ref(),
                     &budget,
@@ -630,7 +634,10 @@ impl Vhdx {
             bitmaps,
             parent: None,
             locator,
+            _locator_cache: locator_cache,
             data_guid: header[32..48].try_into().unwrap(),
+            #[cfg(feature = "std")]
+            virtual_disk_id: known[2].as_ref().unwrap()[..16].try_into().unwrap(),
             metadata_offset: meta.0,
             bat_length: bat.1,
             size_offset,
@@ -638,6 +645,49 @@ impl Vhdx {
             budget,
             _cache: cache,
         })
+    }
+}
+#[cfg(feature = "std")]
+impl crate::InspectMetadata for Vhdx {
+    fn metadata(&self) -> io::Result<crate::ContainerMetadata> {
+        let _scratch = self.budget.cache(8192)?;
+        let mut headers = [None, None];
+        for (slot, offset) in [65536, 131072].into_iter().enumerate() {
+            let bytes = read(self.source.as_ref(), &self.budget, offset, 4096)?;
+            self.budget.work(4096)?;
+            if &bytes[..4] == b"head" && checksum(&bytes) {
+                headers[slot] = Some(crate::VhdxHeaderMetadata {
+                    offset,
+                    sequence_number: u64le(&bytes, 8),
+                    file_write_guid: bytes[16..32].try_into().unwrap(),
+                    data_write_guid: bytes[32..48].try_into().unwrap(),
+                    log_guid: bytes[48..64].try_into().unwrap(),
+                });
+            }
+        }
+        let active_header_offset = headers
+            .iter()
+            .flatten()
+            .max_by_key(|header| header.sequence_number)
+            .ok_or_else(|| invalid("no valid VHDX header"))?
+            .offset;
+        let entries = self.locator.as_ref().map(|locator| &locator.entries);
+        let bytes = entries.map_or(0, |entries| {
+            entries
+                .iter()
+                .map(|(key, value)| (key.len() + value.len() + 128) as u64)
+                .sum()
+        });
+        self.budget.metadata(bytes)?;
+        let _output = self.budget.cache(bytes)?;
+        self.budget
+            .work(entries.map_or(0, |entries| entries.len() as u64))?;
+        Ok(crate::ContainerMetadata::Vhdx(crate::VhdxMetadata {
+            headers,
+            active_header_offset,
+            virtual_disk_id: self.virtual_disk_id,
+            parent_locator: entries.cloned().unwrap_or_default(),
+        }))
     }
 }
 impl ReadAt for Vhdx {

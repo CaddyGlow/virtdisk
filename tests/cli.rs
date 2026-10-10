@@ -13,6 +13,48 @@ fn subprocess_test() -> std::sync::MutexGuard<'static, ()> {
 }
 
 #[test]
+fn forensic_metadata_cli_preserves_quoted_properties_and_uuid_bytes() {
+    let _process_boundary = subprocess_test();
+    let directory = tempfile::tempdir().unwrap();
+    let extent = directory.path().join("extent.raw");
+    let descriptor = directory.path().join("disk.vmdk");
+    std::fs::write(&extent, [0; 512]).unwrap();
+    std::fs::write(&descriptor, "version=1\nCID=12ab\nparentCID=ffffffff\ncreateType=\"monolithicFlat\"\nddb.comment=\"quoted\\text\"\nRW 1 FLAT \"extent.raw\" 0\n").unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_virtdisk"))
+        .arg("metadata")
+        .arg(&descriptor)
+        .arg("vmdk")
+        .arg(&extent)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let json = String::from_utf8(output.stdout).unwrap();
+    assert!(json.contains("\"cid\":\"000012ab\""));
+    assert!(json.contains("\"value\":\"\\\"quoted\\\\text\\\"\""));
+    assert!(json.contains("\"offset_sectors\":0"));
+    let path = directory.path().join("disk.vdi");
+    drop(virtdisk::VdiWriter::create(&path, 512).unwrap());
+    let bytes = std::fs::read(&path).unwrap();
+    let expected: String = bytes[392..408].iter().map(|b| format!("{b:02x}")).collect();
+    let output = Command::new(env!("CARGO_BIN_EXE_virtdisk"))
+        .arg("metadata")
+        .arg(&path)
+        .arg("vdi")
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    assert!(
+        String::from_utf8(output.stdout)
+            .unwrap()
+            .contains(&format!("\"creation_uuid_hex\":\"{expected}\""))
+    );
+}
+
+#[test]
 fn json_errors_report_chain_and_descriptor_bounds_as_parser_limits() {
     let _process_boundary = subprocess_test();
     let directory = tempfile::tempdir().unwrap();

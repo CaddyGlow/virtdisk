@@ -350,6 +350,21 @@ impl Vdi {
         })
     }
 }
+#[cfg(feature = "std")]
+impl crate::InspectMetadata for Vdi {
+    fn metadata(&self) -> io::Result<crate::ContainerMetadata> {
+        self.budget.metadata(64)?;
+        self.budget.work(1)?;
+        let mut bytes = [0; 64];
+        self.source.read_exact_at(392, &mut bytes)?;
+        Ok(crate::ContainerMetadata::Vdi(crate::VdiMetadata {
+            creation_uuid: bytes[..16].try_into().unwrap(),
+            modification_uuid: bytes[16..32].try_into().unwrap(),
+            parent_uuid: bytes[32..48].try_into().unwrap(),
+            parent_modification_uuid: bytes[48..64].try_into().unwrap(),
+        }))
+    }
+}
 impl ReadAt for Vdi {
     fn host_context(&self) -> Option<&dyn core::any::Any> {
         self.source.host_context()
