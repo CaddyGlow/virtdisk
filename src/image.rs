@@ -454,6 +454,56 @@ pub fn copy_image_with_cancel(
     copy_image_with_context(source, output, &mut context)
 }
 
+/// Allocation policy for converting immutable logical disk content.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum ConversionPolicy {
+    /// Preserve the existing format policy: dense QCOW2/raw and sparse native
+    /// VDI, VHDX and VMDK output.
+    #[default]
+    Default,
+    /// Omit zero-filled guest regions where the output format supports it.
+    /// This inspects logical content, including resolved backing data, rather
+    /// than interpreting source container holes as guest zeroes.
+    Sparse,
+}
+
+/// Convert using an explicit allocation policy and the default operation budget.
+/// Publication and full logical-byte verification match [`convert_image`].
+pub fn convert_image_with_policy(
+    source: &dyn ReadAt,
+    output: impl AsRef<Path>,
+    format: ImageFormat,
+    policy: ConversionPolicy,
+) -> io::Result<()> {
+    convert_image_with_policy_and_context(
+        source,
+        output,
+        format,
+        policy,
+        &mut crate::OperationContext::default(),
+    )
+}
+
+/// Convert with an explicit allocation policy, budgets, and cancellation.
+/// Sparse QCOW2 conversion scans logical clusters before exporting payload;
+/// the scan and verification passes count against the operation I/O budget.
+/// See [`convert_image_with_context`] for publication guarantees.
+pub fn convert_image_with_policy_and_context(
+    source: &dyn ReadAt,
+    output: impl AsRef<Path>,
+    format: ImageFormat,
+    policy: ConversionPolicy,
+    context: &mut crate::OperationContext<'_>,
+) -> io::Result<()> {
+    materialize_with_context(
+        source,
+        output.as_ref(),
+        format,
+        policy == ConversionPolicy::Sparse,
+        context,
+    )
+}
+
 /// Convert immutable logical bytes and publish a new single-file image.
 ///
 /// Writes into a private sibling staging directory, then publishes through a
@@ -516,7 +566,8 @@ pub(crate) fn materialize_with_context(
         ImageFormat::Vdi | ImageFormat::Vhdx => 65536,
     };
     context.require_scratch(scratch)?;
-    publish_image(output, |temporary| {
+    let profiler = context.profiler().cloned();
+    publish_image_profiled(output, profiler.as_ref(), |temporary| {
         context.scratch(scratch);
         match format {
             ImageFormat::Raw => {
@@ -527,10 +578,30 @@ pub(crate) fn materialize_with_context(
                 while offset < source.len() {
                     let count = (source.len() - offset).min(buffer.len() as u64) as usize;
                     context.attempted_io();
-                    source.read_exact_at(offset, &mut buffer[..count])?;
-                    if !sparse || buffer[..count].iter().any(|&byte| byte != 0) {
+                    measured(
+                        profiler.as_ref(),
+                        crate::OperationEvent::SourceRead,
+                        count as u64,
+                        || source.read_exact_at(offset, &mut buffer[..count]),
+                    )?;
+                    let nonzero = if sparse {
+                        measured(
+                            profiler.as_ref(),
+                            crate::OperationEvent::ZeroDetection,
+                            count as u64,
+                            || Ok(buffer[..count].iter().any(|&byte| byte != 0)),
+                        )?
+                    } else {
+                        true
+                    };
+                    if nonzero {
                         context.attempted_io();
-                        writer.write_all_at(offset, &buffer[..count])?;
+                        measured(
+                            profiler.as_ref(),
+                            crate::OperationEvent::PayloadWrite,
+                            count as u64,
+                            || writer.write_all_at(offset, &buffer[..count]),
+                        )?;
                     }
                     offset += count as u64;
                     context.completed(count as u64);
@@ -540,7 +611,9 @@ pub(crate) fn materialize_with_context(
                         source.len(),
                     )?;
                 }
-                writer.flush()?;
+                measured(profiler.as_ref(), crate::OperationEvent::Sync, 0, || {
+                    writer.flush()
+                })?;
             }
             _ => {
                 let mut input = crate::export_source::ContextSource::new(source, context);
@@ -558,21 +631,40 @@ pub(crate) fn materialize_with_context(
                 }
             }
         }
-        let reopened = Image::open(temporary, Some(format))?;
-        if !compare_images_in_phase(
-            source,
-            &reopened,
-            context,
-            crate::OperationPhase::OutputVerification,
-        )? {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "materialized output differs from logical source",
-            ));
-        }
+        let reopened = measured(
+            profiler.as_ref(),
+            crate::OperationEvent::OutputReopen,
+            0,
+            || Image::open(temporary, Some(format)),
+        )?;
+        measured(
+            profiler.as_ref(),
+            crate::OperationEvent::ByteVerification,
+            source.len(),
+            || {
+                if compare_images_in_phase(
+                    source,
+                    &reopened,
+                    context,
+                    crate::OperationPhase::OutputVerification,
+                )? {
+                    Ok(())
+                } else {
+                    Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "materialized output differs from logical source",
+                    ))
+                }
+            },
+        )?;
         if format == ImageFormat::Qcow2 {
             context.observe_phase(crate::OperationPhase::MetadataValidation, 0, 0)?;
-            Qcow2::open(Arc::new(RawDisk::open(temporary)?))?.validate_active_mapping()?;
+            measured(
+                profiler.as_ref(),
+                crate::OperationEvent::MappingValidation,
+                0,
+                || Qcow2::open(Arc::new(RawDisk::open(temporary)?))?.validate_active_mapping(),
+            )?;
         }
         context.observe_phase(crate::OperationPhase::Publication, 0, 0)
     })
@@ -580,6 +672,26 @@ pub(crate) fn materialize_with_context(
 
 pub(crate) fn publish_image(
     output: &Path,
+    prepare: impl FnOnce(&Path) -> io::Result<()>,
+) -> io::Result<()> {
+    publish_image_profiled(output, None, prepare)
+}
+
+fn measured<T>(
+    profiler: Option<&crate::OperationProfiler>,
+    event: crate::OperationEvent,
+    bytes: u64,
+    operation: impl FnOnce() -> io::Result<T>,
+) -> io::Result<T> {
+    match profiler {
+        Some(profiler) => profiler.measure(event, bytes, operation),
+        None => operation(),
+    }
+}
+
+fn publish_image_profiled(
+    output: &Path,
+    profiler: Option<&crate::OperationProfiler>,
     prepare: impl FnOnce(&Path) -> io::Result<()>,
 ) -> io::Result<()> {
     if fs::symlink_metadata(output).is_ok() {
@@ -608,10 +720,12 @@ pub(crate) fn publish_image(
     let stage = Stage(directory);
     let temporary = stage.0.join("image");
     prepare(&temporary)?;
-    fs::hard_link(&temporary, output)?;
-    #[cfg(unix)]
-    fs::File::open(parent)?.sync_all()?;
-    Ok(())
+    measured(profiler, crate::OperationEvent::Publication, 0, || {
+        fs::hard_link(&temporary, output)?;
+        #[cfg(unix)]
+        fs::File::open(parent)?.sync_all()?;
+        Ok(())
+    })
 }
 
 struct Stage(PathBuf);

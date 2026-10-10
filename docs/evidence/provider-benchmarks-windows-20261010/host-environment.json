@@ -1,0 +1,29 @@
+{
+  "host": "Linux-6.18.53-x86_64-with-glibc2.44",
+  "host_cpu": "Architecture:                            x86_64\nCPU op-mode(s):                          32-bit, 64-bit\nAddress sizes:                           46 bits physical, 48 bits virtual\nByte Order:                              Little Endian\nCPU(s):                                  24\nOn-line CPU(s) list:                     0-23\nVendor ID:                               GenuineIntel\nModel name:                              13th Gen Intel(R) Core(TM) i7-13700K\nCPU family:                              6\nModel:                                   183\nThread(s) per core:                      2\nCore(s) per socket:                      16\nSocket(s):                               1\nStepping:                                1\nMicrocode version:                       0x137\nCPU(s) scaling MHz:                      79%\nCPU max MHz:                             5400.0000\nCPU min MHz:                             800.0000\nBogoMIPS:                                6835.20\nFlags:                                   fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush dts acpi mmx fxsr sse sse2 ss ht tm pbe syscall nx pdpe1gb rdtscp lm constant_tsc art arch_perfmon pebs bts rep_good nopl xtopology nonstop_tsc cpuid aperfmperf tsc_known_freq pni pclmulqdq dtes64 monitor ds_cpl vmx smx est tm2 ssse3 sdbg fma cx16 xtpr pdcm pcid sse4_1 sse4_2 x2apic movbe popcnt tsc_deadline_timer aes xsave avx f16c rdrand lahf_lm abm 3dnowprefetch cpuid_fault ssbd ibrs ibpb stibp ibrs_enhanced tpr_shadow flexpriority ept vpid ept_ad fsgsbase tsc_adjust bmi1 avx2 smep bmi2 erms invpcid rdseed adx smap clflushopt clwb intel_pt sha_ni xsaveopt xsavec xgetbv1 xsaves split_lock_detect user_shstk avx_vnni dtherm ida arat pln pts hwp hwp_notify hwp_act_window hwp_epp hwp_pkg_req hfi vnmi umip pku ospke waitpkg gfni vaes vpclmulqdq rdpid movdiri movdir64b fsrm md_clear serialize pconfig arch_lbr ibt flush_l1d arch_capabilities\nVirtualization:                          VT-x\nL1d cache:                               640 KiB (16 instances)\nL1i cache:                               768 KiB (16 instances)\nL2 cache:                                24 MiB (10 instances)\nL3 cache:                                30 MiB (1 instance)\nNUMA node(s):                            1\nNUMA node0 CPU(s):                       0-23\nVulnerability Gather data sampling:      Not affected\nVulnerability Ghostwrite:                Not affected\nVulnerability Indirect target selection: Not affected\nVulnerability Itlb multihit:             Not affected\nVulnerability L1tf:                      Not affected\nVulnerability Mds:                       Not affected\nVulnerability Meltdown:                  Not affected\nVulnerability Mmio stale data:           Not affected\nVulnerability Old microcode:             Not affected\nVulnerability Reg file data sampling:    Mitigation; Clear Register File\nVulnerability Retbleed:                  Not affected\nVulnerability Spec rstack overflow:      Not affected\nVulnerability Spec store bypass:         Mitigation; Speculative Store Bypass disabled via prctl\nVulnerability Spectre v1:                Mitigation; usercopy/swapgs barriers and __user pointer sanitization\nVulnerability Spectre v2:                Mitigation; Enhanced / Automatic IBRS; IBPB conditional; PBRSB-eIBRS SW sequence; BHI BHI_DIS_S\nVulnerability Srbds:                     Not affected\nVulnerability Tsa:                       Not affected\nVulnerability Tsx async abort:           Not affected\nVulnerability Vmscape:                   Mitigation; IBPB before exit to userspace\n",
+  "host_load": "9.02 24.53 25.22 8/3322 6\n",
+  "vm_base": "win11-dev",
+  "vm_id": "virtdisk-perf-1010",
+  "vm_cpus": 4,
+  "vm_memory_mib": 6144,
+  "vm_disk": "disposable QCOW2 overlay, virtio-blk, guest C: NTFS",
+  "files": {
+    "VirtualBox.exe": "a81777d2b36380ce042a29e9c554cf032eb46a793f62e3cc82e7411e535c2c26",
+    "qemu-setup.exe": "f98a8aeb5f7faea9765b6dee28316c266cd179d80354a2fed8e50176f9a2e59f",
+    "python.zip": "91d828c2da3a029b41699e918674a0cb379c02cf20dab9c501306885f837402a",
+    "vc_redist.x64.exe": "cc0ff0eb1dc3f5188ae6300faef32bf5beeba4bdd6e8e445a9184072096b713b",
+    "virtdisk.exe": "602577eb699f9a24b872c429032a240c47cd9e1d56b4a4d6d4a876c65050567b",
+    "io-bench.exe": "4f9b506b5838fd16f385948e7e438bb8b9667678d1ed2ad75b32c5ab68b0d3d5",
+    "benchmark-providers.py": "0cf6f50f205e6f0d9fbc33420fe28af336c8eafded21f3126e8f0f3f5e066508",
+    "run-benchmarks.ps1": "49e7735c93b1c91ca46c54037f1aa4fd2c5f22a0021dc356474b8c3f074999e0"
+  },
+  "sources": {
+    "virtualbox": "https://download.virtualbox.org/virtualbox/7.2.20/VirtualBox-7.2.20-175154-Win.exe",
+    "qemu": "https://qemu.weilnetz.de/w64/qemu-w64-setup-20260811.exe",
+    "python": "https://www.python.org/ftp/python/3.13.9/python-3.13.9-embed-amd64.zip",
+    "vc_runtime": "https://aka.ms/vs/17/release/vc_redist.x64.exe"
+  },
+  "git_head": "bac4c10b775ff2b28e9fb7c9af4eb178388e64aa",
+  "git_status": " M AGENTS.md\n M Cargo.toml\n M README.md\n?? benches/\n?? docs/benchmarks.md\n?? scripts/benchmark-providers.py\n",
+  "installer_checksums": "VirtualBox SHA256 and QEMU SHA512 matched published checksum manifests; other artifact SHA256 values recorded here"
+}

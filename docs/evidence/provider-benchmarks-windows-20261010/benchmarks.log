@@ -1,0 +1,135 @@
+﻿**********************
+Windows PowerShell transcript start
+Start time: 20261010205504
+Username: WORKGROUP\SYSTEM
+RunAs User: WORKGROUP\SYSTEM
+Configuration Name: 
+Machine: DEPLOYV-PTRD754 (Microsoft Windows NT 10.0.26200.0)
+Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:/bench/run-benchmarks.ps1
+Process ID: 6136
+PSVersion: 5.1.26100.7920
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.7920
+BuildVersion: 10.0.26100.7920
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+Transcript started, output file is C:/bench/benchmarks.log
+Starting dense raw -> qcow2
+{
+  "virtdisk": {
+    "median_seconds": 0.48195219999999495,
+    "median_mib_per_second": 531.1730084435815
+  },
+  "qemu": {
+    "median_seconds": 0.18753000000000242,
+    "median_mib_per_second": 1365.1149149469243
+  }
+}
+Starting dense raw -> vdi
+{
+  "virtdisk": {
+    "median_seconds": 0.7088238999999987,
+    "median_mib_per_second": 361.16163690304523
+  },
+  "qemu": {
+    "median_seconds": 0.2763837000000109,
+    "median_mib_per_second": 926.2485450480253
+  },
+  "virtualbox": {
+    "median_seconds": 0.5373144999999937,
+    "median_mib_per_second": 476.4434981747245
+  }
+}
+Starting dense raw -> vmdk
+{
+  "virtdisk": {
+    "median_seconds": 0.547565899999995,
+    "median_mib_per_second": 467.52363505470726
+  },
+  "qemu": {
+    "median_seconds": 1.6208103000000165,
+    "median_mib_per_second": 157.94568926418927
+  },
+  "virtualbox": {
+    "median_seconds": 0.48757309999999165,
+    "median_mib_per_second": 525.0494746326333
+  }
+}
+Starting dense vhdx -> vhdx
+{
+  "virtdisk": {
+    "median_seconds": 0.5830732999999952,
+    "median_mib_per_second": 439.0528600778017
+  },
+  "qemu": {
+    "median_seconds": 0.26111600000001545,
+    "median_mib_per_second": 980.4071753549566
+  },
+  "hyperv": {
+    "median_seconds": 2.312742400000019,
+    "median_mib_per_second": 110.69109988211306
+  }
+}
+Starting sparse raw -> qcow2
+{
+  "virtdisk": {
+    "median_seconds": 0.5004763000000025,
+    "median_mib_per_second": 511.51273297056963
+  },
+  "qemu": {
+    "median_seconds": 0.14056589999998437,
+    "median_mib_per_second": 1821.2098382326615
+  }
+}
+Starting sparse raw -> vdi
+{
+  "virtdisk": {
+    "median_seconds": 0.24161799999998834,
+    "median_mib_per_second": 1059.5237109818488
+  },
+  "qemu": {
+    "median_seconds": 0.10677720000001045,
+    "median_mib_per_second": 2397.5155744857043
+  },
+  "virtualbox": {
+    "median_seconds": 0.11959260000000427,
+    "median_mib_per_second": 2140.600672616791
+  }
+}
+Starting sparse raw -> vmdk
+{
+  "virtdisk": {
+    "median_seconds": 0.17942030000000386,
+    "median_mib_per_second": 1426.8173668196657
+  },
+  "qemu": {
+    "median_seconds": 0.1954561999999953,
+    "median_mib_per_second": 1309.7563546206575
+  },
+  "virtualbox": {
+    "median_seconds": 0.11679639999999836,
+    "median_mib_per_second": 2191.8483788884214
+  }
+}
+Starting sparse vhdx -> vhdx
+{
+  "virtdisk": {
+    "median_seconds": 0.15885559999998122,
+    "median_mib_per_second": 1611.5264428829091
+  },
+  "qemu": {
+    "median_seconds": 0.11592500000000427,
+    "median_mib_per_second": 2208.324347638478
+  },
+  "hyperv": {
+    "median_seconds": 2.3787513999999987,
+    "median_mib_per_second": 107.61948474313043
+  }
+}
+**********************
+Windows PowerShell transcript end
+End time: 20261010205903
+**********************

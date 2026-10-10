@@ -163,6 +163,7 @@ pub(super) enum Command<'a> {
         parents: &'a [OsString],
     },
     Convert {
+        policy: virtdisk::ConversionPolicy,
         input: &'a OsStr,
         from: ImageFormat,
         output: &'a OsStr,
@@ -445,11 +446,31 @@ impl<'a> Command<'a> {
                 parents,
             }),
             [command, input, from, output, to] if command == "convert" => Ok(Command::Convert {
+                policy: virtdisk::ConversionPolicy::Default,
                 input,
                 from: format(from)?,
                 output,
                 to: format(to)?,
             }),
+            [command, input, from, output, to, policy] if command == "convert" => {
+                let policy = match policy.to_str() {
+                    Some("default") => virtdisk::ConversionPolicy::Default,
+                    Some("sparse") => virtdisk::ConversionPolicy::Sparse,
+                    _ => {
+                        return Err(io::Error::new(
+                            io::ErrorKind::InvalidInput,
+                            "conversion policy must be default or sparse",
+                        ));
+                    }
+                };
+                Ok(Command::Convert {
+                    input,
+                    from: format(from)?,
+                    output,
+                    to: format(to)?,
+                    policy,
+                })
+            }
             [command, input, from, output, to] if command == "compact" => Ok(Command::Compact {
                 input,
                 from: format(from)?,
@@ -466,7 +487,7 @@ impl<'a> Command<'a> {
             }
             _ => Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
-                "usage: virtdisk graph info MANIFEST AUTHORIZED_IMAGE... | graph select-in-place MANIFEST STATE AUTHORIZED_IMAGE... | graph select MANIFEST STATE OUTPUT_MANIFEST AUTHORIZED_IMAGE... | graph rebase-generation MANIFEST SOURCE PARENT DIRECTORY AUTHORIZED_IMAGE... | graph flatten MANIFEST SOURCE OUTPUT FORMAT AUTHORIZED_IMAGE... | graph merge MANIFEST CHILD ANCESTOR OUTPUT FORMAT AUTHORIZED_IMAGE... | graph rebase MANIFEST SOURCE PARENT OUTPUT AUTHORIZED_IMAGE... | graph snapshot MANIFEST PARENT DIRECTORY FORMAT AUTHORIZED_IMAGE... | capabilities read|write IMAGE FORMAT [PARENT...] | check IMAGE FORMAT structure|payload [PARENT...] | snapshot create IMAGE ID NAME [PARENT...] | snapshot delete|revert IMAGE ID [PARENT...] | snapshot list IMAGE [PARENT...] | snapshot export IMAGE ID OUTPUT FORMAT [PARENT...] | create|create-sparse OUTPUT FORMAT SIZE | preallocate IMAGE FORMAT OFFSET LENGTH | info|metadata|hash|map IMAGE FORMAT [PARENT...] | convert|compact INPUT INPUT_FORMAT OUTPUT OUTPUT_FORMAT | compare LEFT LEFT_FORMAT RIGHT RIGHT_FORMAT | resize INPUT INPUT_FORMAT OUTPUT OUTPUT_FORMAT SIZE reject|zero-tail|allow-loss | resize-native IMAGE FORMAT SIZE reject|zero-tail|allow-loss [PARENT...] | zero IMAGE FORMAT OFFSET LENGTH [PARENT...] | trim IMAGE FORMAT OFFSET LENGTH require|zero-fallback [PARENT...]",
+                "usage: virtdisk graph info MANIFEST AUTHORIZED_IMAGE... | graph select-in-place MANIFEST STATE AUTHORIZED_IMAGE... | graph select MANIFEST STATE OUTPUT_MANIFEST AUTHORIZED_IMAGE... | graph rebase-generation MANIFEST SOURCE PARENT DIRECTORY AUTHORIZED_IMAGE... | graph flatten MANIFEST SOURCE OUTPUT FORMAT AUTHORIZED_IMAGE... | graph merge MANIFEST CHILD ANCESTOR OUTPUT FORMAT AUTHORIZED_IMAGE... | graph rebase MANIFEST SOURCE PARENT OUTPUT AUTHORIZED_IMAGE... | graph snapshot MANIFEST PARENT DIRECTORY FORMAT AUTHORIZED_IMAGE... | capabilities read|write IMAGE FORMAT [PARENT...] | check IMAGE FORMAT structure|payload [PARENT...] | snapshot create IMAGE ID NAME [PARENT...] | snapshot delete|revert IMAGE ID [PARENT...] | snapshot list IMAGE [PARENT...] | snapshot export IMAGE ID OUTPUT FORMAT [PARENT...] | create|create-sparse OUTPUT FORMAT SIZE | preallocate IMAGE FORMAT OFFSET LENGTH | info|metadata|hash|map IMAGE FORMAT [PARENT...] | convert INPUT INPUT_FORMAT OUTPUT OUTPUT_FORMAT [default|sparse] | compact INPUT INPUT_FORMAT OUTPUT OUTPUT_FORMAT | compare LEFT LEFT_FORMAT RIGHT RIGHT_FORMAT | resize INPUT INPUT_FORMAT OUTPUT OUTPUT_FORMAT SIZE reject|zero-tail|allow-loss | resize-native IMAGE FORMAT SIZE reject|zero-tail|allow-loss [PARENT...] | zero IMAGE FORMAT OFFSET LENGTH [PARENT...] | trim IMAGE FORMAT OFFSET LENGTH require|zero-fallback [PARENT...]",
             )),
         }
     }

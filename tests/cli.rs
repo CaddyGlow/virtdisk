@@ -2296,3 +2296,39 @@ fn controlled_zeroing_reports_native_chunks_and_refuses_quota_before_mutation() 
         assert!(bytes[7..131080].iter().all(|&b| b == 0));
     }
 }
+
+#[test]
+fn cli_conversion_accepts_explicit_sparse_policy_and_rejects_unknown_policy() {
+    let _process_boundary = subprocess_test();
+    let directory = tempfile::tempdir().unwrap();
+    let input = directory.path().join("input.raw");
+    let output = directory.path().join("output.qcow2");
+    std::fs::write(&input, vec![0; 16 * 65536]).unwrap();
+    let result = Command::new(env!("CARGO_BIN_EXE_virtdisk"))
+        .arg("convert")
+        .arg(&input)
+        .arg("raw")
+        .arg(&output)
+        .arg("qcow2")
+        .arg("sparse")
+        .output()
+        .unwrap();
+    assert!(
+        result.status.success(),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    assert!(std::fs::metadata(&output).unwrap().len() < 8 * 65536);
+    let rejected = directory.path().join("rejected.qcow2");
+    let result = Command::new(env!("CARGO_BIN_EXE_virtdisk"))
+        .arg("convert")
+        .arg(&input)
+        .arg("raw")
+        .arg(&rejected)
+        .arg("qcow2")
+        .arg("unknown")
+        .output()
+        .unwrap();
+    assert!(!result.status.success());
+    assert!(!rejected.exists());
+}

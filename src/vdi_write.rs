@@ -60,7 +60,7 @@ pub(crate) fn export_vdi(
         while position < end {
             let count = (end - position).min(buffer.len() as u64) as usize;
             source.read(position, &mut buffer[..count])?;
-            nonzero |= buffer[..count].iter().any(|&b| b != 0);
+            nonzero |= source.nonzero(&buffer[..count]);
             position += count as u64;
         }
         if nonzero {
@@ -95,7 +95,8 @@ pub(crate) fn export_vdi(
         .map(|(index, _)| (size - index as u64 * BLOCK).min(BLOCK))
         .sum();
     source.begin(crate::OperationPhase::ImageExport, payload_bytes)?;
-    let mut file = OpenOptions::new().write(true).create_new(true).open(path)?;
+    let file = OpenOptions::new().write(true).create_new(true).open(path)?;
+    let mut file = crate::export_file::ExportFile::new(file, source.profiler());
     file.set_len(final_len)?;
     for (i, &entry) in map.iter().enumerate() {
         if entry == u32::MAX {
@@ -108,7 +109,9 @@ pub(crate) fn export_vdi(
         while position < end {
             let count = (end - position).min(buffer.len() as u64) as usize;
             source.read(position, &mut buffer[..count])?;
+            file.payload(true);
             file.write_all(&buffer[..count])?;
+            file.payload(false);
             position += count as u64;
         }
         // create_new plus set_len leaves the final block's unread tail zeroed.

@@ -88,7 +88,7 @@ fn create_impl(
             while position < end {
                 let n = (end - position).min(buffer.len() as u64) as usize;
                 source.read(position, &mut buffer[..n])?;
-                nonzero |= buffer[..n].iter().any(|&v| v != 0);
+                nonzero |= source.nonzero(&buffer[..n]);
                 position += n as u64;
             }
             if nonzero {
@@ -123,11 +123,15 @@ fn create_impl(
     let file_id = identity()?;
     let data_id = identity()?;
     let disk_id = identity()?;
-    let mut file = OpenOptions::new()
+    let file = OpenOptions::new()
         .read(true)
         .write(true)
         .create_new(true)
         .open(path)?;
+    let mut file = crate::export_file::ExportFile::new(
+        file,
+        source.as_ref().and_then(|source| source.profiler()),
+    );
     file.try_lock().map_err(io::Error::from)?;
     file.set_len(data + allocated * M)?;
     if let Some(source) = source.as_mut() {
@@ -143,7 +147,9 @@ fn create_impl(
             while position < end {
                 let n = (end - position).min(buffer.len() as u64) as usize;
                 source.read(position, &mut buffer[..n])?;
+                file.payload(true);
                 file.write_all(&buffer[..n])?;
+                file.payload(false);
                 position += n as u64;
             }
             // create_new plus set_len leaves final-block padding zeroed.
@@ -248,7 +254,7 @@ fn create_impl(
     file.seek(SeekFrom::Start(0))?;
     file.write_all(b"vhdxfile")?;
     file.sync_all()?;
-    Ok(file)
+    Ok(file.into_inner())
 }
 
 struct ChildMetadata {

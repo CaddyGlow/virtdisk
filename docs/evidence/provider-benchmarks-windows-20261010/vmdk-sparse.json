@@ -1,0 +1,318 @@
+{
+  "platform": "Windows-11-10.0.26200-SP0",
+  "cpu": "Intel64 Family 6 Model 183 Stepping 1, GenuineIntel",
+  "versions": {
+    "qemu": "qemu-img version 11.1.0 (v11.1.0-12130-ge470268ff4)\nCopyright (c) 2003-2026 Fabrice Bellard and the QEMU Project developers",
+    "virtualbox": "7.2.20r175154"
+  },
+  "arguments": {
+    "virtdisk": "C:/bench/virtdisk.exe",
+    "providers": [
+      "virtdisk",
+      "qemu",
+      "virtualbox"
+    ],
+    "input_format": "raw",
+    "format": "vmdk",
+    "size_mib": 256,
+    "samples": 5,
+    "pattern": "sparse",
+    "work_dir": "C:\\bench",
+    "output": "C:\\bench\\results\\vmdk-sparse.json"
+  },
+  "virtdisk_binary_sha256": "602577eb699f9a24b872c429032a240c47cd9e1d56b4a4d6d4a876c65050567b",
+  "cache_policy": "warm-up per provider; OS cache retained; randomized measured order",
+  "timing": "process start to exit; verification and setup excluded; provider default flush semantics",
+  "results": [
+    {
+      "provider": "virtdisk",
+      "sample": 1,
+      "seconds": 0.17942030000000386,
+      "mib_per_second": 1426.8173668196657,
+      "container_bytes": 16842752,
+      "allocated_bytes": null,
+      "command": [
+        "C:\\bench\\virtdisk.exe",
+        "convert",
+        "C:\\bench\\virtdisk-benchmark-rx27n9xs\\seed.raw",
+        "raw",
+        "C:\\bench\\virtdisk-benchmark-rx27n9xs\\virtdisk-1.vmdk",
+        "vmdk"
+      ],
+      "verified": true
+    },
+    {
+      "provider": "qemu",
+      "sample": 1,
+      "seconds": 0.16106469999999717,
+      "mib_per_second": 1589.4233807904805,
+      "container_bytes": 16842752,
+      "allocated_bytes": null,
+      "command": [
+        "qemu-img",
+        "convert",
+        "-f",
+        "raw",
+        "-O",
+        "vmdk",
+        "C:\\bench\\virtdisk-benchmark-rx27n9xs\\seed.raw",
+        "C:\\bench\\virtdisk-benchmark-rx27n9xs\\qemu-1.vmdk"
+      ],
+      "verified": true
+    },
+    {
+      "provider": "virtualbox",
+      "sample": 1,
+      "seconds": 0.11308829999998693,
+      "mib_per_second": 2263.717820499818,
+      "container_bytes": 16842752,
+      "allocated_bytes": null,
+      "command": [
+        "VBoxManage",
+        "convertfromraw",
+        "C:\\bench\\virtdisk-benchmark-rx27n9xs\\seed.raw",
+        "C:\\bench\\virtdisk-benchmark-rx27n9xs\\virtualbox-1.vmdk",
+        "--format",
+        "VMDK",
+        "--variant",
+        "Standard"
+      ],
+      "verified": true
+    },
+    {
+      "provider": "virtdisk",
+      "sample": 2,
+      "seconds": 0.17610320000000002,
+      "mib_per_second": 1453.6930617955834,
+      "container_bytes": 16842752,
+      "allocated_bytes": null,
+      "command": [
+        "C:\\bench\\virtdisk.exe",
+        "convert",
+        "C:\\bench\\virtdisk-benchmark-rx27n9xs\\seed.raw",
+        "raw",
+        "C:\\bench\\virtdisk-benchmark-rx27n9xs\\virtdisk-2.vmdk",
+        "vmdk"
+      ],
+      "verified": true
+    },
+    {
+      "provider": "virtualbox",
+      "sample": 2,
+      "seconds": 0.11679639999999836,
+      "mib_per_second": 2191.8483788884214,
+      "container_bytes": 16842752,
+      "allocated_bytes": null,
+      "command": [
+        "VBoxManage",
+        "convertfromraw",
+        "C:\\bench\\virtdisk-benchmark-rx27n9xs\\seed.raw",
+        "C:\\bench\\virtdisk-benchmark-rx27n9xs\\virtualbox-2.vmdk",
+        "--format",
+        "VMDK",
+        "--variant",
+        "Standard"
+      ],
+      "verified": true
+    },
+    {
+      "provider": "qemu",
+      "sample": 2,
+      "seconds": 0.1964309999999898,
+      "mib_per_second": 1303.2566142819273,
+      "container_bytes": 16842752,
+      "allocated_bytes": null,
+      "command": [
+        "qemu-img",
+        "convert",
+        "-f",
+        "raw",
+        "-O",
+        "vmdk",
+        "C:\\bench\\virtdisk-benchmark-rx27n9xs\\seed.raw",
+        "C:\\bench\\virtdisk-benchmark-rx27n9xs\\qemu-2.vmdk"
+      ],
+      "verified": true
+    },
+    {
+      "provider": "virtualbox",
+      "sample": 3,
+      "seconds": 0.12271010000000615,
+      "mib_per_second": 2086.2178418890308,
+      "container_bytes": 16842752,
+      "allocated_bytes": null,
+      "command": [
+        "VBoxManage",
+        "convertfromraw",
+        "C:\\bench\\virtdisk-benchmark-rx27n9xs\\seed.raw",
+        "C:\\bench\\virtdisk-benchmark-rx27n9xs\\virtualbox-3.vmdk",
+        "--format",
+        "VMDK",
+        "--variant",
+        "Standard"
+      ],
+      "verified": true
+    },
+    {
+      "provider": "qemu",
+      "sample": 3,
+      "seconds": 0.19668369999999413,
+      "mib_per_second": 1301.5821850006262,
+      "container_bytes": 16842752,
+      "allocated_bytes": null,
+      "command": [
+        "qemu-img",
+        "convert",
+        "-f",
+        "raw",
+        "-O",
+        "vmdk",
+        "C:\\bench\\virtdisk-benchmark-rx27n9xs\\seed.raw",
+        "C:\\bench\\virtdisk-benchmark-rx27n9xs\\qemu-3.vmdk"
+      ],
+      "verified": true
+    },
+    {
+      "provider": "virtdisk",
+      "sample": 3,
+      "seconds": 0.17716409999999883,
+      "mib_per_second": 1444.988008292886,
+      "container_bytes": 16842752,
+      "allocated_bytes": null,
+      "command": [
+        "C:\\bench\\virtdisk.exe",
+        "convert",
+        "C:\\bench\\virtdisk-benchmark-rx27n9xs\\seed.raw",
+        "raw",
+        "C:\\bench\\virtdisk-benchmark-rx27n9xs\\virtdisk-3.vmdk",
+        "vmdk"
+      ],
+      "verified": true
+    },
+    {
+      "provider": "virtdisk",
+      "sample": 4,
+      "seconds": 0.18224339999997596,
+      "mib_per_second": 1404.7147935125977,
+      "container_bytes": 16842752,
+      "allocated_bytes": null,
+      "command": [
+        "C:\\bench\\virtdisk.exe",
+        "convert",
+        "C:\\bench\\virtdisk-benchmark-rx27n9xs\\seed.raw",
+        "raw",
+        "C:\\bench\\virtdisk-benchmark-rx27n9xs\\virtdisk-4.vmdk",
+        "vmdk"
+      ],
+      "verified": true
+    },
+    {
+      "provider": "virtualbox",
+      "sample": 4,
+      "seconds": 0.11316719999999236,
+      "mib_per_second": 2262.1395598726244,
+      "container_bytes": 16842752,
+      "allocated_bytes": null,
+      "command": [
+        "VBoxManage",
+        "convertfromraw",
+        "C:\\bench\\virtdisk-benchmark-rx27n9xs\\seed.raw",
+        "C:\\bench\\virtdisk-benchmark-rx27n9xs\\virtualbox-4.vmdk",
+        "--format",
+        "VMDK",
+        "--variant",
+        "Standard"
+      ],
+      "verified": true
+    },
+    {
+      "provider": "qemu",
+      "sample": 4,
+      "seconds": 0.18510320000001457,
+      "mib_per_second": 1383.0122871996803,
+      "container_bytes": 16842752,
+      "allocated_bytes": null,
+      "command": [
+        "qemu-img",
+        "convert",
+        "-f",
+        "raw",
+        "-O",
+        "vmdk",
+        "C:\\bench\\virtdisk-benchmark-rx27n9xs\\seed.raw",
+        "C:\\bench\\virtdisk-benchmark-rx27n9xs\\qemu-4.vmdk"
+      ],
+      "verified": true
+    },
+    {
+      "provider": "virtdisk",
+      "sample": 5,
+      "seconds": 0.1859010000000012,
+      "mib_per_second": 1377.0770463848949,
+      "container_bytes": 16842752,
+      "allocated_bytes": null,
+      "command": [
+        "C:\\bench\\virtdisk.exe",
+        "convert",
+        "C:\\bench\\virtdisk-benchmark-rx27n9xs\\seed.raw",
+        "raw",
+        "C:\\bench\\virtdisk-benchmark-rx27n9xs\\virtdisk-5.vmdk",
+        "vmdk"
+      ],
+      "verified": true
+    },
+    {
+      "provider": "virtualbox",
+      "sample": 5,
+      "seconds": 0.12595939999999928,
+      "mib_per_second": 2032.4009164857998,
+      "container_bytes": 16842752,
+      "allocated_bytes": null,
+      "command": [
+        "VBoxManage",
+        "convertfromraw",
+        "C:\\bench\\virtdisk-benchmark-rx27n9xs\\seed.raw",
+        "C:\\bench\\virtdisk-benchmark-rx27n9xs\\virtualbox-5.vmdk",
+        "--format",
+        "VMDK",
+        "--variant",
+        "Standard"
+      ],
+      "verified": true
+    },
+    {
+      "provider": "qemu",
+      "sample": 5,
+      "seconds": 0.1954561999999953,
+      "mib_per_second": 1309.7563546206575,
+      "container_bytes": 16842752,
+      "allocated_bytes": null,
+      "command": [
+        "qemu-img",
+        "convert",
+        "-f",
+        "raw",
+        "-O",
+        "vmdk",
+        "C:\\bench\\virtdisk-benchmark-rx27n9xs\\seed.raw",
+        "C:\\bench\\virtdisk-benchmark-rx27n9xs\\qemu-5.vmdk"
+      ],
+      "verified": true
+    }
+  ],
+  "source_sha256": "1112b4f9c6a9f30f011a02fda1783006ab706ffc091d547c27af030785f00c8e",
+  "summary": {
+    "virtdisk": {
+      "median_seconds": 0.17942030000000386,
+      "median_mib_per_second": 1426.8173668196657
+    },
+    "qemu": {
+      "median_seconds": 0.1954561999999953,
+      "median_mib_per_second": 1309.7563546206575
+    },
+    "virtualbox": {
+      "median_seconds": 0.11679639999999836,
+      "median_mib_per_second": 2191.8483788884214
+    }
+  }
+}

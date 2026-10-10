@@ -3,6 +3,23 @@ use crate::io;
 use crate::{OperationContext, OperationPhase, ReadAt};
 
 pub(crate) trait ExportSource {
+    fn profiler(&self) -> Option<crate::OperationProfiler> {
+        None
+    }
+    fn nonzero(&self, bytes: &[u8]) -> bool {
+        let profiler = self.profiler();
+        let started = profiler.as_ref().map(|_| std::time::Instant::now());
+        let nonzero = bytes.iter().any(|byte| *byte != 0);
+        if let (Some(profiler), Some(started)) = (profiler, started) {
+            profiler.record(
+                crate::OperationEvent::ZeroDetection,
+                bytes.len() as u64,
+                started,
+                true,
+            );
+        }
+        nonzero
+    }
     fn size(&self) -> u64;
     fn begin(&mut self, phase: OperationPhase, bytes: u64) -> io::Result<()>;
     fn read(&mut self, offset: u64, destination: &mut [u8]) -> io::Result<()>;
@@ -40,6 +57,9 @@ impl<'a, 'observer> ContextSource<'a, 'observer> {
     }
 }
 impl ExportSource for ContextSource<'_, '_> {
+    fn profiler(&self) -> Option<crate::OperationProfiler> {
+        self.context.profiler().cloned()
+    }
     fn size(&self) -> u64 {
         self.source.len()
     }
@@ -53,7 +73,19 @@ impl ExportSource for ContextSource<'_, '_> {
     fn read(&mut self, offset: u64, destination: &mut [u8]) -> io::Result<()> {
         self.context.preflight(destination.len() as u64, 1, 1)?;
         self.context.attempted_io();
-        self.source.read_exact_at(offset, destination)?;
+        if let Some(profiler) = self.context.profiler() {
+            profiler.measure(
+                if self.phase == OperationPhase::AllocationScan {
+                    crate::OperationEvent::AllocationRead
+                } else {
+                    crate::OperationEvent::SourceRead
+                },
+                destination.len() as u64,
+                || self.source.read_exact_at(offset, destination),
+            )?;
+        } else {
+            self.source.read_exact_at(offset, destination)?;
+        }
         self.context.completed(destination.len() as u64);
         self.completed += destination.len() as u64;
         self.context

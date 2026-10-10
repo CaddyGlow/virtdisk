@@ -98,11 +98,12 @@ pub(crate) fn export_vmdk(
         ));
     }
     source.begin(crate::OperationPhase::ImageExport, length)?;
-    let mut file = OpenOptions::new()
+    let file = OpenOptions::new()
         .read(true)
         .write(true)
         .create_new(true)
         .open(path)?;
+    let mut file = crate::export_file::ExportFile::new(file, source.profiler());
     file.try_lock().map_err(io::Error::from)?;
     let mut header = [0; 512];
     header[..4].copy_from_slice(b"KDMV");
@@ -137,7 +138,7 @@ pub(crate) fn export_vmdk(
         let take = (length - offset).min(65536) as usize;
         grain.fill(0);
         source.read(offset, &mut grain[..take])?;
-        if fully_allocated || grain.iter().any(|b| *b != 0) {
+        if fully_allocated || source.nonzero(&grain) {
             put32(
                 &mut table,
                 (index % 512) as usize * 4,
@@ -145,7 +146,9 @@ pub(crate) fn export_vmdk(
                     .map_err(|_| io::Error::other("VMDK grain offset overflow"))?,
             );
             file.seek(SeekFrom::Start(physical * 512))?;
+            file.payload(true);
             file.write_all(&grain)?;
+            file.payload(false);
             physical += 128;
         }
         if index % 512 == 511 || index + 1 == grains {
@@ -159,5 +162,5 @@ pub(crate) fn export_vmdk(
     file.seek(SeekFrom::Start(0))?;
     file.write_all(&header)?;
     file.sync_all()?;
-    Ok(file)
+    Ok(file.into_inner())
 }

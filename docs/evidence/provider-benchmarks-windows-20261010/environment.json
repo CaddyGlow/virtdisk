@@ -1,0 +1,75 @@
+{
+    "OS":  {
+               "Caption":  "Microsoft Windows 11 Pro",
+               "Version":  "10.0.26200",
+               "BuildNumber":  "26200",
+               "TotalVisibleMemorySize":  6203160
+           },
+    "CPU":  {
+                "Name":  "13th Gen Intel(R) Core(TM) i7-13700K",
+                "NumberOfCores":  4,
+                "NumberOfLogicalProcessors":  4
+            },
+    "Disk":  {
+                 "Model":  "Red Hat VirtIO SCSI Disk Device",
+                 "Size":  68713989120,
+                 "InterfaceType":  "SCSI"
+             },
+    "Volume":  {
+                   "FileSystem":  "NTFS",
+                   "Size":  67445452800,
+                   "SizeRemaining":  40819847168
+               },
+    "Features":  [
+                     {
+                         "FeatureName":  "Microsoft-Hyper-V-All",
+                         "State":  2
+                     },
+                     {
+                         "FeatureName":  "Microsoft-Hyper-V",
+                         "State":  2
+                     },
+                     {
+                         "FeatureName":  "Microsoft-Hyper-V-Tools-All",
+                         "State":  2
+                     },
+                     {
+                         "FeatureName":  "Microsoft-Hyper-V-Management-PowerShell",
+                         "State":  2
+                     },
+                     {
+                         "FeatureName":  "Microsoft-Hyper-V-Hypervisor",
+                         "State":  2
+                     },
+                     {
+                         "FeatureName":  "Microsoft-Hyper-V-Services",
+                         "State":  2
+                     },
+                     {
+                         "FeatureName":  "Microsoft-Hyper-V-Management-Clients",
+                         "State":  2
+                     }
+                 ],
+    "VMMS":  {
+                 "Name":  "vmms",
+                 "Status":  4
+             },
+    "Tools":  [
+                  {
+                      "Algorithm":  "SHA256",
+                      "Hash":  "602577EB699F9A24B872C429032A240C47CD9E1D56B4A4D6D4A876C65050567B",
+                      "Path":  "C:\\bench\\virtdisk.exe"
+                  },
+                  {
+                      "Algorithm":  "SHA256",
+                      "Hash":  "4F9B506B5838FD16F385948E7E438BB8B9667678D1ED2AD75B32C5AB68B0D3D5",
+                      "Path":  "C:\\bench\\io-bench.exe"
+                  },
+                  {
+                      "Algorithm":  "SHA256",
+                      "Hash":  "0CF6F50F205E6F0D9FBC33420FE28AF336C8EAFDED21F3126E8F0F3F5E066508",
+                      "Path":  "C:\\bench\\benchmark-providers.py"
+                  }
+              ],
+    "Python":  "Python 3.13.9"
+}

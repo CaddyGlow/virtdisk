@@ -35,6 +35,16 @@ rustix = { version = "=1.1.5", features = ["fs"], optional = true }
 flate2 = { version = "1.1", default-features = false, features = ["rust_backend"] }
 tempfile = "3.23"
 
+[[bench]]
+name = "io"
+harness = false
+required-features = ["std"]
+
+[[bench]]
+name = "conversion"
+harness = false
+required-features = ["std"]
+
 [lints.rust]
 unsafe_op_in_unsafe_fn = "deny"
 

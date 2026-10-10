@@ -162,6 +162,89 @@ pub struct OperationProgress {
     /// Cumulative context usage, including this operation.
     pub usage: OperationUsage,
 }
+/// Non-overlapping measured components of hosted image operations.
+/// Byte counts describe requested bytes, including failed attempts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+#[repr(usize)]
+pub enum OperationEvent {
+    /// Reading the immutable logical source.
+    SourceRead,
+    /// Testing payload bytes for zero content.
+    ZeroDetection,
+    /// Writing payload to a private export file.
+    PayloadWrite,
+    /// Writing headers or allocation tables.
+    MetadataWrite,
+    /// Seeking within a private export file.
+    Seek,
+    /// Synchronizing an export file.
+    Sync,
+    /// Reopening staged output for validation.
+    OutputReopen,
+    /// Exact staged-output comparison (inclusive of its reads).
+    ByteVerification,
+    /// Validating container mappings.
+    MappingValidation,
+    /// Publishing verified output.
+    Publication,
+    /// Reading logical bytes during the allocation scan.
+    AllocationRead,
+}
+/// Cumulative measurements for one component; failed attempts remain visible.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct OperationMetrics {
+    /// Number of attempted calls.
+    pub calls: u64,
+    /// Requested bytes; zero for operations without a byte measure.
+    pub bytes: u64,
+    /// Attempts returning an error.
+    pub failures: u64,
+    /// Wall time spent inside the measured calls.
+    pub elapsed: std::time::Duration,
+}
+/// Opt-in shared profiling sink. Clones refer to the same counters.
+///
+/// Timings are component costs, not a complete operation total. Verification is
+/// inclusive; do not add nested backend timings to it. Disabled contexts neither
+/// read the clock nor acquire this sink's mutex. Enabled profiling adds clock and
+/// synchronization overhead and must be measured separately from headline runs.
+#[derive(Debug, Clone, Default)]
+pub struct OperationProfiler {
+    metrics: std::sync::Arc<std::sync::Mutex<[OperationMetrics; 11]>>,
+}
+impl OperationProfiler {
+    /// Snapshot one component, including attempts that failed.
+    pub fn metrics(&self, event: OperationEvent) -> OperationMetrics {
+        self.metrics.lock().unwrap_or_else(|e| e.into_inner())[event as usize]
+    }
+    pub(crate) fn record(
+        &self,
+        event: OperationEvent,
+        bytes: u64,
+        started: std::time::Instant,
+        success: bool,
+    ) {
+        let elapsed = started.elapsed();
+        let mut metrics = self.metrics.lock().unwrap_or_else(|e| e.into_inner());
+        let metric = &mut metrics[event as usize];
+        metric.calls = metric.calls.saturating_add(1);
+        metric.bytes = metric.bytes.saturating_add(bytes);
+        metric.failures = metric.failures.saturating_add(u64::from(!success));
+        metric.elapsed = metric.elapsed.saturating_add(elapsed);
+    }
+    pub(crate) fn measure<T, E>(
+        &self,
+        event: OperationEvent,
+        bytes: u64,
+        action: impl FnOnce() -> Result<T, E>,
+    ) -> Result<T, E> {
+        let started = std::time::Instant::now();
+        let result = action();
+        self.record(event, bytes, started, result.is_ok());
+        result
+    }
+}
 /// Reusable synchronous context with a borrowed progress observer.
 ///
 /// The observer returns `ControlFlow::Break(())` to cancel. Callbacks run outside
@@ -169,6 +252,7 @@ pub struct OperationProgress {
 /// have partial effects beyond successfully completed bytes. Parser/backend work
 /// and flush durability are not accounted by this context.
 pub struct OperationContext<'a> {
+    profiler: Option<OperationProfiler>,
     limits: OperationLimits,
     usage: OperationUsage,
     observer: Option<&'a mut dyn FnMut(OperationProgress) -> ControlFlow<()>>,
@@ -182,6 +266,7 @@ impl<'a> OperationContext<'a> {
     /// Start with validated caller ceilings and zero usage.
     pub fn new(limits: OperationLimits) -> Self {
         Self {
+            profiler: None,
             limits,
             usage: OperationUsage::default(),
             observer: None,
@@ -195,6 +280,16 @@ impl<'a> OperationContext<'a> {
     ) -> Self {
         self.observer = Some(observer);
         self
+    }
+    /// Enable component profiling into a caller-owned sink.
+    #[must_use]
+    pub fn with_profiler(mut self, profiler: OperationProfiler) -> Self {
+        self.profiler = Some(profiler);
+        self
+    }
+    /// Return the enabled profiling sink, if any.
+    pub fn profiler(&self) -> Option<&OperationProfiler> {
+        self.profiler.as_ref()
     }
     /// Snapshot cumulative usage without resetting accounting.
     pub fn usage(&self) -> OperationUsage {

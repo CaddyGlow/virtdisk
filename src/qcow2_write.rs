@@ -65,7 +65,7 @@ pub(crate) fn export_qcow2(
         for index in 0..guest_clusters {
             let count = (size - index * CLUSTER).min(CLUSTER) as usize;
             source.read(index * CLUSTER, &mut buffer[..count])?;
-            if buffer[..count].iter().any(|b| *b != 0) {
+            if source.nonzero(&buffer[..count]) {
                 data_clusters += 1;
             }
         }
@@ -95,11 +95,12 @@ pub(crate) fn export_qcow2(
     let file_size = total
         .checked_mul(CLUSTER)
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "QCOW2 layout overflow"))?;
-    let mut file = OpenOptions::new()
+    let file = OpenOptions::new()
         .read(true)
         .write(true)
         .create_new(true)
         .open(path)?;
+    let mut file = crate::export_file::ExportFile::new(file, source.profiler());
     file.try_lock().map_err(io::Error::from)?;
     file.set_len(file_size)?;
     let mut buffer = [0u8; CLUSTER as usize];
@@ -159,7 +160,7 @@ pub(crate) fn export_qcow2(
             payload.fill(0);
             let count = (size - index * CLUSTER).min(CLUSTER) as usize;
             source.read(index * CLUSTER, &mut payload[..count])?;
-            if sparse && payload[..count].iter().all(|b| *b == 0) {
+            if sparse && !source.nonzero(&payload[..count]) {
                 continue;
             }
             if allocated >= data_clusters {
@@ -171,7 +172,9 @@ pub(crate) fn export_qcow2(
             let physical = (data_start + allocated) * CLUSTER;
             put_entry(&mut buffer, entry, physical | COPIED);
             file.seek(SeekFrom::Start(physical))?;
+            file.payload(true);
             file.write_all(&payload)?;
+            file.payload(false);
             allocated += 1;
         }
         file.seek(SeekFrom::Start((l2_start + table) * CLUSTER))?;
@@ -184,7 +187,7 @@ pub(crate) fn export_qcow2(
         ));
     }
     file.sync_all()?;
-    Ok(file)
+    Ok(file.into_inner())
 }
 
 fn put_entry(buffer: &mut [u8], entry: u64, value: u64) {

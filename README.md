@@ -45,6 +45,12 @@ and borrowed progress/cancellation observers. These additions are not in the pub
 an opened handle. The CLI supports `capabilities read|write IMAGE FORMAT [PARENT...]`;
 write mode retains the exclusive lock and refuses pending recovery without replay.
 
+`convert_image_with_policy` and the CLI’s optional `sparse` conversion policy omit
+zero logical QCOW2 clusters (and raw chunks). The default retains dense QCOW2/raw
+compatibility. Sparsity follows resolved guest bytes, including backing data,
+not source container holes; sparse QCOW2 adds an allocation scan. Both policies
+retain complete byte verification and no-overwrite publication.
+
 `convert_image` materializes a new image, syncs it, verifies logical bytes, and
 publishes without overwriting an existing path. It requires host hard-link
 support. `resize_image` writes a new flattened image; growth reads as zero and
@@ -109,7 +115,7 @@ virtdisk capabilities write IMAGE FORMAT [PARENT...]
 virtdisk map IMAGE FORMAT [PARENT...]
 virtdisk hash IMAGE FORMAT [PARENT...]
 virtdisk compare LEFT LEFT_FORMAT RIGHT RIGHT_FORMAT
-virtdisk convert INPUT INPUT_FORMAT OUTPUT OUTPUT_FORMAT
+virtdisk convert INPUT INPUT_FORMAT OUTPUT OUTPUT_FORMAT [default|sparse]
 virtdisk compact INPUT INPUT_FORMAT OUTPUT OUTPUT_FORMAT
 virtdisk resize INPUT INPUT_FORMAT OUTPUT OUTPUT_FORMAT SIZE reject
 virtdisk zero IMAGE FORMAT OFFSET LENGTH [PARENT...]
@@ -264,3 +270,6 @@ range and one native call; backend physical I/O remains outside those quotas.
 
 Portable `no_std` + `alloc` readers are available with default features disabled.
 See [the 0.3 API migration, identity and accounting contracts](docs/no-std.md).
+
+Performance harnesses: [Rust I/O and provider conversion benchmarks](docs/benchmarks.md)
+cover repeated samples, output verification, and measurement limits.

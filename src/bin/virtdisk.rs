@@ -20,8 +20,8 @@ use virtdisk::{
     DiscardResult, Image, ImageFormat, ImageWriter, InspectImage, OperationContext,
     OperationLimits, ParserLimits, ReadAt, ReadRecoveryPolicy, ReaderOpenOptions, RecoveryPolicy,
     WriteAt, WriterOpenOptions, compact_image_with_context, compare_images_with_context,
-    convert_image, convert_image_with_context, hash_image_with_context, resize_image_with_context,
-    zero_image_with_context,
+    convert_image, convert_image_with_policy_and_context, hash_image_with_context,
+    resize_image_with_context, zero_image_with_context,
 };
 
 fn run(args: &[std::ffi::OsString]) -> io::Result<bool> {
@@ -551,13 +551,14 @@ fn run_command(
             Ok(true)
         }
         Command::Convert {
+            policy,
             input,
             from,
             output,
             to,
         } => {
             let image = open_reader(input, from, &[], reader_options)?;
-            convert_image_with_context(&image, output, to, context)?;
+            convert_image_with_policy_and_context(&image, output, to, policy, context)?;
             Ok(true)
         }
         Command::Compact {

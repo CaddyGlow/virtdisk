@@ -74,9 +74,11 @@ mod image_writer;
 mod operation;
 #[cfg(feature = "std")]
 pub use image::{
-    Image, ImageInfo, ShrinkPolicy, compare_images, compare_images_with_context, convert_image,
-    convert_image_with_context, copy_image, copy_image_with_cancel, copy_image_with_context,
-    hash_image, hash_image_with_context, resize_image, resize_image_with_context,
+    ConversionPolicy, Image, ImageInfo, ShrinkPolicy, compare_images, compare_images_with_context,
+    convert_image, convert_image_with_context, convert_image_with_policy,
+    convert_image_with_policy_and_context, copy_image, copy_image_with_cancel,
+    copy_image_with_context, hash_image, hash_image_with_context, resize_image,
+    resize_image_with_context,
 };
 #[cfg(feature = "std")]
 pub use image_writer::ImageWriter;
@@ -86,8 +88,9 @@ pub use operation::OperationError;
 mod operation_context;
 #[cfg(feature = "std")]
 pub use operation_context::{
-    OperationCancelled, OperationContext, OperationLimitExceeded, OperationLimits, OperationPhase,
-    OperationProgress, OperationResource, OperationUsage,
+    OperationCancelled, OperationContext, OperationEvent, OperationLimitExceeded, OperationLimits,
+    OperationMetrics, OperationPhase, OperationProfiler, OperationProgress, OperationResource,
+    OperationUsage,
 };
 #[cfg(feature = "std")]
 mod writer_open;
@@ -97,6 +100,8 @@ pub use writer_open::{RecoveryPolicy, RecoveryRequired, WriterOpenOptions};
 mod reader_open;
 #[cfg(feature = "std")]
 pub use reader_open::{ReadRecoveryPolicy, ReaderOpenOptions};
+#[cfg(feature = "std")]
+mod export_file;
 #[cfg(feature = "std")]
 mod export_source;
 #[cfg(feature = "std")]

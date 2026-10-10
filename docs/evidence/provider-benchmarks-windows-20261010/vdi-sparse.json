@@ -1,0 +1,318 @@
+{
+  "platform": "Windows-11-10.0.26200-SP0",
+  "cpu": "Intel64 Family 6 Model 183 Stepping 1, GenuineIntel",
+  "versions": {
+    "qemu": "qemu-img version 11.1.0 (v11.1.0-12130-ge470268ff4)\nCopyright (c) 2003-2026 Fabrice Bellard and the QEMU Project developers",
+    "virtualbox": "7.2.20r175154"
+  },
+  "arguments": {
+    "virtdisk": "C:/bench/virtdisk.exe",
+    "providers": [
+      "virtdisk",
+      "qemu",
+      "virtualbox"
+    ],
+    "input_format": "raw",
+    "format": "vdi",
+    "size_mib": 256,
+    "samples": 5,
+    "pattern": "sparse",
+    "work_dir": "C:\\bench",
+    "output": "C:\\bench\\results\\vdi-sparse.json"
+  },
+  "virtdisk_binary_sha256": "602577eb699f9a24b872c429032a240c47cd9e1d56b4a4d6d4a876c65050567b",
+  "cache_policy": "warm-up per provider; OS cache retained; randomized measured order",
+  "timing": "process start to exit; verification and setup excluded; provider default flush semantics",
+  "results": [
+    {
+      "provider": "virtdisk",
+      "sample": 1,
+      "seconds": 0.24161799999998834,
+      "mib_per_second": 1059.5237109818488,
+      "container_bytes": 16778752,
+      "allocated_bytes": null,
+      "command": [
+        "C:\\bench\\virtdisk.exe",
+        "convert",
+        "C:\\bench\\virtdisk-benchmark-t9nt00s7\\seed.raw",
+        "raw",
+        "C:\\bench\\virtdisk-benchmark-t9nt00s7\\virtdisk-1.vdi",
+        "vdi"
+      ],
+      "verified": true
+    },
+    {
+      "provider": "qemu",
+      "sample": 1,
+      "seconds": 0.09553339999999366,
+      "mib_per_second": 2679.691081862647,
+      "container_bytes": 16778752,
+      "allocated_bytes": null,
+      "command": [
+        "qemu-img",
+        "convert",
+        "-f",
+        "raw",
+        "-O",
+        "vdi",
+        "C:\\bench\\virtdisk-benchmark-t9nt00s7\\seed.raw",
+        "C:\\bench\\virtdisk-benchmark-t9nt00s7\\qemu-1.vdi"
+      ],
+      "verified": true
+    },
+    {
+      "provider": "virtualbox",
+      "sample": 1,
+      "seconds": 0.1343003000000067,
+      "mib_per_second": 1906.1759355711583,
+      "container_bytes": 18874368,
+      "allocated_bytes": null,
+      "command": [
+        "VBoxManage",
+        "convertfromraw",
+        "C:\\bench\\virtdisk-benchmark-t9nt00s7\\seed.raw",
+        "C:\\bench\\virtdisk-benchmark-t9nt00s7\\virtualbox-1.vdi",
+        "--format",
+        "VDI",
+        "--variant",
+        "Standard"
+      ],
+      "verified": true
+    },
+    {
+      "provider": "virtdisk",
+      "sample": 2,
+      "seconds": 0.24607629999999858,
+      "mib_per_second": 1040.327735747008,
+      "container_bytes": 16778752,
+      "allocated_bytes": null,
+      "command": [
+        "C:\\bench\\virtdisk.exe",
+        "convert",
+        "C:\\bench\\virtdisk-benchmark-t9nt00s7\\seed.raw",
+        "raw",
+        "C:\\bench\\virtdisk-benchmark-t9nt00s7\\virtdisk-2.vdi",
+        "vdi"
+      ],
+      "verified": true
+    },
+    {
+      "provider": "virtualbox",
+      "sample": 2,
+      "seconds": 0.11959260000000427,
+      "mib_per_second": 2140.600672616791,
+      "container_bytes": 18874368,
+      "allocated_bytes": null,
+      "command": [
+        "VBoxManage",
+        "convertfromraw",
+        "C:\\bench\\virtdisk-benchmark-t9nt00s7\\seed.raw",
+        "C:\\bench\\virtdisk-benchmark-t9nt00s7\\virtualbox-2.vdi",
+        "--format",
+        "VDI",
+        "--variant",
+        "Standard"
+      ],
+      "verified": true
+    },
+    {
+      "provider": "qemu",
+      "sample": 2,
+      "seconds": 0.1553517000000113,
+      "mib_per_second": 1647.873824360991,
+      "container_bytes": 16778752,
+      "allocated_bytes": null,
+      "command": [
+        "qemu-img",
+        "convert",
+        "-f",
+        "raw",
+        "-O",
+        "vdi",
+        "C:\\bench\\virtdisk-benchmark-t9nt00s7\\seed.raw",
+        "C:\\bench\\virtdisk-benchmark-t9nt00s7\\qemu-2.vdi"
+      ],
+      "verified": true
+    },
+    {
+      "provider": "virtualbox",
+      "sample": 3,
+      "seconds": 0.12564729999999713,
+      "mib_per_second": 2037.4492726863677,
+      "container_bytes": 18874368,
+      "allocated_bytes": null,
+      "command": [
+        "VBoxManage",
+        "convertfromraw",
+        "C:\\bench\\virtdisk-benchmark-t9nt00s7\\seed.raw",
+        "C:\\bench\\virtdisk-benchmark-t9nt00s7\\virtualbox-3.vdi",
+        "--format",
+        "VDI",
+        "--variant",
+        "Standard"
+      ],
+      "verified": true
+    },
+    {
+      "provider": "qemu",
+      "sample": 3,
+      "seconds": 0.12472420000000284,
+      "mib_per_second": 2052.528699322138,
+      "container_bytes": 16778752,
+      "allocated_bytes": null,
+      "command": [
+        "qemu-img",
+        "convert",
+        "-f",
+        "raw",
+        "-O",
+        "vdi",
+        "C:\\bench\\virtdisk-benchmark-t9nt00s7\\seed.raw",
+        "C:\\bench\\virtdisk-benchmark-t9nt00s7\\qemu-3.vdi"
+      ],
+      "verified": true
+    },
+    {
+      "provider": "virtdisk",
+      "sample": 3,
+      "seconds": 0.2362282999999934,
+      "mib_per_second": 1083.697423213083,
+      "container_bytes": 16778752,
+      "allocated_bytes": null,
+      "command": [
+        "C:\\bench\\virtdisk.exe",
+        "convert",
+        "C:\\bench\\virtdisk-benchmark-t9nt00s7\\seed.raw",
+        "raw",
+        "C:\\bench\\virtdisk-benchmark-t9nt00s7\\virtdisk-3.vdi",
+        "vdi"
+      ],
+      "verified": true
+    },
+    {
+      "provider": "virtdisk",
+      "sample": 4,
+      "seconds": 0.22504320000001599,
+      "mib_per_second": 1137.559366379352,
+      "container_bytes": 16778752,
+      "allocated_bytes": null,
+      "command": [
+        "C:\\bench\\virtdisk.exe",
+        "convert",
+        "C:\\bench\\virtdisk-benchmark-t9nt00s7\\seed.raw",
+        "raw",
+        "C:\\bench\\virtdisk-benchmark-t9nt00s7\\virtdisk-4.vdi",
+        "vdi"
+      ],
+      "verified": true
+    },
+    {
+      "provider": "virtualbox",
+      "sample": 4,
+      "seconds": 0.1175450000000069,
+      "mib_per_second": 2177.889318984091,
+      "container_bytes": 18874368,
+      "allocated_bytes": null,
+      "command": [
+        "VBoxManage",
+        "convertfromraw",
+        "C:\\bench\\virtdisk-benchmark-t9nt00s7\\seed.raw",
+        "C:\\bench\\virtdisk-benchmark-t9nt00s7\\virtualbox-4.vdi",
+        "--format",
+        "VDI",
+        "--variant",
+        "Standard"
+      ],
+      "verified": true
+    },
+    {
+      "provider": "qemu",
+      "sample": 4,
+      "seconds": 0.10677720000001045,
+      "mib_per_second": 2397.5155744857043,
+      "container_bytes": 16778752,
+      "allocated_bytes": null,
+      "command": [
+        "qemu-img",
+        "convert",
+        "-f",
+        "raw",
+        "-O",
+        "vdi",
+        "C:\\bench\\virtdisk-benchmark-t9nt00s7\\seed.raw",
+        "C:\\bench\\virtdisk-benchmark-t9nt00s7\\qemu-4.vdi"
+      ],
+      "verified": true
+    },
+    {
+      "provider": "virtdisk",
+      "sample": 5,
+      "seconds": 0.2494786999999974,
+      "mib_per_second": 1026.139706516038,
+      "container_bytes": 16778752,
+      "allocated_bytes": null,
+      "command": [
+        "C:\\bench\\virtdisk.exe",
+        "convert",
+        "C:\\bench\\virtdisk-benchmark-t9nt00s7\\seed.raw",
+        "raw",
+        "C:\\bench\\virtdisk-benchmark-t9nt00s7\\virtdisk-5.vdi",
+        "vdi"
+      ],
+      "verified": true
+    },
+    {
+      "provider": "virtualbox",
+      "sample": 5,
+      "seconds": 0.11949279999998907,
+      "mib_per_second": 2142.3884953739757,
+      "container_bytes": 18874368,
+      "allocated_bytes": null,
+      "command": [
+        "VBoxManage",
+        "convertfromraw",
+        "C:\\bench\\virtdisk-benchmark-t9nt00s7\\seed.raw",
+        "C:\\bench\\virtdisk-benchmark-t9nt00s7\\virtualbox-5.vdi",
+        "--format",
+        "VDI",
+        "--variant",
+        "Standard"
+      ],
+      "verified": true
+    },
+    {
+      "provider": "qemu",
+      "sample": 5,
+      "seconds": 0.10532010000000014,
+      "mib_per_second": 2430.685120883855,
+      "container_bytes": 16778752,
+      "allocated_bytes": null,
+      "command": [
+        "qemu-img",
+        "convert",
+        "-f",
+        "raw",
+        "-O",
+        "vdi",
+        "C:\\bench\\virtdisk-benchmark-t9nt00s7\\seed.raw",
+        "C:\\bench\\virtdisk-benchmark-t9nt00s7\\qemu-5.vdi"
+      ],
+      "verified": true
+    }
+  ],
+  "source_sha256": "1112b4f9c6a9f30f011a02fda1783006ab706ffc091d547c27af030785f00c8e",
+  "summary": {
+    "virtdisk": {
+      "median_seconds": 0.24161799999998834,
+      "median_mib_per_second": 1059.5237109818488
+    },
+    "qemu": {
+      "median_seconds": 0.10677720000001045,
+      "median_mib_per_second": 2397.5155744857043
+    },
+    "virtualbox": {
+      "median_seconds": 0.11959260000000427,
+      "median_mib_per_second": 2140.600672616791
+    }
+  }
+}
