@@ -36,7 +36,10 @@ fn run(args: &[std::ffi::OsString]) -> io::Result<bool> {
         }
     };
     let result = {
-        let mut context = OperationContext::new(controls.operation);
+        let mut context = OperationContext::new(controls.operation)
+            .with_buffer_bytes(controls.export_buffer)?
+            .with_workers(controls.export_workers)?
+            .with_streaming_allocation(controls.streaming_allocation);
         if controls.progress {
             context = context.with_observer(&mut observer);
         }
@@ -653,6 +656,9 @@ struct CliControls {
     reader: ReaderOpenOptions,
     operation: OperationLimits,
     progress: bool,
+    export_buffer: usize,
+    export_workers: usize,
+    streaming_allocation: bool,
 }
 
 fn reader_controls(
@@ -667,7 +673,61 @@ fn reader_controls(
     let mut operation_io = u64::MAX;
     let mut operation_scratch = 131072u64;
     let mut progress = false;
+    let mut export_buffer = 65536;
+    let mut export_workers = 1;
+    let mut streaming_allocation = false;
+    let mut tuning_specified = false;
+    let mut working_memory: Option<usize> = None;
+    let mut scratch_specified = false;
     loop {
+        if let [flag, rest @ ..] = args
+            && flag == "--streaming-allocation"
+        {
+            streaming_allocation = true;
+            tuning_specified = true;
+            args = rest;
+            continue;
+        }
+        if args.first().is_some_and(|flag| {
+            matches!(
+                flag.to_str(),
+                Some("--export-buffer" | "--export-workers" | "--working-memory")
+            )
+        }) {
+            let [flag, value, rest @ ..] = args else {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "conversion tuning flag requires an integer",
+                ));
+            };
+            let value: usize = value
+                .to_str()
+                .and_then(|value| value.parse().ok())
+                .ok_or_else(|| {
+                    io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "conversion tuning flag requires an integer",
+                    )
+                })?;
+            match flag.to_str() {
+                Some("--export-buffer") => {
+                    OperationContext::default().with_buffer_bytes(value)?;
+                    export_buffer = value;
+                }
+                Some("--export-workers") => {
+                    OperationContext::default().with_workers(value)?;
+                    export_workers = value;
+                }
+                Some("--working-memory") => {
+                    OperationLimits::default().working_memory_bytes(value)?;
+                    working_memory = Some(working_memory.map_or(value, |prior| prior.min(value)));
+                }
+                _ => unreachable!("tuning flag recognized above"),
+            }
+            tuning_specified = true;
+            args = rest;
+            continue;
+        }
         if let [flag, rest @ ..] = args
             && flag == "--progress"
         {
@@ -712,6 +772,7 @@ fn reader_controls(
                         )
                     })?;
                     OperationLimits::default().scratch_bytes(value)?;
+                    scratch_specified = true;
                     &mut operation_scratch
                 }
                 _ => {
@@ -795,6 +856,19 @@ fn reader_controls(
         specified = true;
         args = rest;
     }
+    if tuning_specified && !args.first().is_some_and(|command| command == "convert") {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "conversion tuning controls require convert",
+        ));
+    }
+    let memory = working_memory.map_or(operation_scratch as usize, |memory| {
+        if scratch_specified {
+            memory.min(operation_scratch as usize)
+        } else {
+            memory
+        }
+    });
     let snapshot_reader = matches!(args, [command, action, ..] if command == "snapshot" && matches!(action.to_str(), Some("list" | "export")));
     let graph_reader =
         matches!(args, [command, action, ..] if command == "graph" && action == "info");
@@ -878,13 +952,16 @@ fn reader_controls(
                 MutationExecution::WholeCall
             },
             progress,
+            export_buffer,
+            export_workers,
+            streaming_allocation,
             reader: ReaderOpenOptions::default()
                 .parser_limits(limits)?
                 .recovery_policy(recovery),
             operation: OperationLimits::default()
                 .logical_bytes(operation_bytes)
                 .io_operations(operation_io)
-                .scratch_bytes(operation_scratch as usize)?,
+                .working_memory_bytes(memory)?,
         },
         args,
     ))

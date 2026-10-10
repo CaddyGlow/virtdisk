@@ -1,14 +1,15 @@
 # Performance improvement plan
 
-Status: measurement foundations and explicit sparse conversion implemented; optimization
-and acceptance gates remain open. Grounded in the
+Status: M0–M7 implementation delivered; broad performance and release acceptance
+gates remain open. Grounded in the
 [2026-10-10 Windows VM results](benchmark-results-windows-20261010.md).
-No speedups in this document have been demonstrated yet. The implementation order
+Targeted hosted-I/O diagnostics are recorded below; they do not establish a
+provider-wide performance lead. The implementation order
 is measurement, low-risk I/O improvements, exporter redesign, then concurrency and
 transaction optimization. Reorder later work when profiles identify a different
 dominant cost.
 
-## Implementation status (2026-10-10)
+## Implementation status (2026-10-11)
 
 This is an evidence-gated program, not a claim that every milestone has passed.
 The current implementation provides:
@@ -33,13 +34,40 @@ The current implementation provides:
 - **M8:** evidence requirements and proposed gates below remain the policy.
   Dedicated multi-session enforcement and native acceptance are still required.
 
-Linux smoke runs validate benchmark plumbing and independent QEMU decoding; they
-are not quiet multi-session throughput baselines. The original Windows results
-remain baseline evidence, not results for this implementation. M0–M3 exit gates
-are therefore not all satisfied. M4–M7 remain conditional: positioned I/O,
-buffer/layout changes, exporter pass elimination, parallel work and transaction
-batching require the measurements and recovery designs specified below. No such
-optimization is silently selected or represented as demonstrated.
+- **M4:** Unix positioned immutable reads, serialized positioned raw writes,
+  contiguous allocated VMDK grain reads, and private export cursor tracking remove
+  redundant seeks. Windows retains the seek/mutex fallback. Explicit 64/256 KiB
+  and 1/4 MiB buffer choices remain bounded by operation memory. See
+  [hosted read evidence](performance-hosted-reads.md).
+- **M5:** opt-in single-pass VDI/VHDX allocation and a bounded sparse QCOW2 bitmap
+  reduce source rereads. Low-memory callers retain the old algorithms. Full
+  staged comparison, sync ordering and no-overwrite publication remain mandatory.
+  Counter tests, partial tails, independent QEMU decoding and injected payload,
+  metadata and sync failures cover the new paths.
+- **M6:** opt-in 2/4-worker raw preparation uses one reusable buffer per worker,
+  bounded channels and one write coordinator. Worker, coordinator, cancellation
+  and panic tests require joined workers and unpublished output on failure.
+  Native output and verification remain serial; one worker remains the default.
+  [Worker samples and four-buffer smoke results](evidence/performance-export-20261010/README.md)
+  retain the limits of the current timing evidence.
+- **M7:** the lifecycle benchmark covers first allocation, partial updates,
+  supported QCOW2 snapshot COW, discard, resize, compact, reopen and clean
+  recovery-policy opening. Unix raw positioned writes preserve the existing
+  operation mutex, locks and flush contract. See [lifecycle evidence and limits](performance-lifecycle.md). No new transaction-batching or delayed durability
+  contract was introduced.
+
+Linux diagnostics validate benchmark plumbing and independent QEMU decoding;
+tmpfs results do not establish storage bandwidth. Targeted syscall counts and
+paired raw-read/write measurements support the narrow I/O changes. Streaming
+allocation and worker/buffer controls remain explicit experiments, not changed
+performance defaults. The original Windows provider results remain baseline
+evidence. Quiet three-session matched provider runs, multi-GiB storage tests,
+broader native consumer coverage and consumer integration traces are release gates,
+not implied by completing the implementation. Focused dense/sparse streaming VDI
+VirtualBox decoding and VHDX Windows read-only attachment passed exact whole-image
+hash checks; see [native Windows evidence](performance-windows.md).
+M0–M7 exit criteria below are
+retained so incomplete evidence remains visible.
 
 ## Objective and boundaries
 
@@ -376,7 +404,7 @@ disable experiments that fail the gate; do not accumulate speculative complexity
 7. **Write-path PRs:** allocation/COW/transaction changes with individual recovery gates.
 8. **Release evidence PR:** complete matched provider rerun and explicit per-case standings.
 
-M0–M2 are the immediate work. M3 is the first concrete format opportunity. Later
-milestones are conditional on evidence; estimates should follow the profiling
-baseline and the required recovery design, rather than assume every hypothesis
-will produce a speedup.
+The implementation sequence above has produced the M0–M7 changes described in
+the status section. Further default changes and provider competitiveness claims
+remain conditional on the retained evidence and recovery gates; implemented
+experiments alone do not establish a speedup.

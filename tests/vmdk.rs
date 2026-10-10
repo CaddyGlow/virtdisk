@@ -678,3 +678,59 @@ fn hosted_v2_zero_feature_preserves_allocation_and_masking() {
         assert_eq!(open(bad).err().unwrap().kind(), expected, "offset={offset}");
     }
 }
+
+#[test]
+fn mapped_reads_stop_at_zero_and_discontinuous_payload_boundaries() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    struct Counted {
+        bytes: Bytes,
+        calls: AtomicUsize,
+    }
+    impl ReadAt for Counted {
+        fn len(&self) -> u64 {
+            self.bytes.len()
+        }
+        fn read_exact_at(&self, offset: u64, out: &mut [u8]) -> io::Result<()> {
+            self.calls.fetch_add(1, Ordering::Relaxed);
+            self.bytes.read_exact_at(offset, out)
+        }
+    }
+    for (entries, expected, expected_calls) in [
+        ([3u32, 4, 5, 6], [3u8, 4, 5, 6], 1),
+        ([3, 0, 4, 1], [3, 0, 4, 0], 2),
+        ([3, 5, 4, 6], [3, 5, 4, 6], 4),
+    ] {
+        let mut data = fixture();
+        data.resize(7 * 512, 0);
+        data[8..12].copy_from_slice(&4u32.to_le_bytes()); // Explicit-zero grain feature.
+        data[12..20].copy_from_slice(&4u64.to_le_bytes());
+        data[44..48].copy_from_slice(&4u32.to_le_bytes());
+        for (index, entry) in entries.iter().enumerate() {
+            data[1024 + index * 4..1028 + index * 4].copy_from_slice(&entry.to_le_bytes());
+        }
+        for sector in 3..7 {
+            data[sector * 512..(sector + 1) * 512].fill(sector as u8);
+        }
+        let source = Arc::new(Counted {
+            bytes: Bytes(data),
+            calls: AtomicUsize::new(0),
+        });
+        let reader = Vmdk::open(source.clone()).unwrap();
+        source.calls.store(0, Ordering::Relaxed);
+        let budget = reader.budget().unwrap();
+        let work_before = budget.usage().work_items;
+        // Start/end inside grains, including all intervening mappings.
+        let mut output = vec![0; 1536];
+        reader.read_exact_at(256, &mut output).unwrap();
+        let calls = source.calls.load(Ordering::Relaxed);
+        eprintln!("entries={entries:?},payload_read_calls={calls}");
+        assert_eq!(calls, expected_calls);
+        // Coalescing must still charge one work item per logical grain.
+        assert_eq!(budget.usage().work_items - work_before, 4 + calls as u64);
+        for (index, &value) in expected.iter().enumerate() {
+            let start = (index * 512).saturating_sub(256);
+            let end = ((index + 1) * 512 - 256).min(output.len());
+            assert!(output[start..end].iter().all(|&byte| byte == value));
+        }
+    }
+}

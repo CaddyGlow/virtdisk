@@ -1,0 +1,23 @@
+{
+  "source_commit": "1e0b1807e93c7db2b3d0e65d79722716fed777f2 plus working tree",
+  "binary_at_report_sha256": "43c9104b493a18f94fd4cab958ec56f5606542456ea5bc7f0367cbacc237562f",
+  "binary_identity_caveat": "Binary rebuilt after retained pipeline runs; hash does not prove retained run identity",
+  "retained_commands": [
+    "TMPDIR=/dev/shm nix develop --no-write-lock-file ./nix -c cargo bench --locked --bench conversion -- --size-mib 16 --samples 10 --formats raw --buffer-kib 1024 --workers W --memory-mib 16 (W=1,2,4)"
+  ],
+  "cpu_time": "unavailable",
+  "peak_rss": "unavailable",
+  "physical_io": "unavailable",
+  "independent_sessions": 1,
+  "environment_caveat": "Shared host; historical machine manifest not captured with these samples",
+  "csv_sha256": {
+    "buffer-smoke-256.csv": "8cb8ab41777e81c1ea1ceb1954368a9face74a4bca2d06c20bcc3c8616a3cadd",
+    "virtdisk-pipeline-2-20261010.csv": "5d2b537d8752a38a40dfe3b565a5c060bef53cd4531dc9a64d07462412eb7110",
+    "virtdisk-pipeline-4-20261010.csv": "e13b815709e7bac2d822e601c9d30b08e833a13929c2b603900789e6049ed686",
+    "buffer-smoke-1024.csv": "f5e6ecfbace4dcba4169d3e7569c0d0a664c8d653cd972c346c43e1911b74c2c",
+    "buffer-smoke-4096.csv": "a325e73d754c54f2f504678d3160aa829a3ccacfeb8966cf9daf8a528fe90845",
+    "virtdisk-pipeline-1-20261010.csv": "fba1bf1b58f94658842b13d7b9a41dd8130bfd334b4cba4f02cb7be30f9d32fc",
+    "buffer-smoke-64.csv": "a62bd17a1b5bd7d0043308d17af8470c288c08a62a77873811b6b3f6ab694f6a"
+  },
+  "buffer_smoke_command": "conversion --smoke --formats raw --buffer-kib K --memory-mib 16; K=64,256,1024,4096"
+}

@@ -295,7 +295,8 @@ pub fn compare_images(left: &dyn ReadAt, right: &dyn ReadAt) -> io::Result<bool>
 }
 /// Compare logical bytes with cumulative budgets and cooperative progress.
 ///
-/// Both sources must remain immutable. Combined scratch is bounded to 128 KiB.
+/// Both sources must remain immutable. Combined scratch defaults to 128 KiB;
+/// explicit context tuning remains bounded by its working-memory ceiling.
 /// Unequal capacities return false without callbacks or I/O. For equal sizes,
 /// the complete request is preflighted; comparison stops after the first unequal
 /// chunk, accounting that chunk as processed. Observers run before reads and
@@ -353,7 +354,8 @@ pub fn hash_image(source: &dyn ReadAt) -> io::Result<[u8; 32]> {
 /// Hash immutable logical bytes with budgets and cooperative progress.
 ///
 /// Preflights the complete request before callbacks, allocation or I/O. Scratch
-/// is at most 64 KiB. Progress reports completed chunks; cancellation at any
+/// defaults to at most 64 KiB; explicit context tuning can increase it.
+/// Progress reports completed chunks; cancellation at any
 /// boundary returns `Interrupted` without a digest. Underlying I/O errors are
 /// preserved. Hashing does not authenticate the source or provide isolation.
 pub fn hash_image_with_context(
@@ -395,7 +397,8 @@ pub fn copy_image(source: &dyn ReadAt, output: &dyn WriteAt) -> io::Result<()> {
 /// the final partial chunk. An observer may cancel at any reported boundary;
 /// even cancellation after the last chunk returns `Interrupted`. Completed bytes
 /// remain in the output. Failed I/O may have additional partial effects.
-/// Scratch is bounded to 64 KiB and allocated fallibly. No flush or publication
+/// Scratch defaults to 64 KiB and is allocated fallibly within the context ceiling.
+/// No flush or publication
 /// is implicit; exclude resize and keep the source immutable during copying.
 pub fn copy_image_with_context(
     source: &dyn ReadAt,
@@ -561,8 +564,31 @@ pub(crate) fn materialize_with_context(
             }
             context.preflight(source.len(), 1, 2)?
         }
+        ImageFormat::Qcow2 if sparse && context.streaming_allocation(source.len()) => {
+            131072
+                + usize::try_from(source.len().div_ceil(65536).div_ceil(8)).map_err(|_| {
+                    io::Error::new(io::ErrorKind::Unsupported, "QCOW2 bitmap size overflow")
+                })?
+        }
         ImageFormat::Qcow2 => 131072,
         ImageFormat::Vmdk => 67584,
+        ImageFormat::Vdi | ImageFormat::Vhdx if context.streaming_allocation(source.len()) => {
+            let blocks = source.len().div_ceil(1048576);
+            let entries = if format == ImageFormat::Vdi {
+                blocks * 4
+            } else {
+                (blocks + blocks.saturating_sub(1) / 4096) * 8
+            };
+            usize::try_from(entries)
+                .ok()
+                .and_then(|n| n.checked_add(1048576))
+                .ok_or_else(|| {
+                    io::Error::new(
+                        io::ErrorKind::Unsupported,
+                        "streaming working memory overflow",
+                    )
+                })?
+        }
         ImageFormat::Vdi | ImageFormat::Vhdx => 65536,
     };
     context.require_scratch(scratch)?;
@@ -573,50 +599,62 @@ pub(crate) fn materialize_with_context(
             ImageFormat::Raw => {
                 context.observe_phase(crate::OperationPhase::ImageExport, 0, source.len())?;
                 let writer = RawWriter::create(temporary, source.len())?;
-                let mut buffer = crate::operation_context::scratch_buffer(scratch)?;
-                let mut offset = 0;
-                while offset < source.len() {
-                    let count = (source.len() - offset).min(buffer.len() as u64) as usize;
-                    context.attempted_io();
-                    measured(
-                        profiler.as_ref(),
-                        crate::OperationEvent::SourceRead,
-                        count as u64,
-                        || source.read_exact_at(offset, &mut buffer[..count]),
-                    )?;
-                    let nonzero = if sparse {
-                        measured(
-                            profiler.as_ref(),
-                            crate::OperationEvent::ZeroDetection,
-                            count as u64,
-                            || Ok(buffer[..count].iter().any(|&byte| byte != 0)),
-                        )?
-                    } else {
-                        true
-                    };
-                    if nonzero {
+                if context.workers() > 1 {
+                    crate::parallel_export::export_raw(source, &writer, sparse, context)?;
+                } else {
+                    let mut buffer = crate::operation_context::scratch_buffer(scratch)?;
+                    let mut offset = 0;
+                    while offset < source.len() {
+                        let count = (source.len() - offset).min(buffer.len() as u64) as usize;
                         context.attempted_io();
                         measured(
                             profiler.as_ref(),
-                            crate::OperationEvent::PayloadWrite,
+                            crate::OperationEvent::SourceRead,
                             count as u64,
-                            || writer.write_all_at(offset, &buffer[..count]),
+                            || source.read_exact_at(offset, &mut buffer[..count]),
+                        )?;
+                        let nonzero = if sparse {
+                            measured(
+                                profiler.as_ref(),
+                                crate::OperationEvent::ZeroDetection,
+                                count as u64,
+                                || Ok(buffer[..count].iter().any(|&byte| byte != 0)),
+                            )?
+                        } else {
+                            true
+                        };
+                        if nonzero {
+                            context.attempted_io();
+                            measured(
+                                profiler.as_ref(),
+                                crate::OperationEvent::PayloadWrite,
+                                count as u64,
+                                || writer.write_all_at(offset, &buffer[..count]),
+                            )?;
+                        }
+                        offset += count as u64;
+                        context.completed(count as u64);
+                        context.observe_phase(
+                            crate::OperationPhase::ImageExport,
+                            offset,
+                            source.len(),
                         )?;
                     }
-                    offset += count as u64;
-                    context.completed(count as u64);
-                    context.observe_phase(
-                        crate::OperationPhase::ImageExport,
-                        offset,
-                        source.len(),
-                    )?;
                 }
                 measured(profiler.as_ref(), crate::OperationEvent::Sync, 0, || {
                     writer.flush()
                 })?;
             }
             _ => {
-                let mut input = crate::export_source::ContextSource::new(source, context);
+                let read_chunk_bytes = if matches!(format, ImageFormat::Vdi | ImageFormat::Vhdx)
+                    && context.streaming_allocation(source.len())
+                {
+                    1048576
+                } else {
+                    65536
+                };
+                let mut input =
+                    crate::export_source::ContextSource::new(source, context, read_chunk_bytes);
                 match format {
                     ImageFormat::Qcow2 => {
                         crate::qcow2_write::export_qcow2(temporary, &mut input, sparse).map(drop)?

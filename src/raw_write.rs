@@ -1,4 +1,6 @@
-use crate::io::{self, Read, Seek, SeekFrom, Write};
+use crate::io;
+#[cfg(not(unix))]
+use crate::io::{Read, Seek, SeekFrom, Write};
 use std::fs::{File, OpenOptions};
 use std::path::Path;
 use std::sync::Mutex;
@@ -150,8 +152,7 @@ impl RawWriter {
     pub fn write_all_at(&self, offset: u64, data: &[u8]) -> io::Result<()> {
         let mut state = self.state()?;
         crate::check_range(offset, data.len() as u64, state.length)?;
-        state.file.seek(SeekFrom::Start(offset))?;
-        Ok(state.file.write_all(data)?)
+        write_exact(&mut state.file, offset, data)
     }
 
     /// Read exactly a bounded range from the current logical image.
@@ -160,8 +161,7 @@ impl RawWriter {
     pub fn read_exact_at(&self, offset: u64, destination: &mut [u8]) -> io::Result<()> {
         let mut state = self.state()?;
         crate::check_range(offset, destination.len() as u64, state.length)?;
-        state.file.seek(SeekFrom::Start(offset))?;
-        Ok(state.file.read_exact(destination)?)
+        read_exact(&mut state.file, offset, destination)
     }
 
     /// Write zero bytes to a bounded range using constant memory.
@@ -171,11 +171,19 @@ impl RawWriter {
     pub fn write_zeroes(&self, offset: u64, length: u64) -> io::Result<()> {
         let mut state = self.state()?;
         crate::check_range(offset, length, state.length)?;
+        #[cfg(not(unix))]
         state.file.seek(SeekFrom::Start(offset))?;
         let zeros = [0; 64 * 1024];
         let mut remaining = length;
         while remaining != 0 {
             let count = remaining.min(zeros.len() as u64) as usize;
+            #[cfg(unix)]
+            write_exact(
+                &mut state.file,
+                offset + length - remaining,
+                &zeros[..count],
+            )?;
+            #[cfg(not(unix))]
             state.file.write_all(&zeros[..count])?;
             remaining -= count as u64;
         }
@@ -284,11 +292,19 @@ impl RawWriter {
                 "host hole punching is unavailable",
             ));
         }
+        #[cfg(not(unix))]
         state.file.seek(SeekFrom::Start(offset))?;
         let zeros = [0; 65536];
         let mut remaining = length;
         while remaining != 0 {
             let count = remaining.min(zeros.len() as u64) as usize;
+            #[cfg(unix)]
+            write_exact(
+                &mut state.file,
+                offset + length - remaining,
+                &zeros[..count],
+            )?;
+            #[cfg(not(unix))]
             state.file.write_all(&zeros[..count])?;
             remaining -= count as u64;
         }
@@ -301,5 +317,33 @@ impl RawWriter {
     /// guarantee. This does not sync the image's parent directory.
     pub fn flush(&self) -> io::Result<()> {
         Ok(self.state()?.file.sync_all()?)
+    }
+}
+
+// Keep the caller's operation mutex across range validation and all short-I/O
+// retries. Positioned access removes seek syscalls, not writer serialization.
+fn write_exact(file: &mut File, offset: u64, data: &[u8]) -> io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::FileExt;
+        Ok(file.write_all_at(data, offset)?)
+    }
+    #[cfg(not(unix))]
+    {
+        file.seek(SeekFrom::Start(offset))?;
+        Ok(file.write_all(data)?)
+    }
+}
+
+fn read_exact(file: &mut File, offset: u64, destination: &mut [u8]) -> io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::FileExt;
+        Ok(file.read_exact_at(destination, offset)?)
+    }
+    #[cfg(not(unix))]
+    {
+        file.seek(SeekFrom::Start(offset))?;
+        Ok(file.read_exact(destination)?)
     }
 }

@@ -2332,3 +2332,61 @@ fn cli_conversion_accepts_explicit_sparse_policy_and_rejects_unknown_policy() {
     assert!(!result.status.success());
     assert!(!rejected.exists());
 }
+
+#[test]
+fn conversion_tuning_is_explicit_validated_and_preserves_verification() {
+    let _process_boundary = subprocess_test();
+    let directory = tempfile::tempdir().unwrap();
+    let input = directory.path().join("source.raw");
+    std::fs::write(&input, vec![37; 1048576 + 512]).unwrap();
+    for format in ["raw", "qcow2", "vdi", "vhdx"] {
+        let output = directory.path().join(format!("output.{format}"));
+        let result = Command::new(env!("CARGO_BIN_EXE_virtdisk"))
+            .args([
+                "--export-buffer",
+                "262144",
+                "--export-workers",
+                "4",
+                "--working-memory",
+                "4194304",
+                "--streaming-allocation",
+                "convert",
+            ])
+            .arg(&input)
+            .arg("raw")
+            .arg(&output)
+            .arg(format)
+            .arg("sparse")
+            .output()
+            .unwrap();
+        assert!(
+            result.status.success(),
+            "{}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+        let compared = Command::new(env!("CARGO_BIN_EXE_virtdisk"))
+            .arg("compare")
+            .arg(&input)
+            .arg("raw")
+            .arg(&output)
+            .arg(format)
+            .output()
+            .unwrap();
+        assert!(compared.status.success());
+    }
+    for args in [
+        vec!["--export-workers", "3", "convert"],
+        vec!["--working-memory", "0", "convert"],
+        vec!["--export-buffer", "123", "convert"],
+        vec!["--streaming-allocation", "info"],
+    ] {
+        assert!(
+            !Command::new(env!("CARGO_BIN_EXE_virtdisk"))
+                .args(args)
+                .output()
+                .unwrap()
+                .status
+                .success()
+        );
+    }
+}

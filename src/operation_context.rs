@@ -58,7 +58,7 @@ impl std::error::Error for OperationCancelled {}
 /// Caller ceilings for operations using [`OperationContext`].
 /// Byte and I/O ceilings default to `u64::MAX`; operation size still bounds work.
 /// Scratch defaults to the existing comparison ceiling of 128 KiB combined.
-/// Individual buffers remain at most 64 KiB; caller limits can only tighten it.
+/// Defaults retain 64 KiB buffers. Larger ceilings and buffers require explicit opt-in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct OperationLimits {
     logical_bytes: u64,
@@ -86,6 +86,19 @@ impl OperationLimits {
     pub fn io_operations(mut self, calls: u64) -> Self {
         self.io_operations = calls;
         self
+    }
+    /// Explicitly opt into a larger bounded working-memory ceiling, up to 128 MiB.
+    /// Defaults and the legacy `scratch_bytes` setter retain their old limits.
+    /// Streaming export reserves its map and payload buffers within this ceiling.
+    pub fn working_memory_bytes(mut self, bytes: usize) -> io::Result<Self> {
+        if bytes == 0 || bytes > 128 * 1024 * 1024 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "working memory must be 1..=134217728 bytes",
+            ));
+        }
+        self.scratch_bytes = bytes;
+        Ok(self)
     }
     /// Tighten scratch-buffer size to a positive value of at most 128 KiB combined.
     pub fn scratch_bytes(mut self, bytes: usize) -> io::Result<Self> {
@@ -252,6 +265,9 @@ impl OperationProfiler {
 /// have partial effects beyond successfully completed bytes. Parser/backend work
 /// and flush durability are not accounted by this context.
 pub struct OperationContext<'a> {
+    buffer_bytes: usize,
+    streaming_allocation: bool,
+    workers: usize,
     profiler: Option<OperationProfiler>,
     limits: OperationLimits,
     usage: OperationUsage,
@@ -266,6 +282,9 @@ impl<'a> OperationContext<'a> {
     /// Start with validated caller ceilings and zero usage.
     pub fn new(limits: OperationLimits) -> Self {
         Self {
+            buffer_bytes: 65536,
+            streaming_allocation: false,
+            workers: 1,
             profiler: None,
             limits,
             usage: OperationUsage::default(),
@@ -287,6 +306,49 @@ impl<'a> OperationContext<'a> {
         self.profiler = Some(profiler);
         self
     }
+    /// Request larger reusable operation buffers (64 KiB through 4 MiB).
+    /// The working-memory ceiling still bounds the combined buffers.
+    pub fn with_buffer_bytes(mut self, bytes: usize) -> io::Result<Self> {
+        if ![65536, 262144, 1048576, 4194304].contains(&bytes) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "buffer bytes must be 64 KiB, 256 KiB, 1 MiB or 4 MiB",
+            ));
+        }
+        self.buffer_bytes = bytes;
+        Ok(self)
+    }
+    /// Request one-pass VDI/VHDX allocation and an indexed sparse QCOW2 scan.
+    /// Insufficient memory retains the existing algorithms.
+    #[must_use]
+    pub fn with_streaming_allocation(mut self, enabled: bool) -> Self {
+        self.streaming_allocation = enabled;
+        self
+    }
+    /// Request bounded preparation workers (1, 2 or 4); defaults to serial.
+    /// Currently applies to raw conversion. Native exporters remain serial.
+    /// All payload writes, metadata, synchronization and publication stay serial.
+    pub fn with_workers(mut self, workers: usize) -> io::Result<Self> {
+        if ![1, 2, 4].contains(&workers) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "workers must be 1, 2 or 4",
+            ));
+        }
+        self.workers = workers;
+        Ok(self)
+    }
+    pub(crate) fn streaming_allocation(&self, size: u64) -> bool {
+        let blocks = size.div_ceil(1048576);
+        let metadata = blocks
+            .saturating_add(blocks.saturating_sub(1) / 4096)
+            .saturating_mul(8);
+        self.streaming_allocation
+            && metadata.saturating_add(1048576) <= self.limits.scratch_bytes as u64
+    }
+    pub(crate) fn workers(&self) -> usize {
+        self.workers
+    }
     /// Return the enabled profiling sink, if any.
     pub fn profiler(&self) -> Option<&OperationProfiler> {
         self.profiler.as_ref()
@@ -304,7 +366,7 @@ impl<'a> OperationContext<'a> {
         if bytes == 0 {
             return Ok(0);
         }
-        let chunk = (self.limits.scratch_bytes / buffers).min(65536);
+        let chunk = (self.limits.scratch_bytes / buffers).min(self.buffer_bytes);
         if chunk == 0 {
             return Err(io::Error::new(
                 io::ErrorKind::Unsupported,

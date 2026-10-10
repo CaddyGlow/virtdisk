@@ -1,0 +1,1410 @@
+warning: Git tree '/home/rick/projects-caddy/virtdisk' is dirty
+   Compiling version_check v0.9.5
+   Compiling cfg-if v1.0.5
+   Compiling typenum v1.20.1
+   Compiling adler2 v2.0.1
+   Compiling linux-raw-sys v0.12.1
+   Compiling bitflags v2.13.2
+   Compiling cpufeatures v0.2.17
+   Compiling simd-adler32 v0.3.10
+   Compiling same-file v1.0.6
+   Compiling once_cell v1.21.4
+   Compiling fastrand v2.5.0
+   Compiling libc v0.2.190
+   Compiling rustix v1.1.5
+   Compiling getrandom v0.3.4
+   Compiling getrandom v0.4.3
+   Compiling crc32fast v1.5.2
+   Compiling miniz_oxide v0.8.9
+   Compiling miniz_oxide v0.9.1
+   Compiling generic-array v0.14.7
+   Compiling flate2 v1.1.10
+   Compiling block-buffer v0.10.4
+   Compiling crypto-common v0.1.7
+   Compiling digest v0.10.7
+   Compiling sha2 v0.10.9
+   Compiling tempfile v3.27.0
+   Compiling virtdisk v0.3.0 (/home/rick/projects-caddy/virtdisk)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 8.46s
+     Running unittests src/lib.rs (/data/cache/virtdisk-final-isolated/debug/deps/virtdisk-127811d93e23e8a3)
+
+running 139 tests
+test crc32c::tests::castagnoli_standard_check_value_and_empty_input ... ok
+test export_file::tests::adjacent_payload_writes_skip_redundant_seeks ... ok
+test export_file::tests::failed_payload_write_preserves_error_and_records_attempt ... ok
+test io::tests::host_error_retains_original_os_error_through_context ... ok
+test physical_validation::portable_tests::supplied_bytes_hash_with_cumulative_preflight ... ok
+test policy::tests::cache_reservations_release_and_cumulative_limits_do_not_reset ... ok
+test policy::tests::reader_wrappers_preserve_read_and_allocation_contracts ... ok
+test portable::locator_tests::filesystem_locators_preserve_native_windows_absolute_forms ... ok
+test policy::tests::typed_provenance_keeps_original_names_kind_and_cause ... ok
+test portable::locator_tests::protocols_and_streams_cannot_disguise_themselves_as_native_drive_paths ... ok
+test physical_validation::tests::failed_read_preserves_attempt_and_scratch_accounting ... ok
+test portable::tests::graph_identity_detects_aliases_and_preserves_namespaces ... ok
+test portable::tests::views_preserve_empty_range_and_overflow_contracts ... ok
+test qcow2_writer::journal::tests::published_transaction_error_preserves_host_cause_and_classification ... ok
+test qcow2_writer::journal::tests::rejects_overlaps_overflows_and_malformed_replacement_lengths ... ok
+test qcow2_writer::journal::tests::journal_roundtrip_and_checksum_rejection ... ok
+test qcow2_writer::journal::tests::original_digest_survives_torn_updates_but_rejects_foreign_images ... ok
+test parallel_export::tests::coordinator_write_failure_joins_readers_and_preserves_original_error ... ok
+test sidecar::tests::failed_directory_sync_retains_published_journal_and_typed_cause ... ok
+test qcow2_writer::journal::tests::recovery_rejects_fifo_journal_without_a_writer ... ok
+test sidecar::tests::rejects_fifo_without_waiting_for_a_writer ... ok
+test sidecar::tests::rejects_oversized_files_and_symlinks ... ok
+test source::tests::positioned_read_keeps_cloned_cursor_and_supports_shared_readers ... ok
+test source::tests::positioned_reads_preserve_eof_errors_and_reject_overflow_before_io ... ok
+test source::tests::positioned_reads_retry_interruptions_and_short_reads ... ok
+test source::tests::retained_sources_keep_their_original_length_after_writer_growth ... ok
+test tests::nested_views_translate_offsets_and_reject_boundary_crossing ... ok
+test tests::simultaneous_reads_do_not_share_cursor_positions ... ok
+test tests::truncation_is_an_error_instead_of_zero_filled_data ... ok
+test tests::view_construction_rejects_overflow_and_out_of_bounds ... ok
+test transaction::tests::bounded_record_rejects_overlaps_bad_lengths_checksum_and_truncation ... ok
+test transaction::tests::bounded_shrink_archive_reconstructs_preimage_and_rejects_foreign_tail ... ok
+test transaction::tests::shadow_views_share_record_and_select_old_or_new_bytes ... ok
+test transaction_set::tests::aggregate_final_lengths_cannot_bypass_original_physical_bound ... ok
+test transaction_set::tests::backed_codec_accepts_explicit_parent_manifest_without_changing_legacy_bytes ... ok
+test transaction_set::tests::backed_codec_preserves_ancestor_edges_and_distinct_flat_physical_roles ... ok
+test transaction_set::tests::backed_codec_rejects_checksum_valid_hostile_roles_aliases_and_topology ... ok
+test graph_manifest::replacement::tests::parent_sync_failure_leaves_complete_successor_visible ... ok
+test transaction_set::tests::codec_rejects_truncation_checksum_aliases_and_aggregate_limits ... ok
+test transaction_set::tests::fifo_sidecar_refuses_without_waiting_for_a_writer ... ok
+test qcow2_writer::journal::tests::invalid_sidecars_do_not_mutate_image_or_remove_evidence ... ok
+test transaction_set::tests::marker_binds_exact_transaction_and_coordinator_path ... ok
+test graph_manifest::replacement::tests::prepared_publication_rechecks_source_and_keeps_foreign_staging ... ok
+test graph_manifest::replacement::tests::published_state_retains_successor_lock_until_explicit_sync ... ok
+test graph_manifest::replacement::tests::preparation_retains_source_lock_and_abort_removes_only_staging ... ok
+test graph::deletion_tests::directory_sync_failure_keeps_leaf_deleted_and_graph_updated ... ok
+test sidecar::tests::publication_preserves_existing_evidence_and_cleans_temporary_files ... ok
+test export_file::tests::streaming_disk_full_at_payload_metadata_and_sync_keeps_output_unpublished ... ok
+test vdi_writer::epoch_tests::retained_writer_changes_uuid_once_per_mutation_epoch ... ok
+test vhdx::parent::tests::authorized_parent_identity_replacement_is_rejected_before_parsing ... ok
+test vhdx::parent::tests::locator_preserves_unknown_declarations_without_using_them_as_paths ... ok
+test vhdx::parent::tests::malformed_locator_bounds_and_keys ... ok
+test vhdx::parent::tests::native_guid_and_unicode_path ... ok
+test vhdx::parent::tests::native_path_namespaces_and_locator_priority ... ok
+test graph::generation::tests::failed_parent_sync_keeps_complete_generation_registered ... ok
+test vhdx::parent::tests::windows_provider_drive_rooted_and_extended_namespace_paths ... ok
+test vhdx::parent::tests::staged_child_locator_is_valid_before_and_after_final_directory_publication ... ok
+test transaction_set::tests::changed_parent_recovery_refuses_before_child_or_sidecar_mutation ... ok
+test vhdx_recover::tests::torn_new_header_and_partial_metadata_redo_preserve_recoverability ... ok
+test vhdx_recover::tests::interruption_at_each_native_persistence_boundary_is_recoverable ... ok
+test vhdx_writer::allocator::tests::complete_partial_bitmap_block_can_be_zero_masked_without_changing_bitmap ... ok
+test qcow2_writer::journal::tests::interruptions_recover_idempotently_and_preserve_valid_qcow2 ... ok
+test qcow2_writer::snapshot_write::recovery_tests::final_directory_sync_failure_invalidates_cached_snapshot_and_resize_state ... ok
+test vdi_writer::recovery_tests::each_transaction_cut_recovers_idempotently_and_pending_reader_fails_closed ... ok
+test vhdx_writer::allocator::tests::qemu_recovers_initial_and_reused_interrupted_transactions ... ignored, requires independent qemu-img native transaction recovery oracle
+test vhdx_writer::allocator::tests::qemu_replays_fresh_reused_size_sector_with_exact_capacity_and_payload ... ignored, requires independent qemu-img size-sector native recovery oracle
+test vhdx_writer::allocator::tests::qemu_replays_zero_and_multiple_data_descriptors_in_fresh_reused_epochs ... ignored, requires independent qemu-img multi-descriptor native replay oracle
+test vhdx_writer::allocator::tests::qemu_replays_zero_bat_after_fresh_and_reused_log_interruption ... ignored, requires independent qemu-img native discard replay oracle
+test qcow2_writer::allocator::tests::interrupted_allocations_reopen_with_exact_ownership_and_payload ... ok
+test vhdx_writer::allocator::tests::resize_cache_work_and_sequence_limits_precede_epoch_mutation ... ok
+test qcow2_writer::allocator::tests::backed_allocation_recovery_requires_authorization_and_preserves_parent ... ok
+test vdi_writer::recovery_tests::backed_transaction_cuts_require_parent_authorization_before_replay ... ok
+test vhdx_writer::allocator::tests::resize_boundary_payload_prefix_remains_old_capacity_and_regrows_zero ... ok
+test vhdx_writer::allocator::tests::torn_native_size_item_is_restored_from_retained_complete_redo ... ok
+test vhdx_writer::epoch_tests::one_retained_writer_keeps_one_uuid_epoch_across_payload_writes ... ok
+test vhdx_writer::allocator::tests::torn_alternate_log_and_partial_bat_use_retained_complete_redo ... ok
+test qcow2_writer::allocator::tests::backed_discard_recovery_masks_parent_without_deallocating_parent_payload ... ok
+test vmdk::pinned::tests::discovery_digest_scratch_respects_tight_shared_cache_budget ... ok
+test vmdk::pinned::tests::hosted_parent_uses_one_manifest_file_for_descriptor_and_extent ... ok
+test vmdk::pinned::tests::frozen_child_shadow_sources_preserve_parent_link_and_never_open_unknown_extent ... ok
+test vmdk::pinned::tests::pinned_dependencies_refuse_live_length_and_pending_markers_without_cleanup ... ok
+test vmdk::pinned::tests::pinned_graph_refuses_denied_alias_and_live_dependency_replacement ... ok
+test vmdk::pinned::tests::pinned_split_graph_retains_shared_read_only_sources_and_physical_topology ... ok
+test vmdk_descriptor::tests::field_ranges_preserve_descriptor_bytes ... ok
+test vmdk_descriptor::tests::rejects_interior_padding_and_malformed_extent ... ok
+test vmdk::pinned::tests::multi_generation_graph_pins_hosted_and_flat_ancestors_at_split_offsets ... ok
+test vmdk::pinned::tests::read_only_parent_permissions_and_one_graph_budget_are_respected ... ok
+test vmdk_writer::epoch_tests::one_retained_writer_changes_cid_after_each_flushed_mutation_epoch ... ok
+test vmdk_writer::recovery_tests::native_qemu_discard_redo_preserves_masked_parent_at_every_cut ... ignored, requires independent qemu-img oracle
+test vmdk_writer::recovery_tests::resize_recovery_matches_qemu_at_every_staged_boundary ... ignored, requires independent qemu-img oracle
+test vhdx_writer::allocator::tests::partial_bitmap_torn_log_and_metadata_retain_complete_old_or_new_redo ... ok
+test vdi_writer::recovery_tests::hidden_suffix_zeroing_before_rotation_recovers_every_cut ... ok
+test qcow2_writer::allocator::tests::shrink_shared_l2_releases_removed_aliases_before_boundary_cow ... ok
+test vmdk_writer::sparse_set::tests::allocation_recovery_cuts_match_qemu_at_every_boundary ... ignored, requires independent qemu-img split allocation recovery oracle
+test vmdk_writer::sparse_set::tests::backed_child_refuses_unbound_v1_recovery_without_cleanup ... ok
+test vmdk_writer::sparse_set::tests::backed_cow_recovery_and_zero_masks_match_qemu_full_contents ... ignored, requires independent qemu-img backed split COW recovery oracle
+test vhdx_writer::allocator::tests::first_and_reused_log_transactions_recover_at_each_persistence_boundary ... ok
+test qcow2_writer::allocator::tests::shared_l2_write_and_discard_recover_every_changed_cluster_boundary ... ok
+test vmdk_writer::recovery_tests::inherited_grain_recovery_cuts_preserve_surrounding_parent_bytes ... ok
+test vmdk_writer::recovery_tests::sparse_transaction_cuts_recover_private_grains_and_pending_reads_fail ... ok
+test vmdk_writer::sparse_set::tests::backed_recovery_refuses_missing_or_wrong_parent_authority_without_cleanup ... ok
+test vmdk_writer::sparse_set::tests::exhausted_cumulative_budget_refuses_entire_call_before_cid ... ok
+test qcow2_writer::snapshot_write::recovery_tests::native_snapshot_creation_recovers_each_persistence_and_metadata_patch_cut ... ok
+test vmdk_writer::sparse_set::tests::cid_is_persisted_before_payload_and_torn_payload_recovers ... ok
+test vmdk_writer::sparse_set::tests::foreign_marker_and_unchanged_in_place_mutation_refuse_without_cleanup ... ok
+test vmdk_writer::sparse_set::tests::multiple_table_preparation_and_padding_match_qemu_full_contents ... ignored, requires independent qemu-img multiple-table allocation oracle
+test vmdk_writer::sparse_set::tests::late_participant_replacement_refuses_before_earlier_mutation ... ok
+test qcow2_writer::allocator::tests::resize_recovers_header_mapping_refcount_and_boundary_cow_at_every_cut ... ok
+test vhdx_writer::allocator::tests::differencing_cow_native_redo_cuts_preserve_inherited_bytes ... ok
+test vmdk_writer::sparse_set::tests::qemu_produced_split_parent_child_import_preserves_cow_and_zero_masks ... ignored, requires qemu-img and qemu-io native split parent/child producer oracle
+test vmdk_writer::sparse_set::tests::proposed_descriptor_must_resolve_to_retained_authorized_participants ... ok
+test vmdk_writer::sparse_set::tests::symlinked_participant_marker_is_never_followed_or_removed ... ok
+test vdi_writer::recovery_tests::native_resize_final_transaction_recovers_every_cut ... ok
+test zstd_decoder::decoding::literals_section_decoder::bounded_tests::huffman_expansion_is_refused_before_extra_literal_push ... ok
+test zstd_decoder::decoding::sequence_execution::bounded_tests::expansion_is_refused_before_any_history_growth ... ok
+test zstd_decoder::fse::fse_decoder::bounded_tests::excessive_zero_runs_are_refused_before_probability_growth ... ok
+test vmdk_writer::sparse_set::tests::torn_primary_gte_recovers_before_native_reader_can_see_mismatched_tables ... ok
+test vmdk_writer::sparse_set::tests::backed_recovery_rejects_changed_parent_bytes_lengths_and_identities_before_mutation ... ok
+test vmdk_writer::sparse_set::tests::two_grains_share_one_new_table_arena ... ok
+test vhdx_writer::allocator::tests::fresh_reused_native_size_sector_recovery_preserves_exact_capacity ... ok
+test qcow2_writer::snapshot_write::lifecycle_recovery_tests::compressed_lifecycle_recovers_each_payload_metadata_and_persistence_cut ... ok
+test vdi_writer::recovery_tests::allocated_arena_relocation_recovers_every_overlapping_patch_cut ... ok
+test vdi_writer::recovery_tests::discard_swap_and_archived_tail_recover_every_cut_with_authorized_overlay ... ok
+test vmdk_writer::sparse_set::tests::every_publication_cut_recovers_whole_set_and_pending_extents_refuse ... ok
+test qcow2_writer::allocator::snapshot_resize_recovery_tests::backed_resize_recovers_growth_masks_and_inherited_boundary_at_every_cut has been running for over 60 seconds
+test qcow2_writer::allocator::snapshot_resize_recovery_tests::snapshot_resize_recovers_every_fixture_patch_and_persistence_cut has been running for over 60 seconds
+test qcow2_writer::snapshot_write::backed_recovery_tests::backed_lifecycle_recovers_persistence_and_patch_cuts_with_authority has been running for over 60 seconds
+test qcow2_writer::snapshot_write::lifecycle_recovery_tests::delete_and_revert_recover_every_actual_metadata_patch_and_persistence_cut has been running for over 60 seconds
+test vdi_writer::recovery_tests::multi_stage_rotations_keep_old_capacity_recoverable_at_every_cut has been running for over 60 seconds
+test vhdx_writer::allocator::tests::zero_bat_discard_recovers_first_and_reused_epochs_without_parent_mutation ... ok
+test qcow2_writer::allocator::snapshot_resize_recovery_tests::snapshot_resize_recovers_every_fixture_patch_and_persistence_cut ... ok
+test qcow2_writer::snapshot_write::lifecycle_recovery_tests::delete_and_revert_recover_every_actual_metadata_patch_and_persistence_cut ... ok
+test qcow2_writer::allocator::snapshot_resize_recovery_tests::backed_resize_recovers_growth_masks_and_inherited_boundary_at_every_cut ... ok
+test vmdk_writer::sparse_set::tests::allocation_publication_cuts_preserve_zero_neighbors_and_defer_cached_mapping ... ok
+test vhdx_writer::allocator::tests::bitmap_initialization_and_partial_sector_publication_recover_every_stage has been running for over 60 seconds
+test vmdk_writer::sparse_set::tests::missing_table_cuts_recover_metadata_arena_and_torn_directory ... ok
+test vmdk_writer::sparse_set::tests::padding_creation_cuts_preserve_mapped_prefix_and_nonzero_original_hole ... ok
+test vhdx_writer::allocator::tests::resize_fresh_reused_log_and_final_capacity_recover_at_each_boundary has been running for over 60 seconds
+test vmdk_writer::recovery_tests::discard_zero_flag_and_mapping_publication_recover_at_every_cut has been running for over 60 seconds
+test vmdk_writer::recovery_tests::resize_transaction_cuts_recover_staged_growth_and_shrink has been running for over 60 seconds
+test vmdk_writer::recovery_tests::resize_transaction_cuts_recover_staged_growth_and_shrink ... ok
+test vhdx_writer::allocator::tests::resize_fresh_reused_log_and_final_capacity_recover_at_each_boundary ... ok
+test vmdk_writer::sparse_set::tests::backed_cow_recovery_cuts_bind_parent_set_and_preserve_cid_barrier has been running for over 60 seconds
+test vhdx_writer::allocator::tests::bitmap_initialization_and_partial_sector_publication_recover_every_stage ... ok
+test vmdk_writer::sparse_set::tests::prepared_arena_cuts_keep_logical_old_then_payload_prefix has been running for over 60 seconds
+test qcow2_writer::snapshot_write::backed_recovery_tests::backed_lifecycle_recovers_persistence_and_patch_cuts_with_authority ... ok
+test vmdk_writer::sparse_set::tests::backed_cow_recovery_cuts_bind_parent_set_and_preserve_cid_barrier ... ok
+test vmdk_writer::recovery_tests::discard_zero_flag_and_mapping_publication_recover_at_every_cut ... ok
+test vmdk_writer::sparse_set::tests::prepared_arena_cuts_keep_logical_old_then_payload_prefix ... ok
+test vdi_writer::recovery_tests::multi_stage_rotations_keep_old_capacity_recoverable_at_every_cut ... ok
+
+test result: ok. 129 passed; 0 failed; 10 ignored; 0 measured; 0 filtered out; finished in 198.84s
+
+     Running unittests src/bin/virtdisk.rs (/data/cache/virtdisk-final-isolated/debug/deps/virtdisk-9fffc0aef6df7515)
+
+running 6 tests
+test command::tests::dependency_paths_are_not_interpreted_as_options ... ok
+test command::tests::image_paths_preserve_non_utf8_bytes ... ok
+test command::tests::preallocation_rejects_unexpected_dependency_arguments ... ok
+test command::tests::snapshot_identifiers_decode_binary_hex_without_utf8_conversion ... ok
+test json_output::tests::escapes_all_controls_quotes_and_backslashes_and_preserves_unicode ... ok
+test metadata_output::tests::snapshot_runtime_and_binary_names_are_losslessly_rendered ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/capabilities.rs (/data/cache/virtdisk-final-isolated/debug/deps/capabilities-cab105500bdd9c62)
+
+running 1 test
+test reports_enumerate_stable_operation_names_and_current_handle_access ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/check.rs (/data/cache/virtdisk-final-isolated/debug/deps/check-f013d7cd6f642f24)
+
+running 7 tests
+test payload_sweep_preserves_read_errors_and_checks_cancel_between_chunks ... ok
+test check_chain_requires_authorization_and_cancel_does_not_mutate ... ok
+test qcow_check_rejects_bad_refcount_that_open_alone_accepts ... ok
+test qcow_check_audits_parent_ownership_without_sweeping_by_default ... ok
+test vhdx_optional_metadata_is_range_checked_but_contents_are_opaque ... ok
+test checks_every_container_without_changing_bytes ... ok
+test supported_owner_checks_reject_vdi_vmdk_and_vhdx_payload_aliases ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.14s
+
+     Running tests/check_context.rs (/data/cache/virtdisk-final-isolated/debug/deps/check_context-f85062057821653d)
+
+running 7 tests
+test payload_failure_preserves_source_context_and_attempt_accounting ... ok
+test payload_check_preflights_budget_and_reports_final_partial_chunk ... ok
+test image_check_can_cancel_before_opening_or_between_payload_chunks ... ok
+test final_payload_cancellation_returns_no_success_report_and_empty_sweep_needs_no_budget ... ok
+test authorized_chain_check_preserves_parent_and_child ... ok
+test qcow_metadata_cancellation_keeps_typed_error_and_image_unchanged ... ok
+test context_checks_all_formats_with_separate_metadata_and_payload_scope ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
+
+     Running tests/check_limits.rs (/data/cache/virtdisk-final-isolated/debug/deps/check_limits-b41b823db7580afd)
+
+running 4 tests
+test context_cancellation_precedes_opening_with_valid_parser_limits ... ok
+test invalid_parser_limits_precede_file_access_and_progress ... ok
+test parser_work_and_payload_context_have_independent_accounting ... ok
+test caller_metadata_limits_cover_every_container_and_authorized_parents ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.15s
+
+     Running tests/cli.rs (/data/cache/virtdisk-final-isolated/debug/deps/cli-52dc7f69c20ed3d4)
+
+running 53 tests
+test cli_exports_saved_snapshot_instead_of_current_disk ... ignored, requires independent QEMU internal snapshot oracle
+test capabilities_keep_parent_authorization_and_backed_resize_restrictions ... ok
+test capabilities_report_current_read_and_write_handles_without_mutation ... ok
+test all_parser_fields_are_accepted_and_repetition_only_tightens ... ok
+test capability_controls_are_validated_before_file_access ... ok
+test check_progress_separates_metadata_and_payload_and_quota_refusal_is_not_success ... ok
+test cli_chain_inspection_hash_and_map_require_explicit_parent_authorization ... ok
+test check_enforces_caller_metadata_and_payload_work_limits ... ok
+test cli_compacts_to_verified_new_output ... ok
+test cli_check_reports_scope_and_rejects_corrupt_ownership ... ok
+test cli_conversion_accepts_explicit_sparse_policy_and_rejects_unknown_policy ... ok
+{"id_hex":"ff","virtual_size":65536}
+test cli_creates_disk_snapshot_and_rejects_duplicate_without_mutation ... ok
+test cli_creates_explicit_profiles_and_never_overwrites_existing_outputs ... ok
+test cli_descriptor_sizes_preserve_primary_and_add_full_extent_aggregate ... ok
+test json_errors_identify_parser_quota_through_read_provenance ... ok
+test cli_inspects_converts_and_compares_without_overwriting ... ok
+test cli_native_resize_requires_tail_policy_and_zeroes_grown_range ... ok
+test cli_preallocation_preserves_payload_and_requests_host_storage ... ok
+test cli_rejects_invalid_mutation_requests_before_touching_bytes ... ok
+test cli_reverts_and_deletes_exact_binary_snapshot_id ... ok
+test cli_snapshot_listing_and_missing_export_are_read_only ... ok
+test cli_sparse_vdi_creation_enables_native_capacity_changes ... ok
+{"offset":10,"length":20,"method":"zeroed"}
+test cli_trim_has_explicit_policy_and_zero_accepts_authorized_parent_paths ... ok
+test cli_vdi_trim_reclaims_child_tail_masks_parent_and_preserves_other_block ... ok
+test cli_vhdx_zero_uses_partial_sector_mapping_without_changing_parent ... ok
+test cli_vmdk_native_trim_masks_parent_and_preserves_partial_write_neighbors ... ok
+test cli_zero_masks_an_authorized_parent_and_preserves_neighbors ... ok
+test closed_capability_output_pipe_returns_an_error_without_mutation ... ok
+test closed_materialization_progress_pipe_removes_unpublished_staging ... ok
+test closed_progress_pipe_fails_without_a_success_result_or_panic ... ok
+test comparison_io_and_combined_scratch_are_budgeted_and_repetition_tightens ... ok
+test controlled_zeroing_reports_native_chunks_and_refuses_quota_before_mutation ... ok
+test conversion_and_compaction_progress_and_quotas_preserve_publication_contract ... ok
+test conversion_tuning_is_explicit_validated_and_preserves_verification ... ok
+test deferred_reader_budget_failure_removes_unpublished_outputs ... ok
+test forensic_metadata_cli_preserves_quoted_properties_and_uuid_bytes ... ok
+test invalid_reader_controls_are_refused_before_opening ... ok
+virtdisk: removed tail contains nonzero content
+test cli_hashes_maps_and_resizes_with_explicit_shrink_policy ... ok
+test json_errors_preserve_mutation_ranges_and_escape_messages ... ok
+test json_errors_report_chain_and_descriptor_bounds_as_parser_limits ... ok
+test json_errors_report_quota_and_input_kinds_without_success_output ... ok
+test json_errors_report_recovery_and_coexist_with_progress ... ok
+test mutation_commands_preserve_pending_evidence_until_recovery_is_authorized ... ok
+test operation_controls_validate_before_file_access_and_allow_empty_work ... ok
+test operation_quotas_bound_hash_compare_and_payload_check ... ok
+test progress_handles_comparison_empty_work_and_rejects_unsupported_commands ... ok
+test progress_reports_final_partial_chunks_on_stderr_without_changing_results ... ok
+test reader_parser_limits_reach_opening_and_deferred_reads ... ok
+test recovery_flag_is_rejected_for_readers_and_new_outputs ... ok
+test resize_progress_and_shared_quotas_cover_zero_tail_and_materialization ... ok
+test snapshot_listing_and_export_honor_parser_limits ... ok
+test source_parser_refusal_prevents_conversion_compaction_and_resize_outputs ... ok
+test write_capabilities_reject_pending_recovery_and_held_locks ... ok
+
+test result: ok. 52 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 3.29s
+
+     Running tests/compact.rs (/data/cache/virtdisk-final-isolated/debug/deps/compact-5c896d855d57d84b)
+
+running 5 tests
+test qemu_accepts_sparse_compacted_qcow2 ... ignored, requires independent qemu-img oracle
+test cancelled_compaction_leaves_no_published_output_or_staging_files ... ok
+test sparse_qcow_export_and_compaction_preserve_content_and_reduce_container_length ... ok
+test compaction_across_native_profiles_preserves_zero_and_partial_blocks ... ok
+test legacy_compaction_checks_before_reads_and_before_publication ... ok
+
+test result: ok. 4 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.13s
+
+     Running tests/compact_review.rs (/data/cache/virtdisk-final-isolated/debug/deps/compact_review-9da1c2594b54ab3d)
+
+running 1 test
+test published_vmdk_compaction_is_readable_after_staging_filename_changes ... ignored, requires independent qemu-img oracle
+
+test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/conversion_policy.rs (/data/cache/virtdisk-final-isolated/debug/deps/conversion_policy-f4d8674f0484ae88)
+
+running 3 tests
+test sparse_conversion_cancellation_during_verification_never_publishes ... ok
+test sparse_policy_keeps_default_dense_compatibility_and_sixteenth_payload_small ... ok
+test sparse_conversion_preserves_logical_content_across_density_and_run_lengths ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.43s
+
+     Running tests/discard.rs (/data/cache/virtdisk-final-isolated/debug/deps/discard-81f187e158f8b19d)
+
+running 6 tests
+test discard_checks_ranges_before_mutation_and_generic_zero_fallback_is_explicit ... ok
+test raw_discard_preserves_capacity_neighbor_bytes_and_zeroes_unaligned_range ... ok
+test aligned_raw_hole_punch_releases_host_blocks_without_changing_capacity ... ok
+test generic_writer_without_native_discard_never_silently_zeroes_strict_request ... ok
+test common_vmdk_discard_releases_native_mapping_and_preserves_neighbors ... ok
+test generic_qcow_discard_masks_parent_and_explicit_fallback_handles_partial_clusters ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.13s
+
+     Running tests/forensic_metadata.rs (/data/cache/virtdisk-final-isolated/debug/deps/forensic_metadata-69769781685f8d6e)
+
+running 6 tests
+test vmdk_preserves_vendor_properties_extent_order_and_short_descriptors ... ok
+test metadata_extraction_respects_retained_budget ... ok
+test vdi_parent_uuid_fields_match_the_authorized_parent_header ... ok
+test qcow2_snapshot_timestamps_are_preserved_without_conversion ... ok
+test dispatch_preserves_vdi_uuid_bytes_and_vhdx_header_fields ... ok
+test vhdx_reports_invalid_inactive_slot_and_preserves_native_parent_locator ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.11s
+
+     Running tests/graph.rs (/data/cache/virtdisk-final-isolated/debug/deps/graph-819e5c67d89db975)
+
+running 7 tests
+test replaced_registered_file_is_refused_before_management ... ok
+test graph_checks_declared_parent_identity_cycles_and_foreign_paths ... ok
+test altered_ancestor_cannot_redirect_reads_to_registered_unrelated_branch ... ok
+test rebase_preserves_selected_bytes_when_new_parent_differs ... ok
+test snapshot_writes_preserve_parent_and_sibling_and_flatten_selected_content ... ok
+test external_snapshot_graph_preserves_branches_and_checks_dependencies ... ok
+test snapshot_depth_limit_is_checked_before_publication ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 18.69s
+
+     Running tests/graph_cli.rs (/data/cache/virtdisk-final-isolated/debug/deps/graph_cli-b81307601e256f93)
+
+running 8 tests
+test graph_materialization_commands_preserve_sources_and_enforce_ancestry ... ok
+test graph_info_reports_selected_state_edges_sizes_and_escaped_paths ... ok
+test graph_info_preserves_non_unicode_path_bytes_and_rejects_log_replay ... ok
+test graph_rebase_generation_publishes_image_with_selected_manifest ... ok
+test graph_selection_persists_registered_state_without_changing_branches ... ok
+test graph_snapshot_publishes_selected_generation_with_explicit_authority ... ok
+test graph_snapshot_rejects_recovery_controls_before_manifest_io ... ok
+test graph_snapshot_requires_authority_and_honors_payload_quota ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.91s
+
+     Running tests/graph_context.rs (/data/cache/virtdisk-final-isolated/debug/deps/graph_context-0db734a764d3908f)
+
+running 8 tests
+test qemu_reads_controlled_snapshot_rebase_and_all_flattened_outputs ... ignored, requires independent qemu-img graph materialization oracle
+test flatten_and_merge_use_the_same_context_and_refuse_invalid_ancestry_before_callbacks ... ok
+test rebase_adapts_scratch_and_skips_reads_beyond_short_parent ... ok
+test rebase_accounts_difference_copy_and_verification_and_preserves_original_branches ... ok
+test snapshot_verification_quota_refusal_preserves_parent_and_graph ... ok
+test native_snapshots_share_verification_budgets_and_register_only_after_publication ... ok
+test cancellation_at_verification_and_publication_discards_child_without_graph_edge ... ok
+test rebase_cancellation_and_late_quota_refusal_remove_staging_and_preserve_graph ... ok
+
+test result: ok. 7 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 3.86s
+
+     Running tests/graph_delete_context.rs (/data/cache/virtdisk-final-isolated/debug/deps/graph_delete_context-6e39299ecfe038e6)
+
+running 5 tests
+test graph_parser_quota_refuses_deletion_without_unlinking ... ok
+test replacement_at_deletion_boundary_is_refused_without_unlinking ... ok
+test deletion_preserves_siblings_and_uses_no_payload_budget ... ok
+test base_and_non_leaf_refusals_precede_final_deletion_boundary ... ok
+test cancellation_preserves_registered_leaf_and_source_bytes ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.49s
+
+     Running tests/graph_generation.rs (/data/cache/virtdisk-final-isolated/debug/deps/graph_generation-780e48bf4fc0f224)
+
+running 6 tests
+test generation_refuses_parent_replacement_at_commit_boundary ... ok
+test generation_no_overwrite_survives_a_final_boundary_destination_race ... ok
+test rebase_generation_preserves_selected_content_and_publishes_final_topology ... ok
+test rebase_generation_cancellation_keeps_original_graph ... ok
+test generation_publishes_image_and_manifest_together_and_registers_final_location ... ok
+test generation_cancellation_keeps_original_graph_and_removes_private_staging ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.43s
+
+     Running tests/graph_limits.rs (/data/cache/virtdisk-final-isolated/debug/deps/graph_limits-e1679b100b0f7984)
+
+running 8 tests
+test manifest_binding_can_share_limits_without_changing_legacy_graph_budgets ... ok
+test a_short_symlink_cannot_hide_canonical_path_metadata_from_graph_limits ... ok
+test metadata_quotas_are_aggregate_across_independently_registered_images ... ok
+test invalid_limits_precede_path_access_and_chain_depth_uses_typed_budget_errors ... ok
+test one_graph_budget_covers_registration_reopening_and_deferred_reads ... ok
+test rebased_output_validation_uses_graph_quota_after_completed_difference_writes ... ok
+test staged_native_snapshot_parsing_shares_quota_and_failure_discards_output ... ok
+test authorized_inheritance_keeps_shared_accounting_after_graph_drop ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.97s
+
+     Running tests/graph_manifest.rs (/data/cache/virtdisk-final-isolated/debug/deps/graph_manifest-92f536c782960a41)
+
+running 8 tests
+test independently_encoded_manifest_is_parsed_without_opening_embedded_paths ... ok
+test independently_encoded_maximum_node_and_depth_bounds_are_accepted ... ok
+test checksummed_invalid_topology_tags_and_path_bounds_are_refused ... ok
+test empty_graph_has_no_selection_and_manifest_size_is_bounded_before_reading ... ok
+test non_unicode_unix_paths_round_trip_losslessly ... ok
+test saving_is_no_overwrite_and_loading_detects_corruption_and_truncation ... ok
+test manifest_round_trip_restores_branches_selection_and_requires_exact_authority ... ok
+test native_families_and_live_parent_edges_are_revalidated_after_reload ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.94s
+
+     Running tests/graph_manifest_replace.rs (/data/cache/virtdisk-final-isolated/debug/deps/graph_manifest_replace-71025ba3f7442523)
+
+running 7 tests
+test atomic_selection_replacement_refuses_stale_declarations_and_preserves_images ... ok
+test cli_refuses_fifo_manifest_without_waiting_for_writer ... ok
+test cli_selection_replaces_existing_manifest_after_exact_authorization ... ok
+test equivalent_encoding_change_at_final_boundary_is_still_refused ... ok
+test locks_aliases_and_late_content_changes_refuse_without_overwrite ... ok
+test final_cancellation_and_destination_replacement_keep_staging_private ... ok
+test replacement_accepts_valid_native_encoding_of_unicode_paths ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.36s
+
+     Running tests/graph_native.rs (/data/cache/virtdisk-final-isolated/debug/deps/graph_native-3d29abdb6741cb5a)
+
+running 3 tests
+test native_snapshot_rejects_cross_family_and_overwrite_before_publication ... ok
+test native_snapshot_branches_flatten_and_preserve_immutable_base ... ok
+test hosted_vmdk_and_vhdx_snapshot_branches_and_stale_parent_epochs ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.65s
+
+     Running tests/graph_qcow2_format.rs (/data/cache/virtdisk-final-isolated/debug/deps/graph_qcow2_format-2e3fdc5db7fc88a7)
+
+running 7 tests
+test qemu_agrees_with_explicit_raw_and_implicit_qcow2_interpretations ... ignored, requires independent qemu-img backing interpretation oracle
+test an_existing_graph_rechecks_type_before_returning_readers_or_deleting_snapshots ... ok
+test graph_refuses_a_raw_declaration_when_unspecified_backing_resolves_to_qcow2 ... ok
+test manifest_binding_rejects_a_type_disagreement_despite_exact_path_authority ... ok
+test an_explicit_raw_extension_preserves_opaque_qcow2_bytes_and_deeper_snapshots ... ok
+test graph_accepts_unspecified_types_when_detected_family_matches_the_declaration ... ok
+test v2_chains_check_resolved_types_and_preserve_matching_qcow2_parents ... ok
+
+test result: ok. 6 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.26s
+
+     Running tests/graph_review.rs (/data/cache/virtdisk-final-isolated/debug/deps/graph_review-0b1b9fd5c36cf721)
+
+running 3 tests
+test deleting_snapshot_refuses_active_cooperating_writer ... ok
+test deleting_leaf_revalidates_registered_branch_edges_before_removal ... ok
+test descendant_reader_rejects_ancestor_redirected_to_registered_other_branch ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.11s
+
+     Running tests/graph_selection.rs (/data/cache/virtdisk-final-isolated/debug/deps/graph_selection-e396a499f2e6f862)
+
+running 2 tests
+test saving_selection_revalidates_registration_and_can_clear_selection ... ok
+test selection_cancellation_never_publishes_or_changes_original_manifest ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+
+     Running tests/host_source_identity.rs (/data/cache/virtdisk-final-isolated/debug/deps/host_source_identity-51bf5ddde4c15c88)
+
+running 1 test
+test retained_aliases_share_tokens_and_replacement_receives_new_identity ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/image.rs (/data/cache/virtdisk-final-isolated/debug/deps/image-f5513adcba538b09)
+
+running 10 tests
+test logical_hash_matches_standard_vector ... ok
+test detection_recognizes_signatures_and_keeps_raw_explicit ... ok
+test generic_copy_propagates_writer_failure_and_validates_capacity_first ... ok
+test extent_visitation_is_bounded_clipped_and_cancellable ... ok
+test copying_cancels_between_chunks_and_reports_partial_output ... ok
+test opening_requires_explicit_raw_and_rejects_malformed_known_images ... ok
+test conversion_verifies_logical_output_before_publication ... ok
+test copying_preserves_content_and_comparison_checks_length ... ok
+test resize_to_new_image_zeros_growth_and_requires_explicit_tail_policy ... ok
+test conversion_publishes_only_complete_new_output_and_preserves_existing ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.35s
+
+     Running tests/image_chain.rs (/data/cache/virtdisk-final-isolated/debug/deps/image_chain-217feb03896cbc9d)
+
+running 2 tests
+test dispatch_opens_only_explicit_ordered_native_parents ... ok
+test dispatch_native_embedded_paths_require_explicit_authorization ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.73s
+
+     Running tests/image_create.rs (/data/cache/virtdisk-final-isolated/debug/deps/image_create-633263223d77db86)
+
+running 3 tests
+test container_preallocation_is_explicitly_unavailable_without_mutating_payload ... ok
+test creation_dispatch_retains_lock_and_publishes_zero_readable_profiles ... ok
+test sparse_creation_dispatches_unallocated_profiles_and_allows_native_vdi_resize ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.32s
+
+     Running tests/image_resize_native.rs (/data/cache/virtdisk-final-isolated/debug/deps/image_resize_native-7e4de359ba43ffb2)
+
+running 2 tests
+test unsupported_backed_native_resize_rejects_before_container_changes ... ok
+test common_native_resize_applies_tail_policy_and_zeroes_regrowth ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.81s
+
+     Running tests/image_writer.rs (/data/cache/virtdisk-final-isolated/debug/deps/image_writer-38b00955cf362a16)
+
+running 8 tests
+test writer_factory_reports_parent_and_applies_discard_policy ... ok
+test common_writer_snapshot_creation_preserves_saved_bytes_and_rejects_other_formats ... ok
+test explicit_writer_factory_retains_lock_checks_bounds_and_dispatches_parent_chains ... ok
+test common_writer_reverts_and_deletes_native_snapshot_without_losing_survivors ... ok
+test common_split_sparse_writer_allocates_zero_padded_cross_extent_payload ... ok
+test common_split_sparse_writer_preserves_cross_extent_bytes_and_reports_management_limits ... ok
+test native_writer_inspection_and_cow_resolve_two_authorized_ancestors ... ok
+test all_native_parent_writers_report_parent_retain_lock_and_preserve_cow_bytes ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.31s
+
+     Running tests/info.rs (/data/cache/virtdisk-final-isolated/debug/deps/info-5dd1866bfddd3857)
+
+running 11 tests
+test descriptor_sizes_include_full_flat_files_but_keep_primary_dimension ... ok
+test bounded_non_file_container_source_reports_its_own_length ... ok
+test qcow_reader_reports_declared_snapshots_and_authorized_parent_without_mutation_promises ... ok
+test opened_writer_reports_actual_operations_not_family_promises ... ok
+test readers_report_readonly_profiles_and_real_vhdx_sector_sizes ... ok
+test inspection_reports_primary_and_set_eof_for_every_family ... ok
+test qcow_snapshot_creation_updates_handle_count_and_resize_capability ... ok
+test inspection_excludes_authorized_parent_containers_for_every_backed_family ... ok
+test snapshot_lifecycle_inspection_reports_specific_operations_and_refreshes_count ... ok
+test split_sparse_sizes_track_both_extent_allocations_without_reopen ... ok
+test inspection_tracks_allocation_and_physical_tail_changes_without_reopen ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.52s
+
+     Running tests/materialize_context.rs (/data/cache/virtdisk-final-isolated/debug/deps/materialize_context-0abc4e700238f396)
+
+running 9 tests
+test native_scratch_refusal_precedes_callbacks_and_source_reads ... ok
+test failed_source_read_counts_attempt_without_completed_bytes ... ok
+test cancellation_after_first_export_chunk_preserves_attempted_work ... ok
+test raw_materialization_adapts_scratch_and_cumulative_budgets ... ok
+test exhausted_budget_prevents_publication_and_preserves_usage ... ok
+test verification_cancellation_keeps_staged_output_unpublished ... ok
+test zero_blocks_only_charge_reads_actually_performed ... ok
+test cancellation_before_publication_removes_staging_for_every_format ... ok
+test all_formats_account_export_and_verification_before_publication ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.68s
+
+     Running tests/native_resize_context.rs (/data/cache/virtdisk-final-isolated/debug/deps/native_resize_context-b0fe2da75adb9c75)
+
+running 4 tests
+test cli_controlled_backed_resize_requires_authorization_and_reports_boundary ... ok
+test quota_refusal_and_nonzero_tail_precede_native_mutation ... ok
+test reused_context_and_mid_scan_cancellation_preserve_capacity ... ok
+test zero_tail_accounting_and_final_cancellation_leave_container_unchanged ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.63s
+
+     Running tests/native_snapshot_context.rs (/data/cache/virtdisk-final-isolated/debug/deps/native_snapshot_context-f08dadb22768d7fb)
+
+running 3 tests
+test cli_quotas_and_progress_cover_native_snapshot_lifecycle ... ok
+test native_snapshot_controls_preserve_container_on_cancellation_and_quota_refusal ... ok
+test controlled_backed_lifecycle_preserves_parent_and_counts_failed_native_calls ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.24s
+
+     Running tests/native_storage_context.rs (/data/cache/virtdisk-final-isolated/debug/deps/native_storage_context-56506ed1c12e1f71)
+
+running 4 tests
+test cli_storage_controls_refuse_quota_then_report_native_boundary ... ok
+test preallocation_keeps_content_and_counts_native_range_with_cumulative_quotas ... ok
+test controlled_backed_discard_masks_parent_and_preserves_saved_inheritance ... ok
+test discard_refusal_and_cancellation_preserve_bytes_and_success_accounts_range ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.06s
+
+     Running tests/operation_context.rs (/data/cache/virtdisk-final-isolated/debug/deps/operation_context-c1dde97398a1d2fa)
+
+running 12 tests
+test comparison_bounds_combined_scratch_and_stops_at_first_difference ... ok
+test failed_io_is_charged_without_reporting_completed_bytes ... ok
+test hash_uses_shared_accounting_and_matches_known_sha256 ... ok
+test cancellation_before_first_io_and_after_final_chunk_has_explicit_accounting ... ok
+test cancellation_retains_completed_prefix_and_never_flushes ... ok
+test io_count_overflow_and_invalid_scratch_are_rejected ... ok
+test empty_copy_needs_no_budget_or_scratch_and_size_mismatch_never_notifies ... ok
+test cumulative_budgets_refuse_whole_copy_before_io ... ok
+test read_failure_never_attempts_the_write_or_advances_progress ... ok
+test read_operations_cancel_between_complete_chunks ... ok
+test legacy_cancel_callback_does_not_poll_after_completion ... ok
+test partial_final_chunk_has_exact_progress_and_usage ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/operation_error.rs (/data/cache/virtdisk-final-isolated/debug/deps/operation_error-397b5a4d0958ba13)
+
+running 2 tests
+test common_writer_errors_preserve_operation_range_kind_and_source ... ok
+test unsupported_management_errors_are_structured_without_mutation ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/operation_profile.rs (/data/cache/virtdisk-final-isolated/debug/deps/operation_profile-e3cc3b0e8d4734c3)
+
+running 3 tests
+test failed_source_attempt_is_recorded_and_output_is_not_published ... ok
+test byte_mismatch_counts_as_failed_verification_without_publication ... ok
+test conversion_profile_counts_payload_metadata_and_verification_without_changing_budgets ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.46s
+
+     Running tests/parallel_export.rs (/data/cache/virtdisk-final-isolated/debug/deps/parallel_export-9ef466f46c0a8767)
+
+running 3 tests
+test whole_operation_budget_refuses_parallel_io_before_source_reads ... ok
+test worker_errors_panics_and_coordinator_cancellation_never_publish ... ok
+test bounded_parallel_preparation_verifies_partial_tail_and_joins_all_readers ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+
+     Running tests/parser_errors.rs (/data/cache/virtdisk-final-isolated/debug/deps/parser_errors-be78e5f40d9e38f6)
+
+running 5 tests
+test cache_refusal_leaves_reservations_releasable ... ok
+test decoder_unit_and_cumulative_limits_are_distinct_and_non_charging ... ok
+test failed_metadata_and_work_charges_preserve_usage_and_report_wide_requests ... ok
+test deferred_read_refusal_keeps_container_provenance_and_typed_source ... ok
+test concurrent_charges_report_the_observed_refused_total_without_overspending ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/physical_validation.rs (/data/cache/virtdisk-final-isolated/debug/deps/physical_validation-601a57b632e1dc0d)
+
+running 3 tests
+test invalid_configuration_and_changed_source_length_are_refused ... ok
+test retained_handle_hashes_known_bytes_and_preserves_cumulative_usage ... ok
+test read_quota_refusal_precedes_data_reads_and_empty_work_needs_no_scratch ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/portable_qcow_vdi.rs (/data/cache/virtdisk-final-isolated/debug/deps/portable_qcow_vdi-63c7853d640fd835)
+
+running 15 tests
+test portable_qcow_accounting_charges_repeated_uncached_reads ... ok
+test portable_qcow_rejects_invalid_compression_and_releases_scratch ... ok
+test portable_qcow_rejects_corrupt_header_and_mapping_words ... ok
+test portable_qcow_supplied_parent_shares_cumulative_budget_and_rejects_new_limits ... ok
+test portable_qcow_supplied_parent_authority_and_identity ... ok
+test portable_vdi_dynamic_zero_and_allocated_reads ... ok
+test portable_qcow_zstd_checks_exact_output ... ok
+test portable_vdi_parent_linkage_and_identity ... ok
+test portable_qcow_allocated_and_compressed_reads ... ok
+test portable_vdi_rejects_nil_uuid_and_unowned_allocation ... ok
+test portable_vdi_supplied_parent_shares_cumulative_budget_and_rejects_new_limits ... ok
+test portable_deflate_rejects_expansion_and_accepts_sector_padding ... ok
+test portable_zstd_reserves_complete_decoder_storage_before_reading_payload ... ok
+test portable_zstd_refuses_expansion_before_internal_growth ... ok
+test portable_zstd_validates_checksums_truncation_and_releases_decoder_storage ... ok
+
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/portable_vmdk_vhdx.rs (/data/cache/virtdisk-final-isolated/debug/deps/portable_vmdk_vhdx-b01bcbf516cf1760)
+
+running 12 tests
+test portable_descriptor_missing_identity_and_budget_are_rejected ... ok
+test portable_descriptor_parent_rejects_changed_and_invalid_limits_before_charging ... ok
+test portable_flat_bindings_read_and_reject_aliases ... ok
+test portable_parented_flat_split_uses_supplied_authority_and_rejects_ancestor_alias ... ok
+test portable_sparse_bindings_capacity_and_distinct_identical_sources ... ok
+test portable_sparse_split_child_reads_inherited_grains_and_shared_budget ... ok
+test supplied_vmdk_chain_counts_every_ancestor_toward_depth_limit ... ok
+test supplied_vmdk_chain_retains_grandparent_identity_and_rejects_alias ... ok
+test portable_bound_child_rejects_extent_alias_of_host_parent ... ok
+test portable_vhdx_active_redo_overlay_rejects_corruption ... ok
+test portable_vhdx_payload_corruption_bounds_and_recovery ... ok
+test portable_vhdx_supplied_parent_validates_identity_and_linkage ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.11s
+
+     Running tests/qcow2.rs (/data/cache/virtdisk-final-isolated/debug/deps/qcow2-bb9f712401f87ef8)
+
+running 29 tests
+test all_refcount_widths_match_qemu_generated_images ... ignored, requires independent qemu-img oracle
+test compressed_descriptors_reject_copied_reserved_offsets_and_truncation ... ok
+test compressed_extent_visitation_does_not_decode_payload ... ok
+test caller_tightened_work_and_decompression_limits_stop_real_reads ... ok
+test active_validator_checks_metadata_ownership_refcounts_and_cancellation ... ok
+test caller_chain_recursion_limit_rejects_a_valid_authorized_parent ... ok
+test qemu_blank_large_image_with_partial_l1_tail_validates ... ignored, requires independent qemu-img oracle
+test qemu_compression_and_three_layer_backing_chain_match_raw_oracle ... ignored, requires independent qemu-img and qemu-io oracles
+test qemu_v2_compressed_backing_chain_matches_raw_oracle ... ignored, requires independent qemu-img and qemu-io oracles
+test randomized_ranges_match_qemu_converted_raw_image ... ignored, requires independent qemu-img oracle
+test backing_requires_authorization_and_zero_overrides_a_short_raw_parent ... ok
+test invalid_or_unsupported_mapping_returns_an_error ... ok
+test shared_l2_and_data_ownership_matches_qemu_checker ... ignored, requires independent qemu-img oracle
+test cycles_and_malformed_backing_headers_fail_closed ... ok
+test l1_allocated_tail_padding_is_not_required_at_physical_eof ... ok
+test immutable_mapping_cache_avoids_repeated_table_reads_and_remains_bounded ... ok
+test extent_visitor_allocated_zero_clipped_and_short_backing ... ok
+test reads_allocated_and_sparse_clusters_across_boundary ... ok
+test hardlink_and_symlink_aliases_do_not_bypass_cycle_detection ... ok
+test compressed_payload_audit_checks_descriptors_outside_file_capture ... ok
+test unsupported_and_malformed_headers_fail_closed ... ok
+test validator_rejects_caller_tightened_metadata_and_cache_allocations ... ok
+test warmed_extent_visitation_still_charges_work ... ok
+test zero_flag_suppresses_preallocated_payload ... ok
+test warmed_zero_mappings_still_exhaust_tightened_work_limits ... ok
+test zstd_checksum_mismatch_and_excessive_window_are_rejected ... ok
+test zstd_cluster_decodes_single_bounded_frame ... ok
+test packed_deflate_cluster_roundtrips_and_rejects_wrong_output_lengths ... ok
+test chain_depth_and_protocol_paths_are_rejected ... ok
+
+test result: ok. 23 passed; 0 failed; 6 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/qcow2_allocation_index.rs (/data/cache/virtdisk-final-isolated/debug/deps/qcow2_allocation_index-412447e6b29ed10b)
+
+running 1 test
+test bounded_index_skips_zero_cluster_rereads_and_preserves_partial_final_cluster ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.14s
+
+     Running tests/qcow2_backed_snapshots.rs (/data/cache/virtdisk-final-isolated/debug/deps/qcow2_backed_snapshots-4ee12c77478d90ee)
+
+running 4 tests
+test qemu_reads_backed_active_and_saved_states_before_and_after_lifecycle ... ignored, requires independent qemu-img backed snapshot lifecycle oracle
+test authorized_backed_snapshot_lifecycle_preserves_inherited_private_and_zero_bytes ... ok
+test cli_backed_native_snapshot_lifecycle_requires_explicit_parent ... ok
+test backed_snapshot_writer_requires_parent_authority_before_mutation ... ok
+
+test result: ok. 3 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 3.32s
+
+     Running tests/qcow2_discard.rs (/data/cache/virtdisk-final-isolated/debug/deps/qcow2_discard-54d85a09946af219)
+
+running 3 tests
+test qemu_checks_and_reads_zero_masked_discard ... ignored, requires independent qemu-img oracle
+test discard_alignment_and_final_partial_cluster_are_checked_before_mutation ... ok
+test discard_releases_payload_refcounts_and_masks_authorized_parent ... ok
+
+test result: ok. 2 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.65s
+
+     Running tests/qcow2_overlay.rs (/data/cache/virtdisk-final-isolated/debug/deps/qcow2_overlay-9161fcb2f871a22d)
+
+running 5 tests
+test qemu_checks_and_flattens_overlay ... ignored, requires independent qemu-img oracle
+test explicit_zero_mapping_masks_parent_while_unallocated_inherits ... ok
+test raw_parent_counts_toward_chain_depth ... ok
+test raw_overlay_requires_authorization_and_inherits_parent ... ok
+test qcow_parent_inherits_and_creation_rejects_invalid_inputs ... ok
+
+test result: ok. 4 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.09s
+
+     Running tests/qcow2_overlay_writer.rs (/data/cache/virtdisk-final-isolated/debug/deps/qcow2_overlay_writer-006b1aaca7cc1979)
+
+running 4 tests
+test qemu_checks_and_flattens_written_overlay ... ignored, requires independent qemu-img oracle
+test every_parent_in_deeper_chain_must_be_authorized_and_cycles_fail ... ok
+test qcow_parent_and_explicit_zero_mapping_preserve_authorization_and_masking ... ok
+test authorized_overlay_partial_writes_copy_parent_and_preserve_immutable_base ... ok
+
+test result: ok. 3 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.43s
+
+     Running tests/qcow2_pending.rs (/data/cache/virtdisk-final-isolated/debug/deps/qcow2_pending-0423deb1fef195e5)
+
+running 1 test
+test clean_pending_sidecar_requires_recovery_without_readonly_mutation ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests/qcow2_refcount_growth.rs (/data/cache/virtdisk-final-isolated/debug/deps/qcow2_refcount_growth-f6bb987e9fb33399)
+
+running 3 tests
+test qemu_accepts_boundary_refcount_growth_and_exact_logical_bytes ... ignored, requires independent qemu-img oracle; hashes a sparse 2 GiB container
+test shared_mapping_cow_grows_refcount_block_and_lifecycle_releases_old_refs ... ok
+test revert_after_refcount_block_growth_retains_saved_bytes_and_self_reference ... ok
+
+test result: ok. 2 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 9.33s
+
+     Running tests/qcow2_resize.rs (/data/cache/virtdisk-final-isolated/debug/deps/qcow2_resize-428d2b99a6457e89)
+
+running 4 tests
+test qemu_checks_native_shrink_zero_regrowth_and_l1_growth ... ignored, requires independent qemu-img oracle
+test native_shrink_and_regrow_clear_truncated_boundary_bytes ... ok
+test grow_crosses_l1_coverage_and_zero_capacity_without_rewriting_image ... ok
+test unsupported_ranges_and_zero_tail_policy_are_checked_before_writes ... ok
+
+test result: ok. 3 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.47s
+
+     Running tests/qcow2_shared_l2.rs (/data/cache/virtdisk-final-isolated/debug/deps/qcow2_shared_l2-e1c8d36c7e18cc03)
+
+running 3 tests
+test qemu_checks_shared_l2_before_and_after_cow ... ignored, requires independent qemu-img oracle
+test shared_l2_discard_does_not_mask_the_other_alias ... ok
+test shared_l2_cow_preserves_other_l1_alias_and_exact_refcounts ... ok
+
+test result: ok. 2 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.13s
+
+     Running tests/qcow2_snapshot_lifecycle.rs (/data/cache/virtdisk-final-isolated/debug/deps/qcow2_snapshot_lifecycle-0d513612a00e73cd)
+
+running 9 tests
+test compressed_materialization_budget_refuses_before_mutation ... ignored, requires qemu-img/qemu-io compressed transaction budget fixture
+test compressed_selected_state_reverts_and_deletes_without_changing_saved_bytes ... ignored, requires qemu-img/qemu-io compressed saved-state fixture
+test native_qemu_saved_capacities_delete_revert_and_followup_writes ... ignored, requires independent qemu-img/qemu-io native lifecycle and capacity oracle
+test already_empty_revert_succeeds_without_publishing_empty_transaction ... ok
+test delete_middle_first_and_last_preserves_active_and_surviving_states ... ok
+test deletion_preserves_unknown_snapshot_extra_bytes_and_binary_identifiers ... ok
+test missing_ids_leave_container_unchanged_and_writer_usable ... ok
+test repeated_l2_payload_owners_and_preallocated_zero_survive_lifecycle_cow ... ok
+test revert_retains_snapshots_and_partial_followup_write_cows_saved_bytes ... ok
+
+test result: ok. 6 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out; finished in 1.63s
+
+     Running tests/qcow2_snapshot_resize.rs (/data/cache/virtdisk-final-isolated/debug/deps/qcow2_snapshot_resize-12f0421d2bd9af65)
+
+running 6 tests
+test qemu_reads_backed_resize_masks_and_saved_inheritance ... ignored, requires independent qemu-img backed resize ownership/readback oracle
+test qemu_reads_resized_active_and_original_saved_capacity ... ignored, requires independent qemu-img snapshot resize ownership/readback oracle
+test backed_resize_masks_growth_and_checks_inherited_shrink_tail ... ok
+test active_resize_preserves_full_and_short_saved_states ... ok
+test cli_native_resize_preserves_saved_capacity ... ok
+test growth_from_empty_keeps_empty_snapshot_and_revert_capacity ... ok
+
+test result: ok. 4 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 1.47s
+
+     Running tests/qcow2_snapshot_validation.rs (/data/cache/virtdisk-final-isolated/debug/deps/qcow2_snapshot_validation-57b4ee50751bff42)
+
+running 5 tests
+test qemu_native_snapshot_maps_validate_across_refcount_widths_and_compression ... ignored, requires independent qemu-img and qemu-io snapshot ownership oracle
+test global_snapshot_walk_honors_cancellation_and_caller_budgets ... ok
+test shared_snapshot_ownership_counts_every_state_and_ignores_inactive_copied_flags ... ok
+test inactive_private_l2_stale_payload_flags_and_partial_directory_tail_validate ... ok
+test snapshot_only_corruption_and_vm_state_fail_closed ... ok
+
+test result: ok. 4 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/qcow2_snapshot_write.rs (/data/cache/virtdisk-final-isolated/debug/deps/qcow2_snapshot_write-8657ef3af08e35c2)
+
+running 6 tests
+test qemu_checks_lists_and_extracts_native_saved_state_after_cow ... ignored, requires independent qemu-img native snapshot creation/readback oracle
+test native_creation_preserves_saved_view_and_reopens_for_active_cow ... ok
+test near_full_native_directory_refuses_creation_but_resize_preserves_saved_state ... ok
+test oversized_metadata_transaction_is_rejected_without_publication ... ok
+test shared_active_and_saved_l1_is_readable_but_writer_refuses_before_mutation ... ok
+test snapshot_invalid_requests_fail_before_metadata_mutation ... ok
+
+test result: ok. 5 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 38.51s
+
+     Running tests/qcow2_snapshots.rs (/data/cache/virtdisk-final-isolated/debug/deps/qcow2_snapshots-eabdb43fe9fadb28)
+
+running 4 tests
+test lists_native_qemu_v2_and_v3_snapshots_with_distinct_saved_capacities ... ignored, requires independent qemu-img snapshot metadata oracle
+test native_snapshot_views_preserve_saved_bytes_and_current_state ... ignored, requires independent qemu-img/qemu-io snapshot content oracle
+test bounded_listing_reports_disk_and_vm_metadata_without_enabling_mutation ... ok
+test malformed_snapshot_tables_reject_bounds_counts_and_partial_v3_extra_fields ... ok
+
+test result: ok. 2 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/qcow2_write.rs (/data/cache/virtdisk-final-isolated/debug/deps/qcow2_write-57b423e32262ee06)
+
+running 4 tests
+test qemu_checks_and_converts_exported_image ... ignored, requires independent qemu-img oracle
+test export_refuses_existing_paths_and_excessive_capacity ... ok
+test source_read_failure_propagates_without_claiming_success ... ok
+test exports_partial_clusters_and_multiple_l2_tables_with_valid_ownership ... ok
+
+test result: ok. 3 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 2.88s
+
+     Running tests/qcow2_writer.rs (/data/cache/virtdisk-final-isolated/debug/deps/qcow2_writer-0584801f7c7cb2f6)
+
+running 7 tests
+test qemu_validates_written_payload_and_sparse_allocation ... ignored, requires independent qemu-img oracle
+test sparse_profile_is_rejected_without_mutation ... ok
+test exclusive_handles_and_creation_never_overwrite ... ok
+test writes_cross_clusters_flush_and_reopen ... ok
+test unsupported_headers_fail_before_mutation ... ok
+test valid_shared_payload_copy_on_write_preserves_other_guest_cluster ... ok
+test sparse_allocation_creates_private_mapping_and_preserves_neighbor_zeroes ... ok
+
+test result: ok. 6 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.14s
+
+     Running tests/raw_preallocate.rs (/data/cache/virtdisk-final-isolated/debug/deps/raw_preallocate-a8787415975ab888)
+
+running 2 tests
+test preallocation_bounds_do_not_change_capacity_or_payload ... ok
+test host_preallocation_reserves_holes_preserves_existing_bytes_and_retains_lock ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/raw_read.rs (/data/cache/virtdisk-final-isolated/debug/deps/raw_read-a28b5454bb549d4c)
+
+running 3 tests
+test fifo_is_rejected_without_waiting_for_a_writer ... ok
+test regular_image_retains_canonical_context_and_bounded_reads ... ok
+test regular_symlink_remains_supported ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/raw_write.rs (/data/cache/virtdisk-final-isolated/debug/deps/raw_write-d8779fc8c90c73e6)
+
+running 8 tests
+test create_never_overwrites_and_open_requires_regular_file ... ok
+test exclusive_writer_lock_survives_aliases_and_releases_on_drop ... ok
+test resize_discards_tail_and_growth_is_zeroed ... ok
+test writes_and_reads_are_bounded_before_mutation ... ok
+test concurrent_disjoint_writes_preserve_offsets ... ok
+test create_write_flush_reopen_and_zero ... ok
+test multi_chunk_zeroing_and_random_access_preserve_neighbors ... ok
+test deterministic_mutations_match_memory_model ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/reader_open.rs (/data/cache/virtdisk-final-isolated/debug/deps/reader_open-e21c0d5bd9e3590a)
+
+running 8 tests
+test incompatible_recovery_and_invalid_limits_are_explicit_errors ... ok
+test raw_deferred_reads_share_the_caller_work_budget ... ok
+test recognition_never_falls_back_and_raw_requires_explicit_selection ... ok
+test descriptor_extents_require_explicit_format_and_complete_authorization ... ok
+test vmdk_descriptor_and_grain_table_limits_report_requested_attribute_bytes ... ok
+test every_container_enforces_tight_metadata_limits ... ok
+test authorized_chains_report_typed_recursion_limits ... ok
+test recognized_containers_and_authorized_chains_retain_limits_and_source_bytes ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.18s
+
+     Running tests/recovery_review.rs (/data/cache/virtdisk-final-isolated/debug/deps/recovery_review-1b3450768767560d)
+
+running 2 tests
+test published_clean_qcow2_transaction_cannot_be_bypassed_through_hardlink_alias ... ok
+test vhdx_recovery_rejects_log_updates_to_payload_header_or_log ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+     Running tests/resize_context.rs (/data/cache/virtdisk-final-isolated/debug/deps/resize_context-72564078f9b6ff94)
+
+running 7 tests
+test tail_read_failure_keeps_original_io_kind_and_attempted_call ... ok
+test cancellation_and_quota_refusal_during_tail_validation_leave_no_output ... ok
+test refused_shrink_policy_and_nonzero_tail_preserve_source_and_output_absence ... ok
+test completely_synthetic_growth_reads_are_facade_work ... ok
+test resize_cancellation_before_publication_keeps_every_format_unpublished ... ok
+test growth_counts_synthetic_zero_ranges_and_preserves_original_bytes ... ok
+test zero_tail_scan_export_and_verification_share_the_context ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.11s
+
+     Running tests/streaming_export.rs (/data/cache/virtdisk-final-isolated/debug/deps/streaming_export-99f7656c48046c92)
+
+running 5 tests
+test qemu_decodes_streaming_vdi_and_vhdx_with_partial_final_block ... ignored, requires independent qemu-img decoder
+test streaming_source_failure_and_cancellation_leave_no_published_output ... ok
+test insufficient_streaming_budget_retains_two_pass_fallback ... ok
+test streaming_verification_budget_refusal_does_not_publish ... ok
+test streaming_export_reads_each_logical_block_once_and_retains_verified_publication ... ok
+
+test result: ok. 4 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.29s
+
+     Running tests/vdi.rs (/data/cache/virtdisk-final-isolated/debug/deps/vdi-580bece22ae4210b)
+
+running 9 tests
+test block_service_prefix_is_not_exposed_and_short_final_block_is_bounded ... ok
+test dynamic_permuted_blocks_free_and_zero_are_read_logically ... ok
+test extent_visitation_clips_last_block_and_charges_each_callback ... ok
+test extent_visitor_distinguishes_allocated_free_and_zero ... ok
+test invalid_headers_overlapping_metadata_truncation_and_parents_rejected ... ok
+test native_header_rejects_nil_creation_and_modification_ids ... ok
+test fixed_images_require_fully_owned_unique_allocations ... ok
+test native_uuid_validation_accepts_non_nil_without_invented_version_constraints ... ok
+test parser_limits_bound_metadata_cache_and_deferred_work ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/vdi_chain.rs (/data/cache/virtdisk-final-isolated/debug/deps/vdi_chain-21d5c5bb97310f29)
+
+running 10 tests
+test vdi_chains_share_tightened_work_and_depth_limits ... ok
+test vdi_differencing_can_inherit_from_different_parent_allocation_unit ... ok
+test unsupported_overlay_zero_allocation_fails_before_uuid_or_payload_mutation ... ok
+test vdi_chain_inherits_free_blocks_but_explicit_zero_masks_parent ... ok
+test native_chain_rejects_nil_child_ids_and_matching_nil_parent_modification ... ok
+test native_overlay_creator_supports_deeper_authorized_vdi_chains ... ok
+test vdi_chain_rejects_wrong_parent_epochs_aliases_capacity_and_unneeded_ancestors ... ok
+test vdi_writer_overlay_creator_retains_lock_and_epoch_changes_only_child ... ok
+test writable_vdi_overlay_copies_inherited_block_and_zeroes_without_changing_parent ... ok
+test vdi_overlay_depth_limit_is_checked_before_creating_destination ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.28s
+
+     Running tests/vdi_discard.rs (/data/cache/virtdisk-final-isolated/debug/deps/vdi_discard-1b76814d7e461a3b)
+
+running 6 tests
+test virtualbox_and_qemu_accept_reclaimed_interior_discard ... ignored, requires independent native VBoxManage and qemu-img
+test invalid_or_unsupported_discard_preserves_epochs_and_explicit_fallback_is_zeroed ... ok
+test unknown_tail_and_new_hardlink_are_rejected_before_modification_epoch ... ok
+test native_overlay_discard_masks_inherited_data_without_changing_parent ... ok
+test native_dynamic_discard_moves_last_owner_and_reclaims_physical_tail ... ok
+test final_clipped_units_and_multiunit_discard_reuse_dense_zero_allocation ... ok
+
+test result: ok. 5 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.36s
+
+     Running tests/vdi_resize.rs (/data/cache/virtdisk-final-isolated/debug/deps/vdi_resize-45af491c2146da6b)
+
+running 9 tests
+test virtualbox_and_qemu_accept_native_capacity_changes ... ignored, requires independent native VBoxManage and qemu-img
+test empty_image_can_expand_its_native_map_arena ... ok
+test invalid_shrink_does_not_mutate ... ok
+test relocation_preserves_multiple_out_of_order_small_block_owners ... ok
+test allocated_arena_relocation_preserves_large_payload_without_whole_image_copy ... ok
+test allocated_image_relocates_native_payload_when_map_arena_grows ... ok
+test growth_never_exposes_hidden_partial_block_padding ... ok
+test grow_shrink_and_regrow_preserve_only_retained_bytes ... ok
+test multi_stage_small_unit_relocation_preserves_data_and_preflights_map_budget ... ok
+
+test result: ok. 8 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.86s
+
+     Running tests/vdi_virtualbox.rs (/data/cache/virtdisk-final-isolated/debug/deps/vdi_virtualbox-4fbb0ea0e8e8bcc7)
+
+running 2 tests
+test native_fixed_dynamic_and_differencing_fixtures_read_and_cow ... ignored, requires native VBoxManage; isolated temporary VirtualBox registry
+test native_virtualbox_accepts_exports_and_native_parented_children ... ignored, requires native VBoxManage; isolated temporary VirtualBox registry
+
+test result: ok. 0 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/vdi_write.rs (/data/cache/virtdisk-final-isolated/debug/deps/vdi_write-f2a8bde417c251c8)
+
+running 6 tests
+test qemu_checks_and_converts_native_vdi ... ignored, requires independent qemu-img oracle
+test existing_paths_and_invalid_capacity_are_rejected_without_changes ... ok
+test failed_streaming_payload_leaves_metadata_uninstalled ... ok
+test empty_allocation_and_source_failure_do_not_publish_invalid_metadata ... ok
+test export_streams_large_blocks_in_bounded_reads ... ok
+test exports_sparse_data_and_partial_block_and_unique_identity ... ok
+
+test result: ok. 5 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.05s
+
+     Running tests/vdi_writer.rs (/data/cache/virtdisk-final-isolated/debug/deps/vdi_writer-f6727753596cf8d9)
+
+running 9 tests
+test qemu_post_write_matches_payload ... ignored, requires independent qemu-img oracle
+test qemu_reads_sparse_dynamic_allocations_and_preserved_holes ... ignored, requires independent qemu-img oracle
+test fixed_writer_lock_bounds_zeroes_and_modification_identity ... ok
+test read_only_operations_and_empty_writes_preserve_uuid_and_threads_serialize ... ok
+test aliases_and_parents_rejected_without_mutation ... ok
+test fully_allocated_dynamic_profile_is_writable ... ok
+test sparse_allocation_rejects_hardlinks_foreign_tail_and_corrupt_journal_before_mutation ... ok
+test explicit_zero_blocks_and_concurrent_sparse_writes_allocate_unique_owners ... ok
+test sparse_dynamic_writes_allocate_zero_padded_private_blocks_and_reopen ... ok
+
+test result: ok. 7 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 0.13s
+
+     Running tests/vhdx.rs (/data/cache/virtdisk-final-isolated/debug/deps/vhdx-5e0b08b822409537)
+
+running 7 tests
+test qemu_fixed_and_dynamic_images_match_raw ... ignored, requires independent qemu-img
+test metadata_and_cache_budgets_are_enforced ... ok
+test reads_payload_crossings_and_zero_states ... ok
+test interleaved_sector_bitmap_slots_are_not_logical_payloads ... ok
+test redundant_roots_and_newest_header_are_respected ... ok
+test both_bad_roots_conflicting_region_copies_and_required_metadata_fail ... ok
+test malformed_bat_metadata_and_parent_are_rejected ... ok
+
+test result: ok. 6 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.15s
+
+     Running tests/vhdx_allocate.rs (/data/cache/virtdisk-final-isolated/debug/deps/vhdx_allocate-e09413b0330c4aac)
+
+running 6 tests
+test qemu_checks_and_converts_native_sparse_transactions ... ignored, requires independent qemu-img
+test sparse_creation_rejects_invalid_capacity_and_preserves_existing_paths ... ok
+test sparse_create_partial_writes_and_reopen_preserve_untouched_zeroes ... ok
+test zero_hole_writes_do_not_allocate_and_repeated_allocations_share_log_region ... ok
+test logical_mapping_is_updated_eagerly_and_bat_sector_boundaries_are_independent ... ok
+test interleaved_bitmap_slots_and_concurrent_allocations_keep_distinct_payloads ... ok
+
+test result: ok. 5 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.23s
+
+     Running tests/vhdx_differencing.rs (/data/cache/virtdisk-final-isolated/debug/deps/vhdx_differencing-6830536eb841ab01)
+
+running 10 tests
+test qemu_native_differencing_gate_and_flattened_data_oracle ... ignored, requires qemu-img; documents unavailable native differencing oracle separately from standalone flattening
+test hard_link_cycle_and_readonly_sources ... ok
+test optional_virtual_metadata_survives_native_fork ... ok
+test maps_partial_inherited_private_and_zero_sectors ... ok
+test creates_native_child_with_inheritance_and_preserved_disk_identity ... ok
+test native_partial_sectors_inherit_and_zero_masks ... ok
+test native_4096_sector_bitmap_and_shared_limits ... ok
+test writer_creates_locked_native_child_and_fences_aliases ... ok
+test native_writer_promotes_inherited_and_partial_blocks_without_parent_mutation ... ok
+test explicit_authorization_linkage_and_bitmap_ownership ... ok
+
+test result: ok. 9 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.33s
+
+     Running tests/vhdx_discard.rs (/data/cache/virtdisk-final-isolated/debug/deps/vhdx_discard-b7043aa636e4e462)
+
+running 4 tests
+test qemu_reads_standalone_zero_bat_discard ... ignored, requires independent qemu-img oracle
+test discard_checks_range_alignment_before_epoch_and_allows_explicit_fallback ... ok
+test fixed_leave_blocks_allocated_profile_refuses_native_release_before_mutation ... ok
+test whole_and_final_clipped_discard_release_mapping_and_mask_parent ... ok
+
+test result: ok. 3 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.45s
+
+     Running tests/vhdx_extents.rs (/data/cache/virtdisk-final-isolated/debug/deps/vhdx_extents-5ec6d85aebdadd4e)
+
+running 4 tests
+test mapping_charges_deferred_work_and_does_not_read_payloads ... ok
+test all_nonpresent_standalone_states_follow_the_readers_zero_policy ... ok
+test visitor_cancellation_stops_work_at_the_first_run_boundary ... ok
+test coalesces_ordered_allocated_and_zero_runs_and_clips_final_block ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.16s
+
+     Running tests/vhdx_log.rs (/data/cache/virtdisk-final-isolated/debug/deps/vhdx_log-2c1aa2d7a31af2ba)
+
+running 7 tests
+test qemu_replays_spec_log_to_same_logical_bytes ... ignored, requires independent qemu-img log replay oracle
+test qemu_replays_wrapped_multi_entry_log_in_order ... ignored, requires independent qemu-img circular-log replay oracle
+test recovery_limits_and_interrupted_reads_are_honored ... ok
+test log_is_replayed_before_any_region_or_bat_read_and_extension_is_virtual ... ok
+test wrapped_entries_and_newest_complete_sequences_replay_in_order ... ok
+test data_and_zero_replay_do_not_modify_source ... ok
+test corrupt_log_guid_sequences_tail_and_truncation_fail ... ok
+
+test result: ok. 5 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 0.18s
+
+     Running tests/vhdx_partial_write.rs (/data/cache/virtdisk-final-isolated/debug/deps/vhdx_partial_write-ffe42929e0bcd4c1)
+
+running 4 tests
+test large_payload_block_write_crosses_bitmap_page_without_copying_parent_block ... ok
+test separate_chunk_bitmap_allocations_and_final_sector_stay_independent ... ok
+test zero_masks_do_not_reveal_parent_and_shared_bitmap_keeps_other_owners ... ok
+test native_partial_sector_writes_preserve_inheritance_and_unaligned_sector_edges ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.15s
+
+     Running tests/vhdx_recover.rs (/data/cache/virtdisk-final-isolated/debug/deps/vhdx_recover-4bf27035d6624fb5)
+
+running 7 tests
+test qemu_checks_native_recovered_file_without_repair ... ignored, requires independent qemu-img
+test cli_immutable_log_replay_preserves_source_and_physical_inspection ... ok
+test cli_requires_explicit_recovery_before_mutation ... ok
+test invalid_recovered_metadata_and_lock_conflicts_never_mutate ... ok
+test common_reader_replays_without_mutation_and_reports_physical_size ... ok
+test native_recovery_is_clean_idempotent_and_preserves_log_bytes ... ok
+test common_open_requires_explicit_native_recovery_and_retains_lock ... ok
+
+test result: ok. 6 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.35s
+
+     Running tests/vhdx_resize.rs (/data/cache/virtdisk-final-isolated/debug/deps/vhdx_resize-e9c2aaa22d2f635e)
+
+running 9 tests
+test qemu_accepts_native_capacity_and_exact_payload_after_shrink_regrowth ... ignored, requires independent qemu-img native resize oracle
+test size_item_spanning_native_redo_sectors_is_refused_before_uuid_mutation ... ok
+test native_range_policy_and_bat_space_preflight_leave_uuid_unchanged ... ok
+test backed_and_fixed_capacity_changes_are_refused_without_mutation ... ok
+test growth_zeroes_adversarial_hidden_padding_and_retains_exclusive_lock ... ok
+test logical_4096_sector_and_relocated_size_item_use_validated_metadata ... ok
+test require_zero_accepts_only_the_removed_logical_tail_and_preserves_prefix ... ok
+test native_grow_shrink_and_regrow_preserve_retained_bytes_and_zero_tail ... ok
+test growth_crosses_native_chunk_bitmap_slot_without_shifting_payload_owners ... ok
+
+test result: ok. 8 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.70s
+
+     Running tests/vhdx_windows_native.rs (/data/cache/virtdisk-final-isolated/debug/deps/vhdx_windows_native-93b8c2bd87c929fc)
+
+running 2 tests
+test microsoft_produced_partial_children_preserve_native_locator_and_all_sectors ... ok
+test windows_terminated_child_replays_exactly_without_mutating_unauthorized_sources ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.46s
+
+     Running tests/vhdx_write.rs (/data/cache/virtdisk-final-isolated/debug/deps/vhdx_write-c02efc5067ac69cb)
+
+running 7 tests
+test qemu_checks_and_converts_native_vhdx ... ignored, requires independent qemu-img oracle
+test format_and_map_limits_are_checked_before_source_reads_or_creation ... ok
+test existing_paths_and_invalid_capacity_are_rejected_without_changes ... ok
+test payload_read_failure_leaves_the_container_unpublished ... ok
+test empty_allocation_and_source_failure_do_not_publish_invalid_metadata ... ok
+test export_streams_native_blocks_with_bounded_reads_and_zero_padding ... ok
+test exports_sparse_data_and_partial_block_and_unique_identity ... ok
+
+test result: ok. 6 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.07s
+
+     Running tests/vhdx_writer.rs (/data/cache/virtdisk-final-isolated/debug/deps/vhdx_writer-24ecb18ebbd740e6)
+
+running 6 tests
+test qemu_checks_and_reads_native_payload_updates ... ignored, requires independent qemu-img
+test bounded_reads_writes_and_exclusive_alias_lock ... ok
+test concurrent_disjoint_payload_writes_are_serialized ... ok
+test invalid_ranges_and_exhausted_sequences_never_change_payload_or_headers ... ok
+test sparse_profile_opens_and_torn_header_falls_back ... ok
+test updates_crossings_zeroes_and_reopen_with_new_uuid_epoch ... ok
+
+test result: ok. 5 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.11s
+
+     Running tests/vmdk.rs (/data/cache/virtdisk-final-isolated/debug/deps/vmdk-968b435550c3bed2)
+
+running 21 tests
+test explicit_zero_grain_requires_feature_and_descriptor_parent_is_rejected ... ok
+test extent_visitor_reports_grains_without_payload_and_cancels ... ok
+test qemu_created_hosted_parent_chain_matches_backing ... ignored, requires qemu-img independent VMDK backing oracle
+test qemu_external_flat_parent_and_split_sparse_child ... ignored, requires qemu-img independent flat/split backing oracle
+test qemu_flat_descriptor_matches_raw ... ignored, requires independent qemu-img oracle
+test qemu_hosted_sparse_matches_raw ... ignored, requires independent qemu-img oracle
+test map_visitation_never_reads_payload_and_exhausts_work ... ok
+test hosted_v2_zero_feature_preserves_allocation_and_masking ... ok
+test reads_allocated_and_sparse_grains_with_bounds ... ok
+test rejects_aliases_and_tight_budgets ... ok
+test redundant_directory_must_match_and_own_separate_tables ... ok
+test rejects_corruption_and_unsupported_profiles ... ok
+test mapped_reads_stop_at_zero_and_discontinuous_payload_boundaries ... ok
+test rejects_mapping_metadata_overlap_and_geometry_overflow ... ok
+test warm_sparse_reads_charge_work_and_transient_metadata_obeys_cache ... ok
+test authorized_parent_chain_inherits_but_explicit_zero_masks ... ok
+test descriptor_flat_split_requires_explicit_extent_authorization ... ok
+test descriptor_rejects_hardlink_aliases_and_missing_or_duplicate_create_type ... ok
+test external_split_sparse_chain_and_flat_parent_authorization ... ok
+test descriptor_sparse_extent_bounds_and_repeated_paths_fail_closed ... ok
+test chain_descriptor_linkage_profiles_and_cumulative_budgets_are_strict ... ok
+
+test result: ok. 17 passed; 0 failed; 4 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/vmdk_descriptor_syntax.rs (/data/cache/virtdisk-final-isolated/debug/deps/vmdk_descriptor_syntax-c6dee0127c359c66)
+
+running 4 tests
+test colon_filename_is_rejected_before_creating_output ... ok
+test hosted_chain_and_writer_reject_duplicate_cid_and_interior_padding ... ok
+test external_reader_and_writer_profiles_share_descriptor_syntax_checks ... ok
+test library_created_filename_with_equals_reopens_as_hosted_chain ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/vmdk_discard.rs (/data/cache/virtdisk-final-isolated/debug/deps/vmdk_discard-83831d5b52c5f55b)
+
+running 6 tests
+test native_redundant_zero_grains_mask_qemu_parent_and_preserve_rewritten_neighbors ... ignored, requires independent qemu-img oracle
+test unsupported_physical_journal_length_refuses_before_changing_cid ... ok
+test rejected_ranges_and_strict_partial_discard_leave_cid_and_bytes_unchanged ... ok
+test already_masked_grains_are_idempotent_and_flat_descriptor_strict_discard_refuses ... ok
+test inherited_grain_discard_masks_parent_across_reopen_and_partial_rewrite ... ok
+test complete_and_clipped_grains_release_mappings_without_changing_capacity ... ok
+
+test result: ok. 5 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.24s
+
+     Running tests/vmdk_flat_writer.rs (/data/cache/virtdisk-final-isolated/debug/deps/vmdk_flat_writer-f2de5d93592ac15b)
+
+running 6 tests
+test qemu_flat_fixture_remains_native_readable_after_writes ... ignored, requires independent qemu-img flat VMDK oracle
+test authorized_flat_writer_locks_both_files_changes_cid_and_respects_extent_slice ... ok
+test busy_extent_failed_open_releases_descriptor_and_parallel_writes_serialize ... ok
+test factory_flat_profile_reports_allocation_geometry_and_retains_extent_lock ... ok
+test hosted_uppercase_short_cid_updates_value_without_corrupting_property_name ... ok
+test malformed_profiles_aliases_and_pending_files_fail_before_mutation ... ok
+
+test result: ok. 5 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+     Running tests/vmdk_resize.rs (/data/cache/virtdisk-final-isolated/debug/deps/vmdk_resize-8f3c5bc7dba204da)
+
+running 5 tests
+test native_qemu_redundant_tables_grow_and_shrink_match_logical_bytes ... ignored, requires independent qemu-img oracle
+test backed_resize_is_unsupported_before_cid_or_payload_mutation ... ok
+test resize_clears_existing_padding_and_retains_cid_after_shifted_extent_line ... ok
+test native_resize_preserves_data_grows_tables_and_zeroes_regrown_tail ... ok
+test sparse_growth_reaches_maximum_capacity_and_shrink_clears_zero_grain_entries ... ok
+
+test result: ok. 4 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.76s
+
+     Running tests/vmdk_sparse_set.rs (/data/cache/virtdisk-final-isolated/debug/deps/vmdk_sparse_set-9629ea0e5decf45b)
+
+running 20 tests
+test missing_padding_table_matches_qemu ... ignored, requires independent qemu-img allocated-extent padding oracle
+test missing_table_creation_matches_qemu ... ignored, requires independent qemu-img missing table oracle
+test split_sparse_allocated_holes_remain_qemu_readable ... ignored, requires independent qemu-img split sparse allocation oracle
+test split_sparse_allocated_overwrite_remains_qemu_readable ... ignored, requires independent qemu-img split sparse oracle
+test split_sparse_redundant_native_zero_allocation_preserves_masked_neighbors ... ignored, requires independent qemu-img redundant native ZERO allocation oracle
+test late_busy_extent_authorization_and_missing_tables_refuse_unchanged ... ok
+test whole_call_projects_late_alignment_and_all_appends_before_mutation ... ok
+test late_aggregate_overflow_and_foreign_growth_preserve_first_extent_exactly ... ok
+test multiple_table_plan_reserves_late_hole_before_any_mutation ... ok
+test missing_table_uses_padding_without_engulfing_existing_payload ... ok
+test padding_search_preserves_entire_directory_sector ... ok
+test multiple_missing_tables_share_complete_call_plan ... ok
+test padding_table_cache_reserves_newly_claimed_ranges_and_refuses_no_space ... ok
+test allocated_split_sparse_cross_boundary_write_reopens_exactly ... ok
+test existing_empty_prefix_is_above_prepared_metadata ... ok
+test multiple_missing_empty_tables_share_arena ... ok
+test missing_table_creation_precedes_first_payload_in_empty_extent ... ok
+test split_sparse_hole_allocation_initializes_neighbors_and_crosses_extents ... ok
+test later_table_reuses_prepared_arena_and_zero_chunks_prepare_once ... ok
+test existing_table_prefix_before_missing_table_preserves_payload_with_padding ... ok
+
+test result: ok. 15 passed; 0 failed; 5 ignored; 0 measured; 0 filtered out; finished in 0.84s
+
+     Running tests/vmdk_split_parent.rs (/data/cache/virtdisk-final-isolated/debug/deps/vmdk_split_parent-5c9f6a2b26fcda60)
+
+running 3 tests
+test common_writer_dispatches_backed_split_cow_and_retains_parent_locks ... ok
+test child_zero_mask_does_not_copy_parent_bytes_during_partial_allocation ... ok
+test authorized_split_child_cows_across_extents_and_final_partial_grain ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.47s
+
+     Running tests/vmdk_split_writer.rs (/data/cache/virtdisk-final-isolated/debug/deps/vmdk_split_writer-b090c67ad58ef30e)
+
+running 3 tests
+test qemu_split_flat_fixture_cross_boundary_writes_convert_to_exact_raw_ranges ... ignored, requires independent qemu-img split-flat oracle
+test repeated_paths_hardlinks_zero_lengths_and_wrong_profiles_are_rejected ... ok
+test split_authorization_locks_and_cross_boundary_io_preserve_extent_neighbors ... ok
+
+test result: ok. 2 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/vmdk_write.rs (/data/cache/virtdisk-final-isolated/debug/deps/vmdk_write-af6f2a9fbb1b9b8d)
+
+running 3 tests
+test exported_image_matches_qemu_raw_conversion ... ignored, requires independent qemu-img oracle
+test invalid_geometry_never_creates_output_and_failed_export_stays_dirty ... ok
+test creates_sparse_image_and_never_overwrites ... ok
+
+test result: ok. 2 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/vmdk_writer.rs (/data/cache/virtdisk-final-isolated/debug/deps/vmdk_writer-2364f99eb7083597)
+
+running 12 tests
+test qemu_reads_native_overlay_and_qemu_child_after_cow_writes ... ignored, requires qemu-img independent writable backing oracle
+test qemu_reads_payload_after_positional_writes ... ignored, requires independent qemu-img oracle
+test qemu_redundant_grain_tables_remain_consistent_after_sparse_writes ... ignored, requires independent qemu-img oracle
+test alias_is_rejected_and_concurrent_ranges_remain_independent ... ok
+test cid_changes_before_nonempty_payload_mutation_and_after_flush_epoch ... ok
+test missing_tables_aliases_and_corrupt_sidecars_fail_before_mutation ... ok
+test hosted_overlay_partial_writes_preserve_parent_and_zero_masks ... ok
+test parent_mismatch_and_explicit_zero_overlay_fail_closed_or_mask ... ok
+test shorter_legacy_cid_keeps_descriptor_layout_and_becomes_fresh ... ok
+test sparse_grains_allocate_zero_padded_private_payload_and_reopen ... ok
+test sparse_images_open_without_mutation ... ok
+test writes_cross_grain_zeroes_and_retains_exclusive_lock ... ok
+
+test result: ok. 9 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out; finished in 0.33s
+
+     Running tests/writer_open.rs (/data/cache/virtdisk-final-isolated/debug/deps/writer_open-b0d0a1777330444e)
+
+running 3 tests
+test raw_open_options_refuse_dependencies_instead_of_ignoring_authorization ... ok
+test explicit_clean_open_preserves_pending_evidence_and_image ... ok
+test explicit_recovery_opens_clean_profiles_and_retains_exclusive_lock ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.14s
+
+     Running tests/zero_context.rs (/data/cache/virtdisk-final-isolated/debug/deps/zero_context-c21fdb25ed97a09c)
+
+running 5 tests
+test empty_ranges_notify_without_backend_calls ... ok
+test failed_native_call_is_charged_and_cumulative_quota_prevents_retry ... ok
+test whole_range_and_quota_refusal_precede_callbacks_or_mutation ... ok
+test cancellation_retains_completed_prefix_and_releases_backend_locks ... ok
+test native_dispatch_uses_bounded_chunks_without_owned_scratch_or_flush ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests virtdisk
+
+running 3 tests
+test src/zstd_decoder/decoding/frame.rs - zstd_decoder::decoding::frame::FrameHeader::window_descriptor (line 100) ... ignored
+test src/zstd_decoder/decoding/frame_decoder.rs - zstd_decoder::decoding::frame_decoder::FrameDecoder (line 37) ... ignored
+test src/zstd_decoder/decoding/streaming_decoder.rs - zstd_decoder::decoding::streaming_decoder::StreamingDecoder (line 30) ... ignored
+
+test result: ok. 0 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+all doctests ran in 0.29s; merged doctests compilation took 0.29s

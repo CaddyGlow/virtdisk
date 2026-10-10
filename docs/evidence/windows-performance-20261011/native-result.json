@@ -1,0 +1,82 @@
+{
+  "hashes": [
+    {
+      "Algorithm": "SHA256",
+      "Hash": "7BCF5D3F3001557E80F6DD34E9765FB52B0CB8DBE473E7115A8690DC1B424806",
+      "Path": "C:\\virtdisk-streaming\\run-639272669435921554\\dense.raw"
+    },
+    {
+      "Algorithm": "SHA256",
+      "Hash": "7BCF5D3F3001557E80F6DD34E9765FB52B0CB8DBE473E7115A8690DC1B424806",
+      "Path": "C:\\virtdisk-streaming\\run-639272669435921554\\dense.vbox.raw"
+    },
+    {
+      "Algorithm": "SHA256",
+      "Hash": "D5E1711541F2A5734E0D53DB05899B9130D6BA7466894B83BD25AC77983C3702",
+      "Path": "C:\\virtdisk-streaming\\run-639272669435921554\\dense.vdi"
+    },
+    {
+      "Algorithm": "SHA256",
+      "Hash": "81B32D0F7AF7203D0F0D13A600FCAA6679F0EF4CF47E07022ACC8C25A98E1F36",
+      "Path": "C:\\virtdisk-streaming\\run-639272669435921554\\dense.vhdx"
+    },
+    {
+      "Algorithm": "SHA256",
+      "Hash": "46C4C1B753D1B0ECD03BB297B78F2F151E2213B95D255773D1136CB4F856526C",
+      "Path": "C:\\virtdisk-streaming\\run-639272669435921554\\sparse.raw"
+    },
+    {
+      "Algorithm": "SHA256",
+      "Hash": "46C4C1B753D1B0ECD03BB297B78F2F151E2213B95D255773D1136CB4F856526C",
+      "Path": "C:\\virtdisk-streaming\\run-639272669435921554\\sparse.vbox.raw"
+    },
+    {
+      "Algorithm": "SHA256",
+      "Hash": "6ECCA68EF7CA736C0B832456D5FE312635AF0EA5B5ECB59BE5C0E8F7B124ABD7",
+      "Path": "C:\\virtdisk-streaming\\run-639272669435921554\\sparse.vdi"
+    },
+    {
+      "Algorithm": "SHA256",
+      "Hash": "7F0B0A76E50B3FA4FF425FC958C157D6114B7C8F32D0DFCEB1005BD8D25AA179",
+      "Path": "C:\\virtdisk-streaming\\run-639272669435921554\\sparse.vhdx"
+    },
+    {
+      "Algorithm": "SHA256",
+      "Hash": "430097BF6436E780AF5D6281939283905E1B11544606A4BB95F37FD82F8E9942",
+      "Path": "C:\\virtdisk-streaming\\run-639272669435921554\\virtdisk.exe"
+    }
+  ],
+  "os_version": "Microsoft Windows NT 10.0.26200.0",
+  "virtualbox_version": "7.2.20r175154",
+  "results": [
+    {
+      "expected": "7BCF5D3F3001557E80F6DD34E9765FB52B0CB8DBE473E7115A8690DC1B424806",
+      "verified": true,
+      "pattern": "dense",
+      "actual": "7BCF5D3F3001557E80F6DD34E9765FB52B0CB8DBE473E7115A8690DC1B424806",
+      "consumer": "VirtualBox"
+    },
+    {
+      "expected": "7BCF5D3F3001557E80F6DD34E9765FB52B0CB8DBE473E7115A8690DC1B424806",
+      "verified": true,
+      "pattern": "dense",
+      "actual": "7BCF5D3F3001557E80F6DD34E9765FB52B0CB8DBE473E7115A8690DC1B424806",
+      "consumer": "Windows DiskPart readonly attach / PhysicalDrive"
+    },
+    {
+      "expected": "46C4C1B753D1B0ECD03BB297B78F2F151E2213B95D255773D1136CB4F856526C",
+      "verified": true,
+      "pattern": "sparse",
+      "actual": "46C4C1B753D1B0ECD03BB297B78F2F151E2213B95D255773D1136CB4F856526C",
+      "consumer": "VirtualBox"
+    },
+    {
+      "expected": "46C4C1B753D1B0ECD03BB297B78F2F151E2213B95D255773D1136CB4F856526C",
+      "verified": true,
+      "pattern": "sparse",
+      "actual": "46C4C1B753D1B0ECD03BB297B78F2F151E2213B95D255773D1136CB4F856526C",
+      "consumer": "Windows DiskPart readonly attach / PhysicalDrive"
+    }
+  ],
+  "guest_directory": "C:\\virtdisk-streaming\\run-639272669435921554"
+}

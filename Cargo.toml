@@ -45,6 +45,15 @@ name = "conversion"
 harness = false
 required-features = ["std"]
 
+[[bench]]
+name = "lifecycle"
+harness = false
+required-features = ["std"]
+
+[[example]]
+name = "performance-fixtures"
+required-features = ["std"]
+
 [lints.rust]
 unsafe_op_in_unsafe_fn = "deny"
 

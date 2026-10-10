@@ -131,3 +131,20 @@ fn concurrent_disjoint_writes_preserve_offsets() {
         assert_eq!(chunk, &[index as u8; 64]);
     }
 }
+
+#[test]
+fn multi_chunk_zeroing_and_random_access_preserve_neighbors() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("disk.raw");
+    let writer = RawWriter::create(&path, 200_000).unwrap();
+    let mut expected = vec![0x76; 200_000];
+    writer.write_all_at(0, &expected).unwrap();
+    writer.read_exact_at(190_000, &mut [0; 512]).unwrap();
+    writer.write_zeroes(17, 131_073).unwrap();
+    expected[17..131_090].fill(0);
+    writer.write_all_at(131_089, &[9; 2]).unwrap();
+    expected[131_089..131_091].fill(9);
+    writer.flush().unwrap();
+    drop(writer);
+    assert_eq!(std::fs::read(path).unwrap(), expected);
+}

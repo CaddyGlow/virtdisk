@@ -1,0 +1,30 @@
+{
+  "date": "2026-10-11",
+  "platform": "Windows 11 25H2 26200.8037, QEMU KVM guest",
+  "guest": "virtdisk-performance-acceptance-20261010",
+  "binary_sha256": "430097bf6436e780af5d6281939283905e1b11544606a4bb95f37fd82f8e9942",
+  "streaming_memory_bytes": 4194304,
+  "host_fixture_allocation_read_bytes": 0,
+  "windows_dense_vdi_conversion": "passed",
+  "windows_dense_vhdx_conversion": "passed",
+  "windows_native_byte_verification": "passed: four independent consumer checks",
+  "virtualbox_consumer": "passed: dense and sparse VDI to raw exact SHA256",
+  "hyperv_consumer": "Mount-VHD WMI platform unavailable in nested guest; Windows DiskPart VHDX attach / PhysicalDrive SHA256 passed dense and sparse",
+  "setup_note": "owned guest OOBE required ChildCompletion setup.exe=3 before first boot completed",
+  "source_hashes": {
+    "dense.raw": "7bcf5d3f3001557e80f6dd34e9765fb52b0cb8dbe473e7115a8690dc1b424806",
+    "sparse.raw": "46c4c1b753d1b0ecd03bb297b78f2f151e2213b95d255773d1136cb4f856526c"
+  },
+  "windows_container_hashes": {
+    "dense.vdi": "d5e1711541f2a5734e0d53db05899b9130d6ba7466894b83bd25ac77983c3702",
+    "dense.vhdx": "81b32d0f7af7203d0f0d13a600fcaa6679f0ef4cf47e07022acc8c25a98e1f36",
+    "sparse.vdi": "6ecca68ef7ca736c0b832456d5fe312635af0ea5b5ecb59be5c0e8f7b124abd7",
+    "sparse.vhdx": "7f0b0a76e50b3fa4ff425fc958c157d6114b7c8f32d0dfceb1005bd8d25aa179"
+  },
+  "command": "virtdisk.exe --working-memory 4194304 --streaming-allocation convert INPUT raw OUTPUT FORMAT",
+  "scope": "native runtime and independent native consumer correctness for dense/sparse VDI/VHDX; no storage speedup or crash recovery claimed",
+  "windows_sparse_vdi_conversion": "passed",
+  "windows_sparse_vhdx_conversion": "passed",
+  "guest_state": "cleanly stopped with vm-stop; instance and artifacts preserved; all tested VHDX detached",
+  "verification_script": "verify.ps1"
+}

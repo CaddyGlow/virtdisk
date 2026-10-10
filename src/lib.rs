@@ -17,9 +17,9 @@ pub use portable::{DiskExtent, DiskView, ExtentKind, ReadAt, SourceIdentity};
 use std::fs::File;
 
 #[cfg(feature = "std")]
-use std::path::Path;
+use source::ReadFile;
 #[cfg(feature = "std")]
-use std::sync::Mutex;
+use std::path::Path;
 
 #[cfg(feature = "std")]
 mod host_source;
@@ -105,6 +105,8 @@ mod export_file;
 #[cfg(feature = "std")]
 mod export_source;
 #[cfg(feature = "std")]
+mod parallel_export;
+#[cfg(feature = "std")]
 mod qcow2_write;
 #[cfg(feature = "std")]
 pub use qcow2_write::{create_qcow2, create_sparse_qcow2};
@@ -187,11 +189,12 @@ pub use info::{
 
 /// A raw image opened read-only and retained through all deferred reads.
 ///
-/// The private file cursor is serialized for portable exact reads. This does
-/// not lock out external writers or provide a snapshot. Use an immutable source.
+/// Unix uses positioned exact reads; other platforms serialize a private file
+/// cursor. This does not lock out external writers or provide a snapshot. Use an
+/// immutable source.
 #[cfg(feature = "std")]
 pub struct RawDisk {
-    file: Mutex<File>,
+    file: ReadFile,
     host: HostSourceContext,
     length: u64,
     context: ReadContext,
@@ -200,11 +203,8 @@ pub struct RawDisk {
 #[cfg(feature = "std")]
 impl RawDisk {
     pub(crate) fn identity(&self) -> io::Result<same_file::Handle> {
-        let file = self
-            .file
-            .lock()
-            .map_err(|_| io::Error::other("disk reader mutex poisoned"))?;
-        Ok(same_file::Handle::from_file(file.try_clone()?)?)
+        self.file
+            .with_file(|file| Ok(same_file::Handle::from_file(file.try_clone()?)?))
     }
 
     #[cfg(target_os = "linux")]
@@ -229,7 +229,7 @@ impl RawDisk {
         Ok(Self {
             length: metadata.len(),
             host: HostSourceContext::new(path.to_path_buf(), &file)?,
-            file: Mutex::new(file),
+            file: ReadFile::new(file),
             context: ReadContext {
                 container: Some(path.to_string_lossy().into_owned()),
                 ..Default::default()
@@ -239,10 +239,7 @@ impl RawDisk {
     #[cfg(target_os = "linux")]
     pub(crate) fn pin_metadata(&self) -> io::Result<std::fs::Metadata> {
         self.file
-            .lock()
-            .map_err(|_| io::Error::other("disk reader mutex poisoned"))?
-            .metadata()
-            .map_err(Into::into)
+            .with_file(|file| file.metadata().map_err(Into::into))
     }
     /// Open a regular raw image. Device files and directories are rejected.
     pub fn open(path: impl AsRef<Path>) -> io::Result<Self> {
@@ -280,7 +277,7 @@ impl RawDisk {
         let container = canonical.to_string_lossy().into_owned();
         Ok(Self {
             host: HostSourceContext::new(canonical, &file)?,
-            file: Mutex::new(file),
+            file: ReadFile::new(file),
             length: metadata.len(),
             context: ReadContext {
                 container: Some(container),
@@ -307,14 +304,8 @@ impl ReadAt for RawDisk {
 
     fn read_exact_at(&self, offset: u64, destination: &mut [u8]) -> io::Result<()> {
         let result: io::Result<()> = (|| {
-            use std::io::{Read, Seek, SeekFrom};
             check_range(offset, destination.len() as u64, self.length)?;
-            let mut file = self
-                .file
-                .lock()
-                .map_err(|_| io::Error::other("disk reader mutex poisoned"))?;
-            file.seek(SeekFrom::Start(offset))?;
-            file.read_exact(destination).map_err(Into::into)
+            self.file.read_exact_at(offset, destination)
         })();
         result.map_err(|e| {
             let mut context = self.context();

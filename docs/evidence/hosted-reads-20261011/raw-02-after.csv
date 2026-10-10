@@ -1,0 +1,6 @@
+format,operation,block_bytes,sample,bytes,seconds,mib_per_second,iops,image_bytes,seed,access,state,flush_every,readers,crossing,latency_samples,p50_ns,p95_ns,p99_ns,cache
+Raw,setup,4096,1,0,0.004901211,0.000,0.000,16777216,1,stride,allocated,0,1,false,0,unavailable,unavailable,unavailable,warm
+Raw,open_readers,4096,1,0,0.000045554,0.000,0.000,16777216,1,stride,allocated,0,1,false,0,unavailable,unavailable,unavailable,warm
+Raw,read,4096,1,33554432,0.004056150,7889.255,2019649.175,16777216,1,stride,allocated,0,1,false,8192,448,625,795,warm
+Raw,close_readers,4096,1,0,0.000002270,0.000,0.000,16777216,1,stride,allocated,0,1,false,0,unavailable,unavailable,unavailable,warm
+Raw,verify,4096,1,16777216,0.005790347,2763.220,707384.203,16777216,1,stride,allocated,0,1,false,0,unavailable,unavailable,unavailable,warm

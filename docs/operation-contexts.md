@@ -32,7 +32,11 @@ Limits use private fields and validated builders. Byte and top-level I/O limits
 default to `u64::MAX`; known logical capacity bounds each operation. Callers can
 tighten these limits, including to zero for empty work. Scratch can be tightened
 from the existing 128 KiB combined comparison ceiling. Each buffer remains at
-most 64 KiB, preserving legacy read granularity; comparison uses two buffers.
+most 64 KiB by default, preserving legacy read granularity; comparison uses two buffers.
+Explicit `working_memory_bytes` (at most 128 MiB) and `with_buffer_bytes`
+(64/256 KiB or 1/4 MiB) opt into larger bounded buffers. Sizes below describe
+default contexts unless stated otherwise. Peak scratch excludes allocator overhead,
+thread stacks and backend caches; it is not a process RSS limit.
 Scratch allocations are fallible and independent of logical image size.
 
 Copy/hash/compare check their complete logical request before callbacks,
@@ -95,7 +99,8 @@ output, as in the existing publication contract.
 `AllocationScan` measures a complete source pass used to discover zero native
 units. `ImageExport` measures source bytes read for materialization; sparse
 VDI/VHDX export only reads allocated units in that phase, while sparse QCOW2
-reads the entire source again. `OutputVerification` measures the logical range
+reads the entire source again by default. An explicitly budgeted QCOW2 allocation
+bitmap skips zero-cluster rereads; streaming VDI/VHDX read each logical block once. `OutputVerification` measures the logical range
 once while comparing both readers. Each phase reports its own exact total.
 Repeated source passes count again toward cumulative logical bytes. Failed
 source reads charge the attempted call but no completed bytes. Native source
@@ -110,7 +115,31 @@ to scratch, and comparison uses two adaptive buffers. Native exporter streaming
 requires fixed combined buffer ceilings: QCOW2 131072, VMDK 67584, and VDI/VHDX
 65536 bytes. Smaller limits fail before callbacks or source I/O. Metadata/maps,
 allocator overhead and backend caches are independent bounded allocations.
+For explicitly enabled streaming VDI/VHDX the ceiling includes the 1 MiB
+payload buffer plus the bounded map/BAT. Insufficient memory retains two passes.
+Sparse QCOW2 streaming reserves a bitmap (at most 2 MiB at 1 TiB capacity) plus
+two 64 KiB clusters; metadata/refcount placement remains the existing layout.
 This API does not claim that operation scratch measures process memory.
+
+`with_workers(2|4)` enables raw-only immutable read and zero-detection preparation.
+One coordinator writes ordered payloads, flushes, verifies every byte, and publishes.
+Exactly one reusable buffer per worker bounds in-flight payload memory; channels
+hold at most one job/result per worker. Source I/O is charged for actual attempts,
+including reads that finish after cancellation. Callbacks remain on the coordinator.
+Failure closes channels and joins all workers before staging cleanup; an in-flight
+read must finish, so cancellation cannot interrupt a blocked backend read.
+
+The CLI exposes these controls only before `convert`:
+
+```sh
+virtdisk --working-memory 8388608 --export-buffer 1048576 \
+  --streaming-allocation --export-workers 4 convert input.raw raw output.vdi vdi sparse
+```
+
+Workers affect raw output only. Native exporters remain serial; larger comparison
+buffers still apply. Existing `--operation-limit scratch=N` can only tighten an
+explicit working-memory ceiling, regardless of option order. No tuning changes
+writer durability, exclusive locking, byte verification or publication semantics.
 
 Quota checks occur per pass; a later refusal can follow earlier staged work.
 Usage remains on the context, while the staged image is discarded. The

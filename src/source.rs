@@ -1,19 +1,104 @@
 //! Fixed-length adapters used while a caller retains a writer's operation lock.
-use crate::io::{self, Read, Seek, SeekFrom};
+use crate::io;
 use crate::{RawWriter, ReadAt, check_range};
+use std::{fs::File, sync::Arc};
+#[cfg(not(unix))]
 use std::{
-    fs::File,
-    sync::{Arc, Mutex},
+    io::{Read, Seek, SeekFrom},
+    sync::Mutex,
 };
 
-pub(crate) struct FileSource {
+/// Retains one opened handle; only the portable fallback owns a mutable cursor.
+pub(crate) struct ReadFile {
+    #[cfg(unix)]
+    file: File,
+    #[cfg(not(unix))]
     file: Mutex<File>,
+}
+impl ReadFile {
+    pub(crate) fn new(file: File) -> Self {
+        Self {
+            #[cfg(unix)]
+            file,
+            #[cfg(not(unix))]
+            file: Mutex::new(file),
+        }
+    }
+    pub(crate) fn with_file<T>(
+        &self,
+        operation: impl FnOnce(&File) -> io::Result<T>,
+    ) -> io::Result<T> {
+        #[cfg(unix)]
+        {
+            operation(&self.file)
+        }
+        #[cfg(not(unix))]
+        {
+            let file = self
+                .file
+                .lock()
+                .map_err(|_| io::Error::other("source mutex poisoned"))?;
+            operation(&file)
+        }
+    }
+    pub(crate) fn read_exact_at(&self, offset: u64, destination: &mut [u8]) -> io::Result<()> {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::FileExt;
+            positioned_exact(offset, destination, |offset, destination| {
+                self.file.read_at(destination, offset)
+            })
+        }
+        #[cfg(not(unix))]
+        {
+            let mut file = self
+                .file
+                .lock()
+                .map_err(|_| io::Error::other("source mutex poisoned"))?;
+            file.seek(SeekFrom::Start(offset))?;
+            Ok(file.read_exact(destination)?)
+        }
+    }
+}
+
+#[cfg(any(unix, test))]
+fn positioned_exact(
+    mut offset: u64,
+    mut destination: &mut [u8],
+    mut read: impl FnMut(u64, &mut [u8]) -> std::io::Result<usize>,
+) -> io::Result<()> {
+    offset
+        .checked_add(destination.len() as u64)
+        .ok_or_else(|| {
+            io::Error::new(io::ErrorKind::UnexpectedEof, "source read range overflow")
+        })?;
+    while !destination.is_empty() {
+        match read(offset, destination) {
+            Ok(0) => {
+                return Err(io::Error::new(
+                    io::ErrorKind::UnexpectedEof,
+                    "source file shortened during read",
+                ));
+            }
+            Ok(count) => {
+                offset += count as u64;
+                destination = &mut destination[count..];
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(error) => return Err(error.into()),
+        }
+    }
+    Ok(())
+}
+
+pub(crate) struct FileSource {
+    file: ReadFile,
     size: u64,
 }
 impl FileSource {
     pub(crate) fn new(file: File, size: u64) -> Self {
         Self {
-            file: Mutex::new(file),
+            file: ReadFile::new(file),
             size,
         }
     }
@@ -24,12 +109,7 @@ impl ReadAt for FileSource {
     }
     fn read_exact_at(&self, offset: u64, dst: &mut [u8]) -> io::Result<()> {
         check_range(offset, dst.len() as u64, self.size)?;
-        let mut file = self
-            .file
-            .lock()
-            .map_err(|_| io::Error::other("source mutex poisoned"))?;
-        file.seek(SeekFrom::Start(offset))?;
-        Ok(file.read_exact(dst)?)
+        self.file.read_exact_at(offset, dst)
     }
 }
 
@@ -62,6 +142,86 @@ impl ReadAt for ZeroSource {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn positioned_reads_retry_interruptions_and_short_reads() {
+        let mut calls = 0;
+        let mut output = [0; 5];
+        positioned_exact(7, &mut output, |offset, bytes| {
+            calls += 1;
+            if calls == 1 {
+                return Err(std::io::ErrorKind::Interrupted.into());
+            }
+            let count = bytes.len().min(2);
+            for (index, byte) in bytes[..count].iter_mut().enumerate() {
+                *byte = (offset + index as u64) as u8;
+            }
+            Ok(count)
+        })
+        .unwrap();
+        assert_eq!(output, [7, 8, 9, 10, 11]);
+        assert_eq!(calls, 4);
+    }
+
+    #[test]
+    fn positioned_reads_preserve_eof_errors_and_reject_overflow_before_io() {
+        assert_eq!(
+            positioned_exact(0, &mut [0], |_, _| Ok(0))
+                .unwrap_err()
+                .kind(),
+            io::ErrorKind::UnexpectedEof
+        );
+        assert_eq!(
+            positioned_exact(0, &mut [0], |_, _| Err(
+                std::io::ErrorKind::PermissionDenied.into()
+            ))
+            .unwrap_err()
+            .kind(),
+            io::ErrorKind::PermissionDenied
+        );
+        positioned_exact(u64::MAX, &mut [], |_, _| {
+            panic!("empty reads do not issue I/O")
+        })
+        .unwrap();
+        assert_eq!(
+            positioned_exact(u64::MAX, &mut [0], |_, _| panic!(
+                "overflow must precede I/O"
+            ))
+            .unwrap_err()
+            .kind(),
+            io::ErrorKind::UnexpectedEof
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn positioned_read_keeps_cloned_cursor_and_supports_shared_readers() {
+        use std::io::{Seek, SeekFrom, Write};
+        let mut file = tempfile::tempfile().unwrap();
+        file.write_all(&(0..=255).collect::<Vec<u8>>()).unwrap();
+        file.seek(SeekFrom::Start(31)).unwrap();
+        let mut cursor = file.try_clone().unwrap();
+        let source = FileSource::new(file, 256);
+        std::thread::scope(|scope| {
+            for offset in 0..8 {
+                let source = &source;
+                scope.spawn(move || {
+                    for _ in 0..100 {
+                        let mut bytes = [0; 32];
+                        source.read_exact_at(offset, &mut bytes).unwrap();
+                        assert_eq!(bytes[0], offset as u8);
+                        assert_eq!(bytes[31], offset as u8 + 31);
+                    }
+                });
+            }
+        });
+        assert_eq!(cursor.stream_position().unwrap(), 31);
+        cursor.set_len(8).unwrap();
+        assert_eq!(
+            source.read_exact_at(0, &mut [0; 16]).unwrap_err().kind(),
+            io::ErrorKind::UnexpectedEof
+        );
+    }
 
     #[test]
     fn retained_sources_keep_their_original_length_after_writer_growth() {

@@ -75,10 +75,17 @@ fn create_impl(
     let bat_length = bat_bytes.div_ceil(M) * M;
     let meta = 2 * M + bat_length;
     let data = meta + M;
-    let mut map = vec![0u64; entries as usize];
-    let mut buffer = crate::operation_context::scratch_buffer(65536)?;
+    let mut map = Vec::new();
+    map.try_reserve_exact(entries as usize)
+        .map_err(|_| io::Error::other("export map allocation failed"))?;
+    map.resize(entries as usize, 0u64);
+    let streaming = source
+        .as_ref()
+        .is_some_and(|source| source.streaming_allocation());
+    let mut buffer =
+        crate::operation_context::scratch_buffer(if streaming { M as usize } else { 65536 })?;
     let mut allocated = 0u64;
-    if let Some(source) = source.as_mut() {
+    if let Some(source) = source.as_mut().filter(|_| !streaming) {
         source.begin(crate::OperationPhase::AllocationScan, size)?;
         for index in 0..count {
             let offset = index * M;
@@ -118,7 +125,10 @@ fn create_impl(
             .filter(|&index| map[(index + index / ratio) as usize] != 0)
             .map(|index| (size - index * M).min(M))
             .sum();
-        source.begin(crate::OperationPhase::ImageExport, payload_bytes)?;
+        source.begin(
+            crate::OperationPhase::ImageExport,
+            if streaming { size } else { payload_bytes },
+        )?;
     }
     let file_id = identity()?;
     let data_id = identity()?;
@@ -134,7 +144,27 @@ fn create_impl(
     );
     file.try_lock().map_err(io::Error::from)?;
     file.set_len(data + allocated * M)?;
-    if let Some(source) = source.as_mut() {
+    if streaming {
+        if let Some(source) = source.as_mut() {
+            for index in 0..count {
+                buffer.fill(0);
+                let offset = index * M;
+                let count = (size - offset).min(M) as usize;
+                source.read(offset, &mut buffer[..count])?;
+                if !source.nonzero(&buffer[..count]) {
+                    continue;
+                }
+                let position = data + allocated * M;
+                map[(index + index / ratio) as usize] = position | 6;
+                file.seek(SeekFrom::Start(position))?;
+                file.payload(true);
+                file.write_all(&buffer)?;
+                file.payload(false);
+                allocated += 1;
+            }
+        }
+        buffer.truncate(65536);
+    } else if let Some(source) = source.as_mut() {
         for index in 0..count {
             let entry = map[(index + index / ratio) as usize];
             if entry == 0 {

@@ -1,0 +1,25 @@
+{
+  "full_suite": "PASS",
+  "last_observed_full_suite": "129 library passed, 10 ignored; at least 57 integration binaries reached with no failures; latest observed qcow2_write",
+  "last_observed_log": "/data/cache/virtdisk-final-tests-stable-tmp.log",
+  "command": "nix develop --no-write-lock-file ./nix -c env TMPDIR=/tmp CARGO_TARGET_DIR=/data/cache/virtdisk-final-isolated RUSTC_WRAPPER= cargo test --all-features --locked",
+  "verified_checks": {
+    "fmt": "PASS",
+    "clippy_all_targets_all_features_locked_D_warnings": "PASS",
+    "portable_no_default_x86_64_unknown_none": "PASS",
+    "windows_all_targets_all_features_x86_64_pc_windows_msvc": "PASS (compile only)",
+    "no_default_tests": "PASS",
+    "coordinator_write_failure_unit_test": "PASS"
+  },
+  "initial_full_suite": "four VHDX partial-write tests failed ENOENT; all preceding suites passed; exact external cause unproven",
+  "vhdx_focused_reruns": "same binary PASS4/4 3.95s; cargo focused PASS4/4 3.83s; root independently PASS4/4",
+  "cleanup": "no logs moved or deleted by verification agent; /data/cache/virtdisk-final* disappeared externally",
+  "full_suite_totals": {
+    "passed": 696,
+    "failed": 0,
+    "ignored": 77,
+    "result_groups": 99
+  },
+  "full_suite_log": "full-tests.log",
+  "environment_note": "Invocation-only isolated build target and disabled compiler wrapper: sccache daemon referenced deleted Nix temporary directory; no global Cargo configuration changed."
+}

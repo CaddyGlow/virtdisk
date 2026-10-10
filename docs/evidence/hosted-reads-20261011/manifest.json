@@ -1,0 +1,992 @@
+{
+  "time": 1791669568.8216367,
+  "load_start": [
+    17.55810546875,
+    20.78955078125,
+    24.94189453125
+  ],
+  "cache": "warm tmpfs, no cache eviction; shared busy host",
+  "pairs": 10,
+  "executables": {
+    "before": "82ea0612ac2210ef66b1036a7c81d03f64728c5450043c8cbafcbfa33833a70c",
+    "after": "02ea396f13369131ac9f873ee924a5a196beed3a50dc2fff5b17dd85faad15ce"
+  },
+  "records": [
+    {
+      "workload": "raw",
+      "pair": 0,
+      "label": "before",
+      "order": [
+        "before",
+        "after"
+      ],
+      "command": [
+        "/data/cache/virtdisk-m4-direct-baseline-io",
+        "--size",
+        "16777216",
+        "--samples",
+        "1",
+        "--format",
+        "raw",
+        "--block",
+        "4096",
+        "--requests",
+        "8192"
+      ],
+      "returncode": 0
+    },
+    {
+      "workload": "raw",
+      "pair": 0,
+      "label": "after",
+      "order": [
+        "before",
+        "after"
+      ],
+      "command": [
+        "/data/cache/virtdisk-m4-direct-candidate-io",
+        "--size",
+        "16777216",
+        "--samples",
+        "1",
+        "--format",
+        "raw",
+        "--block",
+        "4096",
+        "--requests",
+        "8192"
+      ],
+      "returncode": 0
+    },
+    {
+      "workload": "raw",
+      "pair": 1,
+      "label": "after",
+      "order": [
+        "after",
+        "before"
+      ],
+      "command": [
+        "/data/cache/virtdisk-m4-direct-candidate-io",
+        "--size",
+        "16777216",
+        "--samples",
+        "1",
+        "--format",
+        "raw",
+        "--block",
+        "4096",
+        "--requests",
+        "8192"
+      ],
+      "returncode": 0
+    },
+    {
+      "workload": "raw",
+      "pair": 1,
+      "label": "before",
+      "order": [
+        "after",
+        "before"
+      ],
+      "command": [
+        "/data/cache/virtdisk-m4-direct-baseline-io",
+        "--size",
+        "16777216",
+        "--samples",
+        "1",
+        "--format",
+        "raw",
+        "--block",
+        "4096",
+        "--requests",
+        "8192"
+      ],
+      "returncode": 0
+    },
+    {
+      "workload": "raw",
+      "pair": 2,
+      "label": "before",
+      "order": [
+        "before",
+        "after"
+      ],
+      "command": [
+        "/data/cache/virtdisk-m4-direct-baseline-io",
+        "--size",
+        "16777216",
+        "--samples",
+        "1",
+        "--format",
+        "raw",
+        "--block",
+        "4096",
+        "--requests",
+        "8192"
+      ],
+      "returncode": 0
+    },
+    {
+      "workload": "raw",
+      "pair": 2,
+      "label": "after",
+      "order": [
+        "before",
+        "after"
+      ],
+      "command": [
+        "/data/cache/virtdisk-m4-direct-candidate-io",
+        "--size",
+        "16777216",
+        "--samples",
+        "1",
+        "--format",
+        "raw",
+        "--block",
+        "4096",
+        "--requests",
+        "8192"
+      ],
+      "returncode": 0
+    },
+    {
+      "workload": "raw",
+      "pair": 3,
+      "label": "after",
+      "order": [
+        "after",
+        "before"
+      ],
+      "command": [
+        "/data/cache/virtdisk-m4-direct-candidate-io",
+        "--size",
+        "16777216",
+        "--samples",
+        "1",
+        "--format",
+        "raw",
+        "--block",
+        "4096",
+        "--requests",
+        "8192"
+      ],
+      "returncode": 0
+    },
+    {
+      "workload": "raw",
+      "pair": 3,
+      "label": "before",
+      "order": [
+        "after",
+        "before"
+      ],
+      "command": [
+        "/data/cache/virtdisk-m4-direct-baseline-io",
+        "--size",
+        "16777216",
+        "--samples",
+        "1",
+        "--format",
+        "raw",
+        "--block",
+        "4096",
+        "--requests",
+        "8192"
+      ],
+      "returncode": 0
+    },
+    {
+      "workload": "raw",
+      "pair": 4,
+      "label": "before",
+      "order": [
+        "before",
+        "after"
+      ],
+      "command": [
+        "/data/cache/virtdisk-m4-direct-baseline-io",
+        "--size",
+        "16777216",
+        "--samples",
+        "1",
+        "--format",
+        "raw",
+        "--block",
+        "4096",
+        "--requests",
+        "8192"
+      ],
+      "returncode": 0
+    },
+    {
+      "workload": "raw",
+      "pair": 4,
+      "label": "after",
+      "order": [
+        "before",
+        "after"
+      ],
+      "command": [
+        "/data/cache/virtdisk-m4-direct-candidate-io",
+        "--size",
+        "16777216",
+        "--samples",
+        "1",
+        "--format",
+        "raw",
+        "--block",
+        "4096",
+        "--requests",
+        "8192"
+      ],
+      "returncode": 0
+    },
+    {
+      "workload": "raw",
+      "pair": 5,
+      "label": "after",
+      "order": [
+        "after",
+        "before"
+      ],
+      "command": [
+        "/data/cache/virtdisk-m4-direct-candidate-io",
+        "--size",
+        "16777216",
+        "--samples",
+        "1",
+        "--format",
+        "raw",
+        "--block",
+        "4096",
+        "--requests",
+        "8192"
+      ],
+      "returncode": 0
+    },
+    {
+      "workload": "raw",
+      "pair": 5,
+      "label": "before",
+      "order": [
+        "after",
+        "before"
+      ],
+      "command": [
+        "/data/cache/virtdisk-m4-direct-baseline-io",
+        "--size",
+        "16777216",
+        "--samples",
+        "1",
+        "--format",
+        "raw",
+        "--block",
+        "4096",
+        "--requests",
+        "8192"
+      ],
+      "returncode": 0
+    },
+    {
+      "workload": "raw",
+      "pair": 6,
+      "label": "before",
+      "order": [
+        "before",
+        "after"
+      ],
+      "command": [
+        "/data/cache/virtdisk-m4-direct-baseline-io",
+        "--size",
+        "16777216",
+        "--samples",
+        "1",
+        "--format",
+        "raw",
+        "--block",
+        "4096",
+        "--requests",
+        "8192"
+      ],
+      "returncode": 0
+    },
+    {
+      "workload": "raw",
+      "pair": 6,
+      "label": "after",
+      "order": [
+        "before",
+        "after"
+      ],
+      "command": [
+        "/data/cache/virtdisk-m4-direct-candidate-io",
+        "--size",
+        "16777216",
+        "--samples",
+        "1",
+        "--format",
+        "raw",
+        "--block",
+        "4096",
+        "--requests",
+        "8192"
+      ],
+      "returncode": 0
+    },
+    {
+      "workload": "raw",
+      "pair": 7,
+      "label": "after",
+      "order": [
+        "after",
+        "before"
+      ],
+      "command": [
+        "/data/cache/virtdisk-m4-direct-candidate-io",
+        "--size",
+        "16777216",
+        "--samples",
+        "1",
+        "--format",
+        "raw",
+        "--block",
+        "4096",
+        "--requests",
+        "8192"
+      ],
+      "returncode": 0
+    },
+    {
+      "workload": "raw",
+      "pair": 7,
+      "label": "before",
+      "order": [
+        "after",
+        "before"
+      ],
+      "command": [
+        "/data/cache/virtdisk-m4-direct-baseline-io",
+        "--size",
+        "16777216",
+        "--samples",
+        "1",
+        "--format",
+        "raw",
+        "--block",
+        "4096",
+        "--requests",
+        "8192"
+      ],
+      "returncode": 0
+    },
+    {
+      "workload": "raw",
+      "pair": 8,
+      "label": "before",
+      "order": [
+        "before",
+        "after"
+      ],
+      "command": [
+        "/data/cache/virtdisk-m4-direct-baseline-io",
+        "--size",
+        "16777216",
+        "--samples",
+        "1",
+        "--format",
+        "raw",
+        "--block",
+        "4096",
+        "--requests",
+        "8192"
+      ],
+      "returncode": 0
+    },
+    {
+      "workload": "raw",
+      "pair": 8,
+      "label": "after",
+      "order": [
+        "before",
+        "after"
+      ],
+      "command": [
+        "/data/cache/virtdisk-m4-direct-candidate-io",
+        "--size",
+        "16777216",
+        "--samples",
+        "1",
+        "--format",
+        "raw",
+        "--block",
+        "4096",
+        "--requests",
+        "8192"
+      ],
+      "returncode": 0
+    },
+    {
+      "workload": "raw",
+      "pair": 9,
+      "label": "after",
+      "order": [
+        "after",
+        "before"
+      ],
+      "command": [
+        "/data/cache/virtdisk-m4-direct-candidate-io",
+        "--size",
+        "16777216",
+        "--samples",
+        "1",
+        "--format",
+        "raw",
+        "--block",
+        "4096",
+        "--requests",
+        "8192"
+      ],
+      "returncode": 0
+    },
+    {
+      "workload": "raw",
+      "pair": 9,
+      "label": "before",
+      "order": [
+        "after",
+        "before"
+      ],
+      "command": [
+        "/data/cache/virtdisk-m4-direct-baseline-io",
+        "--size",
+        "16777216",
+        "--samples",
+        "1",
+        "--format",
+        "raw",
+        "--block",
+        "4096",
+        "--requests",
+        "8192"
+      ],
+      "returncode": 0
+    },
+    {
+      "workload": "vmdk",
+      "pair": 0,
+      "label": "before",
+      "order": [
+        "before",
+        "after"
+      ],
+      "command": [
+        "/data/cache/virtdisk-m4-direct-baseline-io",
+        "--size",
+        "16777216",
+        "--samples",
+        "1",
+        "--format",
+        "vmdk",
+        "--block",
+        "1048576",
+        "--requests",
+        "64",
+        "--access",
+        "sequential"
+      ],
+      "returncode": 0
+    },
+    {
+      "workload": "vmdk",
+      "pair": 0,
+      "label": "after",
+      "order": [
+        "before",
+        "after"
+      ],
+      "command": [
+        "/data/cache/virtdisk-m4-direct-candidate-io",
+        "--size",
+        "16777216",
+        "--samples",
+        "1",
+        "--format",
+        "vmdk",
+        "--block",
+        "1048576",
+        "--requests",
+        "64",
+        "--access",
+        "sequential"
+      ],
+      "returncode": 0
+    },
+    {
+      "workload": "vmdk",
+      "pair": 1,
+      "label": "after",
+      "order": [
+        "after",
+        "before"
+      ],
+      "command": [
+        "/data/cache/virtdisk-m4-direct-candidate-io",
+        "--size",
+        "16777216",
+        "--samples",
+        "1",
+        "--format",
+        "vmdk",
+        "--block",
+        "1048576",
+        "--requests",
+        "64",
+        "--access",
+        "sequential"
+      ],
+      "returncode": 0
+    },
+    {
+      "workload": "vmdk",
+      "pair": 1,
+      "label": "before",
+      "order": [
+        "after",
+        "before"
+      ],
+      "command": [
+        "/data/cache/virtdisk-m4-direct-baseline-io",
+        "--size",
+        "16777216",
+        "--samples",
+        "1",
+        "--format",
+        "vmdk",
+        "--block",
+        "1048576",
+        "--requests",
+        "64",
+        "--access",
+        "sequential"
+      ],
+      "returncode": 0
+    },
+    {
+      "workload": "vmdk",
+      "pair": 2,
+      "label": "before",
+      "order": [
+        "before",
+        "after"
+      ],
+      "command": [
+        "/data/cache/virtdisk-m4-direct-baseline-io",
+        "--size",
+        "16777216",
+        "--samples",
+        "1",
+        "--format",
+        "vmdk",
+        "--block",
+        "1048576",
+        "--requests",
+        "64",
+        "--access",
+        "sequential"
+      ],
+      "returncode": 0
+    },
+    {
+      "workload": "vmdk",
+      "pair": 2,
+      "label": "after",
+      "order": [
+        "before",
+        "after"
+      ],
+      "command": [
+        "/data/cache/virtdisk-m4-direct-candidate-io",
+        "--size",
+        "16777216",
+        "--samples",
+        "1",
+        "--format",
+        "vmdk",
+        "--block",
+        "1048576",
+        "--requests",
+        "64",
+        "--access",
+        "sequential"
+      ],
+      "returncode": 0
+    },
+    {
+      "workload": "vmdk",
+      "pair": 3,
+      "label": "after",
+      "order": [
+        "after",
+        "before"
+      ],
+      "command": [
+        "/data/cache/virtdisk-m4-direct-candidate-io",
+        "--size",
+        "16777216",
+        "--samples",
+        "1",
+        "--format",
+        "vmdk",
+        "--block",
+        "1048576",
+        "--requests",
+        "64",
+        "--access",
+        "sequential"
+      ],
+      "returncode": 0
+    },
+    {
+      "workload": "vmdk",
+      "pair": 3,
+      "label": "before",
+      "order": [
+        "after",
+        "before"
+      ],
+      "command": [
+        "/data/cache/virtdisk-m4-direct-baseline-io",
+        "--size",
+        "16777216",
+        "--samples",
+        "1",
+        "--format",
+        "vmdk",
+        "--block",
+        "1048576",
+        "--requests",
+        "64",
+        "--access",
+        "sequential"
+      ],
+      "returncode": 0
+    },
+    {
+      "workload": "vmdk",
+      "pair": 4,
+      "label": "before",
+      "order": [
+        "before",
+        "after"
+      ],
+      "command": [
+        "/data/cache/virtdisk-m4-direct-baseline-io",
+        "--size",
+        "16777216",
+        "--samples",
+        "1",
+        "--format",
+        "vmdk",
+        "--block",
+        "1048576",
+        "--requests",
+        "64",
+        "--access",
+        "sequential"
+      ],
+      "returncode": 0
+    },
+    {
+      "workload": "vmdk",
+      "pair": 4,
+      "label": "after",
+      "order": [
+        "before",
+        "after"
+      ],
+      "command": [
+        "/data/cache/virtdisk-m4-direct-candidate-io",
+        "--size",
+        "16777216",
+        "--samples",
+        "1",
+        "--format",
+        "vmdk",
+        "--block",
+        "1048576",
+        "--requests",
+        "64",
+        "--access",
+        "sequential"
+      ],
+      "returncode": 0
+    },
+    {
+      "workload": "vmdk",
+      "pair": 5,
+      "label": "after",
+      "order": [
+        "after",
+        "before"
+      ],
+      "command": [
+        "/data/cache/virtdisk-m4-direct-candidate-io",
+        "--size",
+        "16777216",
+        "--samples",
+        "1",
+        "--format",
+        "vmdk",
+        "--block",
+        "1048576",
+        "--requests",
+        "64",
+        "--access",
+        "sequential"
+      ],
+      "returncode": 0
+    },
+    {
+      "workload": "vmdk",
+      "pair": 5,
+      "label": "before",
+      "order": [
+        "after",
+        "before"
+      ],
+      "command": [
+        "/data/cache/virtdisk-m4-direct-baseline-io",
+        "--size",
+        "16777216",
+        "--samples",
+        "1",
+        "--format",
+        "vmdk",
+        "--block",
+        "1048576",
+        "--requests",
+        "64",
+        "--access",
+        "sequential"
+      ],
+      "returncode": 0
+    },
+    {
+      "workload": "vmdk",
+      "pair": 6,
+      "label": "before",
+      "order": [
+        "before",
+        "after"
+      ],
+      "command": [
+        "/data/cache/virtdisk-m4-direct-baseline-io",
+        "--size",
+        "16777216",
+        "--samples",
+        "1",
+        "--format",
+        "vmdk",
+        "--block",
+        "1048576",
+        "--requests",
+        "64",
+        "--access",
+        "sequential"
+      ],
+      "returncode": 0
+    },
+    {
+      "workload": "vmdk",
+      "pair": 6,
+      "label": "after",
+      "order": [
+        "before",
+        "after"
+      ],
+      "command": [
+        "/data/cache/virtdisk-m4-direct-candidate-io",
+        "--size",
+        "16777216",
+        "--samples",
+        "1",
+        "--format",
+        "vmdk",
+        "--block",
+        "1048576",
+        "--requests",
+        "64",
+        "--access",
+        "sequential"
+      ],
+      "returncode": 0
+    },
+    {
+      "workload": "vmdk",
+      "pair": 7,
+      "label": "after",
+      "order": [
+        "after",
+        "before"
+      ],
+      "command": [
+        "/data/cache/virtdisk-m4-direct-candidate-io",
+        "--size",
+        "16777216",
+        "--samples",
+        "1",
+        "--format",
+        "vmdk",
+        "--block",
+        "1048576",
+        "--requests",
+        "64",
+        "--access",
+        "sequential"
+      ],
+      "returncode": 0
+    },
+    {
+      "workload": "vmdk",
+      "pair": 7,
+      "label": "before",
+      "order": [
+        "after",
+        "before"
+      ],
+      "command": [
+        "/data/cache/virtdisk-m4-direct-baseline-io",
+        "--size",
+        "16777216",
+        "--samples",
+        "1",
+        "--format",
+        "vmdk",
+        "--block",
+        "1048576",
+        "--requests",
+        "64",
+        "--access",
+        "sequential"
+      ],
+      "returncode": 0
+    },
+    {
+      "workload": "vmdk",
+      "pair": 8,
+      "label": "before",
+      "order": [
+        "before",
+        "after"
+      ],
+      "command": [
+        "/data/cache/virtdisk-m4-direct-baseline-io",
+        "--size",
+        "16777216",
+        "--samples",
+        "1",
+        "--format",
+        "vmdk",
+        "--block",
+        "1048576",
+        "--requests",
+        "64",
+        "--access",
+        "sequential"
+      ],
+      "returncode": 0
+    },
+    {
+      "workload": "vmdk",
+      "pair": 8,
+      "label": "after",
+      "order": [
+        "before",
+        "after"
+      ],
+      "command": [
+        "/data/cache/virtdisk-m4-direct-candidate-io",
+        "--size",
+        "16777216",
+        "--samples",
+        "1",
+        "--format",
+        "vmdk",
+        "--block",
+        "1048576",
+        "--requests",
+        "64",
+        "--access",
+        "sequential"
+      ],
+      "returncode": 0
+    },
+    {
+      "workload": "vmdk",
+      "pair": 9,
+      "label": "after",
+      "order": [
+        "after",
+        "before"
+      ],
+      "command": [
+        "/data/cache/virtdisk-m4-direct-candidate-io",
+        "--size",
+        "16777216",
+        "--samples",
+        "1",
+        "--format",
+        "vmdk",
+        "--block",
+        "1048576",
+        "--requests",
+        "64",
+        "--access",
+        "sequential"
+      ],
+      "returncode": 0
+    },
+    {
+      "workload": "vmdk",
+      "pair": 9,
+      "label": "before",
+      "order": [
+        "after",
+        "before"
+      ],
+      "command": [
+        "/data/cache/virtdisk-m4-direct-baseline-io",
+        "--size",
+        "16777216",
+        "--samples",
+        "1",
+        "--format",
+        "vmdk",
+        "--block",
+        "1048576",
+        "--requests",
+        "64",
+        "--access",
+        "sequential"
+      ],
+      "returncode": 0
+    }
+  ],
+  "load_end": [
+    17.55810546875,
+    20.78955078125,
+    24.94189453125
+  ],
+  "benchmark_sha256": {
+    "benches/io.rs": "8f59d8754d9781404166c6f660793aa899c6a8192d2dc0a0c241c3e8a73fd0f1",
+    "/tmp/virtdisk-m4-baseline/benches/io.rs": "8f59d8754d9781404166c6f660793aa899c6a8192d2dc0a0c241c3e8a73fd0f1"
+  },
+  "baseline_commit": "1e0b180",
+  "candidate_sources_sha256": {
+    "src/source.rs": "85f0dce3939aa211a9f331da3c7eeafc5907f161ab6f1069dfcc870ce99b978d",
+    "src/raw_write.rs": "899b93f9090fe602d6478591075ef48adad8382bf74382077a2d69cff2511686",
+    "src/vmdk.rs": "a625344b2d3f76377a8a52766981a4fd923830b3a13342e46714bdbd63ea08d9",
+    "src/lib.rs": "bfc80ac84225465c3e79243f8f242fd7b820079e47406f50e64069700864b29b"
+  }
+}

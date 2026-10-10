@@ -1,0 +1,67 @@
+{
+  "schema": 1,
+  "measurement": "whole fault-injection correctness test process, includes setup, dirty replay, verification and idempotent reopen; not isolated replay latency",
+  "binary_sha256": "49f97699c27cf7c000578aeee8767632315f7aa652027b1af0a41905e7073330",
+  "environment": {
+    "TMPDIR": "/dev/shm"
+  },
+  "percentiles": "unavailable; one process per fixture family",
+  "results": [
+    {
+      "test": "qcow2_writer::journal::tests::interruptions_recover_idempotently_and_preserve_valid_qcow2",
+      "command": [
+        "/data/cache/rust/debug/deps/virtdisk-7c76b06655a0433e",
+        "--exact",
+        "qcow2_writer::journal::tests::interruptions_recover_idempotently_and_preserve_valid_qcow2",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "seconds": 0.244208947988227,
+      "returncode": 0,
+      "stdout": "\nrunning 1 test\ntest qcow2_writer::journal::tests::interruptions_recover_idempotently_and_preserve_valid_qcow2 ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 135 filtered out; finished in 0.24s\n\n",
+      "stderr": ""
+    },
+    {
+      "test": "vdi_writer::recovery_tests::each_transaction_cut_recovers_idempotently_and_pending_reader_fails_closed",
+      "command": [
+        "/data/cache/rust/debug/deps/virtdisk-7c76b06655a0433e",
+        "--exact",
+        "vdi_writer::recovery_tests::each_transaction_cut_recovers_idempotently_and_pending_reader_fails_closed",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "seconds": 0.17229964199941605,
+      "returncode": 0,
+      "stdout": "\nrunning 1 test\ntest vdi_writer::recovery_tests::each_transaction_cut_recovers_idempotently_and_pending_reader_fails_closed ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 135 filtered out; finished in 0.17s\n\n",
+      "stderr": ""
+    },
+    {
+      "test": "vmdk_writer::recovery_tests::sparse_transaction_cuts_recover_private_grains_and_pending_reads_fail",
+      "command": [
+        "/data/cache/rust/debug/deps/virtdisk-7c76b06655a0433e",
+        "--exact",
+        "vmdk_writer::recovery_tests::sparse_transaction_cuts_recover_private_grains_and_pending_reads_fail",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "seconds": 0.024681176990270615,
+      "returncode": 0,
+      "stdout": "\nrunning 1 test\ntest vmdk_writer::recovery_tests::sparse_transaction_cuts_recover_private_grains_and_pending_reads_fail ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 135 filtered out; finished in 0.02s\n\n",
+      "stderr": ""
+    },
+    {
+      "test": "vhdx_recover::tests::interruption_at_each_native_persistence_boundary_is_recoverable",
+      "command": [
+        "/data/cache/rust/debug/deps/virtdisk-7c76b06655a0433e",
+        "--exact",
+        "vhdx_recover::tests::interruption_at_each_native_persistence_boundary_is_recoverable",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "seconds": 0.44429818098433316,
+      "returncode": 0,
+      "stdout": "\nrunning 1 test\ntest vhdx_recover::tests::interruption_at_each_native_persistence_boundary_is_recoverable ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 135 filtered out; finished in 0.44s\n\n",
+      "stderr": ""
+    }
+  ]
+}

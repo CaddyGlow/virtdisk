@@ -1,0 +1,100 @@
+{
+  "raw": {
+    "paired_throughput_ratio_median": 1.185359036085119,
+    "bootstrap_95_median_ratio": [
+      1.0692240685503915,
+      1.5553732341044195
+    ],
+    "throughput_median_mib_s": {
+      "before": 5731.454,
+      "after": 7090.058
+    },
+    "ratios": [
+      1.270536938409404,
+      1.1378348895767043,
+      1.9104393941228464,
+      1.1711641346630755,
+      1.9943016780861544,
+      0.6527243295122943,
+      1.2003070740859927,
+      0.9790217178388497,
+      1.1594264192619332,
+      1.1995539375071622
+    ],
+    "p99_ns": {
+      "before": [
+        "941",
+        "1048",
+        "1617",
+        "996",
+        "1452",
+        "893",
+        "1220",
+        "1497",
+        "850",
+        "1217"
+      ],
+      "after": [
+        "844",
+        "879",
+        "795",
+        "919",
+        "789",
+        "1408",
+        "1240",
+        "1224",
+        "815",
+        "997"
+      ]
+    }
+  },
+  "vmdk": {
+    "paired_throughput_ratio_median": 1.0797768384398434,
+    "bootstrap_95_median_ratio": [
+      0.9738588675837081,
+      1.8963972456883182
+    ],
+    "throughput_median_mib_s": {
+      "before": 11457.381000000001,
+      "after": 12255.8755
+    },
+    "ratios": [
+      1.9841839226774107,
+      0.8764450474753787,
+      1.0046711755407731,
+      2.005693053986482,
+      1.8086105686992258,
+      0.9313294655313984,
+      1.0163882696360178,
+      1.0989529678993413,
+      1.8238283376478777,
+      1.0606007089803455
+    ],
+    "p99_ns": {
+      "before": [
+        "unavailable",
+        "unavailable",
+        "unavailable",
+        "unavailable",
+        "unavailable",
+        "unavailable",
+        "unavailable",
+        "unavailable",
+        "unavailable",
+        "unavailable"
+      ],
+      "after": [
+        "unavailable",
+        "unavailable",
+        "unavailable",
+        "unavailable",
+        "unavailable",
+        "unavailable",
+        "unavailable",
+        "unavailable",
+        "unavailable",
+        "unavailable"
+      ]
+    }
+  }
+}

@@ -458,9 +458,7 @@ impl Qcow2 {
             use std::os::unix::fs::MetadataExt;
             let metadata = source
                 .file
-                .lock()
-                .map_err(|_| io::Error::other("disk reader mutex poisoned"))?
-                .metadata()?;
+                .with_file(|file| file.metadata().map_err(Into::into))?;
             if !identities.insert((metadata.dev(), metadata.ino())) {
                 return Err(invalid("QCOW2 backing chain repeats a file identity"));
             }
@@ -571,9 +569,7 @@ impl Qcow2 {
                         use std::os::unix::fs::MetadataExt;
                         let metadata = raw
                             .file
-                            .lock()
-                            .map_err(|_| io::Error::other("disk reader mutex poisoned"))?
-                            .metadata()?;
+                            .with_file(|file| file.metadata().map_err(Into::into))?;
                         if !identities.insert((metadata.dev(), metadata.ino())) {
                             return Err(invalid("QCOW2 backing chain repeats a file identity"));
                         }

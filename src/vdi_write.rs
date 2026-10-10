@@ -48,24 +48,33 @@ pub(crate) fn export_vdi(
             "VDI data offset exceeds format limit",
         )
     })?;
-    source.begin(crate::OperationPhase::AllocationScan, size)?;
-    let mut map = vec![u32::MAX; blocks as usize];
-    let mut buffer = crate::operation_context::scratch_buffer(65536)?;
+    let streaming = source.streaming_allocation();
+    if !streaming {
+        source.begin(crate::OperationPhase::AllocationScan, size)?;
+    }
+    let mut map = Vec::new();
+    map.try_reserve_exact(blocks as usize)
+        .map_err(|_| io::Error::other("export map allocation failed"))?;
+    map.resize(blocks as usize, u32::MAX);
+    let mut buffer =
+        crate::operation_context::scratch_buffer(if streaming { BLOCK as usize } else { 65536 })?;
     let mut allocated = 0u32;
-    for (i, entry) in map.iter_mut().enumerate() {
-        let offset = i as u64 * BLOCK;
-        let end = size.min(offset + BLOCK);
-        let mut position = offset;
-        let mut nonzero = false;
-        while position < end {
-            let count = (end - position).min(buffer.len() as u64) as usize;
-            source.read(position, &mut buffer[..count])?;
-            nonzero |= source.nonzero(&buffer[..count]);
-            position += count as u64;
-        }
-        if nonzero {
-            *entry = allocated;
-            allocated += 1;
+    if !streaming {
+        for (i, entry) in map.iter_mut().enumerate() {
+            let offset = i as u64 * BLOCK;
+            let end = size.min(offset + BLOCK);
+            let mut position = offset;
+            let mut nonzero = false;
+            while position < end {
+                let count = (end - position).min(buffer.len() as u64) as usize;
+                source.read(position, &mut buffer[..count])?;
+                nonzero |= source.nonzero(&buffer[..count]);
+                position += count as u64;
+            }
+            if nonzero {
+                *entry = allocated;
+                allocated += 1;
+            }
         }
     }
     let mut header = [0; 512];
@@ -94,27 +103,50 @@ pub(crate) fn export_vdi(
         .filter(|(_, entry)| **entry != u32::MAX)
         .map(|(index, _)| (size - index as u64 * BLOCK).min(BLOCK))
         .sum();
-    source.begin(crate::OperationPhase::ImageExport, payload_bytes)?;
+    source.begin(
+        crate::OperationPhase::ImageExport,
+        if streaming { size } else { payload_bytes },
+    )?;
     let file = OpenOptions::new().write(true).create_new(true).open(path)?;
     let mut file = crate::export_file::ExportFile::new(file, source.profiler());
     file.set_len(final_len)?;
-    for (i, &entry) in map.iter().enumerate() {
-        if entry == u32::MAX {
-            continue;
-        }
-        let offset = i as u64 * BLOCK;
-        file.seek(SeekFrom::Start(data + entry as u64 * BLOCK))?;
-        let end = size.min(offset + BLOCK);
-        let mut position = offset;
-        while position < end {
-            let count = (end - position).min(buffer.len() as u64) as usize;
-            source.read(position, &mut buffer[..count])?;
+    if streaming {
+        for (index, entry) in map.iter_mut().enumerate() {
+            buffer.fill(0);
+            let offset = index as u64 * BLOCK;
+            let count = (size - offset).min(BLOCK) as usize;
+            source.read(offset, &mut buffer[..count])?;
+            if !source.nonzero(&buffer[..count]) {
+                continue;
+            }
+            *entry = allocated;
+            file.seek(SeekFrom::Start(data + allocated as u64 * BLOCK))?;
             file.payload(true);
-            file.write_all(&buffer[..count])?;
+            file.write_all(&buffer)?;
             file.payload(false);
-            position += count as u64;
+            allocated += 1;
         }
-        // create_new plus set_len leaves the final block's unread tail zeroed.
+        put(&mut header, 388, allocated);
+        buffer.truncate(65536);
+    } else {
+        for (i, &entry) in map.iter().enumerate() {
+            if entry == u32::MAX {
+                continue;
+            }
+            let offset = i as u64 * BLOCK;
+            file.seek(SeekFrom::Start(data + entry as u64 * BLOCK))?;
+            let end = size.min(offset + BLOCK);
+            let mut position = offset;
+            while position < end {
+                let count = (end - position).min(buffer.len() as u64) as usize;
+                source.read(position, &mut buffer[..count])?;
+                file.payload(true);
+                file.write_all(&buffer[..count])?;
+                file.payload(false);
+                position += count as u64;
+            }
+            // create_new plus set_len leaves the final block's unread tail zeroed.
+        }
     }
     // Sync data before installing the metadata which makes it reachable.
     file.sync_all()?;

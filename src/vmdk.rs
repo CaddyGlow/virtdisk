@@ -1281,7 +1281,7 @@ impl ReadAt for Vmdk {
                 budget.work(1)?;
             }
             let within = offset % self.grain;
-            let take = (self.grain - within).min(out.len() as u64) as usize;
+            let mut take = (self.grain - within).min(out.len() as u64) as usize;
             let entry = self.entries[(offset / self.grain) as usize];
             if entry == 0
                 && let Some(parent) = &self.parent
@@ -1290,8 +1290,22 @@ impl ReadAt for Vmdk {
             } else if entry <= 1 {
                 out[..take].fill(0);
             } else {
-                self.source
-                    .read_exact_at(sector(u64::from(entry))? + within, &mut out[..take])?;
+                let physical = sector(u64::from(entry))? + within;
+                // Only fully allocated, physically adjacent grains share an I/O.
+                // Zero, inherited, fragmented and extent-bound mappings stop the run.
+                while take < out.len() {
+                    let next = self.entries[((offset + take as u64) / self.grain) as usize];
+                    if next <= 1
+                        || Some(sector(u64::from(next))?) != physical.checked_add(take as u64)
+                    {
+                        break;
+                    }
+                    if let Some(budget) = self.budget() {
+                        budget.work(1)?;
+                    }
+                    take += self.grain.min((out.len() - take) as u64) as usize;
+                }
+                self.source.read_exact_at(physical, &mut out[..take])?;
             }
             offset += take as u64;
             out = &mut out[take..];

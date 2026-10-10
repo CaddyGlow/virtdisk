@@ -61,7 +61,7 @@ row and `write_excluding_flush` (elapsed minus measured sync calls). Bounded-bat
 and per-request latency includes the applicable flush. Writer handles are dropped
 before immutable verification opens; no reader remains alive during mutation.
 Payloads change across samples; verification checks touched ranges and every
-untouched byte against the expected final state. Read throughput includes reader
+untouched byte against the expected final state. Single-reader workloads execute directly; concurrent read throughput includes reader
 thread startup, synchronization and joins, with opening reported separately.
 
 Request p50/p95/p99 are emitted only with at least 1,000 observations, otherwise

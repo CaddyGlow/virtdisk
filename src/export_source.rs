@@ -3,6 +3,9 @@ use crate::io;
 use crate::{OperationContext, OperationPhase, ReadAt};
 
 pub(crate) trait ExportSource {
+    fn streaming_allocation(&self) -> bool {
+        false
+    }
     fn profiler(&self) -> Option<crate::OperationProfiler> {
         None
     }
@@ -41,11 +44,13 @@ pub(crate) struct ContextSource<'a, 'observer> {
     phase: OperationPhase,
     completed: u64,
     total: u64,
+    read_chunk_bytes: u64,
 }
 impl<'a, 'observer> ContextSource<'a, 'observer> {
     pub(crate) fn new(
         source: &'a dyn ReadAt,
         context: &'a mut OperationContext<'observer>,
+        read_chunk_bytes: u64,
     ) -> Self {
         Self {
             source,
@@ -53,10 +58,14 @@ impl<'a, 'observer> ContextSource<'a, 'observer> {
             phase: OperationPhase::ImageExport,
             completed: 0,
             total: 0,
+            read_chunk_bytes,
         }
     }
 }
 impl ExportSource for ContextSource<'_, '_> {
+    fn streaming_allocation(&self) -> bool {
+        self.context.streaming_allocation(self.source.len())
+    }
     fn profiler(&self) -> Option<crate::OperationProfiler> {
         self.context.profiler().cloned()
     }
@@ -64,14 +73,19 @@ impl ExportSource for ContextSource<'_, '_> {
         self.source.len()
     }
     fn begin(&mut self, phase: OperationPhase, bytes: u64) -> io::Result<()> {
-        self.context.preflight(bytes, 1, 1)?;
+        self.context
+            .preflight_chunks(bytes, self.read_chunk_bytes, 1)?;
         self.phase = phase;
         self.completed = 0;
         self.total = bytes;
         self.context.observe_phase(phase, 0, bytes)
     }
     fn read(&mut self, offset: u64, destination: &mut [u8]) -> io::Result<()> {
-        self.context.preflight(destination.len() as u64, 1, 1)?;
+        self.context.preflight_chunks(
+            destination.len() as u64,
+            (destination.len() as u64).max(1),
+            1,
+        )?;
         self.context.attempted_io();
         if let Some(profiler) = self.context.profiler() {
             profiler.measure(

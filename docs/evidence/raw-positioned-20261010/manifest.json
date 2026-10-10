@@ -1,0 +1,51 @@
+{
+  "baseline_commit": "1e0b180",
+  "candidate": "working tree raw_write.rs Unix positioned I/O; other in-progress changes present, outside raw timed write loop",
+  "baseline_binary_sha256": "7cf67322d399e6df70b361612a96911f6c0bf689a852b6b192e3a779ebd502a0",
+  "candidate_binary_sha256": "edbd4a1c1c61ef410ed04b157c3eec87bdb5c22597e368f3795a6af7044ba75a",
+  "platform": "Linux-6.18.53-x86_64-with-glibc2.44",
+  "cpu": "",
+  "load_at_manifest": [
+    20.390625,
+    19.55517578125,
+    22.06982421875
+  ],
+  "build": "nix develop --no-write-lock-file path:/home/rick/projects-caddy/nix-dev-shells/default -c cargo bench --bench io --no-run --locked",
+  "command": [
+    "BENCH",
+    "--format",
+    "raw",
+    "--write",
+    "--size",
+    "16777216",
+    "--block",
+    "4096",
+    "--requests",
+    "100000",
+    "--samples",
+    "10",
+    "--access",
+    "uniform"
+  ],
+  "tmpfs_environment": {
+    "TMPDIR": "/dev/shm"
+  },
+  "regular_filesystem_requests": 10000,
+  "caveats": [
+    "shared busy host; repetitions are not independent quiet sessions",
+    "warm tmpfs syscall comparison is not storage bandwidth",
+    "exact final byte verification by io harness outside timing",
+    "regular filesystem /tmp was noisy; VM storage chain unavailable"
+  ],
+  "sha256": {
+    "raw-write-tmpfs-before-3.csv": "2a69b4fafb4f2666d0663bd7467277e56244e73d59d2db0f9e7fcd467f3ee06e",
+    "lifecycle-tmpfs-smoke.csv": "33ce8590d80f30743cd5845c0fd94694103cc64d89a377ad18dfdfc88f691348",
+    "raw-write-after.csv": "08a7900577dacde1de8b74d28a7a371728e14faa4f7a6311d83b4302b5320994",
+    "raw-write-before.csv": "e81ae6cdc7c135e9cad9bb9a914662b88631a80310db45a37dfc2acc0226a903",
+    "raw-write-tmpfs-before.csv": "7b721173d2297ccd587e54e7b4777b4839ab9a74261bd664e346c6ec841db533",
+    "raw-write-tmpfs-after.csv": "05e3283adc6d40b57f164a23db7b6b3d4aff1607c96358a4461f4fc71a5689af",
+    "raw-write-tmpfs-after-2.csv": "49acd546d1bde7213cfda5abb725266657ca7da800cdd8cf074b42431c39b54f",
+    "raw-write-tmpfs-before-2.csv": "e82d5c74806ae34f2e53b05f928edd94440b5caa854e511bbeacbe720e67398d",
+    "raw-write-tmpfs-after-3.csv": "5e651281087ee1a8eded37c6e537c8b7fe7bdacdd9065893db2198efbe7e6f74"
+  }
+}

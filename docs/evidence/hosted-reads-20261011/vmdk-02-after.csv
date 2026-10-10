@@ -1,0 +1,6 @@
+format,operation,block_bytes,sample,bytes,seconds,mib_per_second,iops,image_bytes,seed,access,state,flush_every,readers,crossing,latency_samples,p50_ns,p95_ns,p99_ns,cache
+Vmdk,setup,1048576,1,0,0.005903001,0.000,0.000,16777216,1,sequential,allocated,0,1,false,0,unavailable,unavailable,unavailable,warm
+Vmdk,open_readers,1048576,1,0,0.000049129,0.000,0.000,16777216,1,sequential,allocated,0,1,false,0,unavailable,unavailable,unavailable,warm
+Vmdk,read,1048576,1,67108864,0.005318414,12033.663,12033.663,16777216,1,sequential,allocated,0,1,false,64,unavailable,unavailable,unavailable,warm
+Vmdk,close_readers,1048576,1,0,0.000003366,0.000,0.000,16777216,1,sequential,allocated,0,1,false,0,unavailable,unavailable,unavailable,warm
+Vmdk,verify,1048576,1,16777216,0.005532229,2892.143,2892.143,16777216,1,sequential,allocated,0,1,false,0,unavailable,unavailable,unavailable,warm

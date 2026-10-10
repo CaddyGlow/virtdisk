@@ -58,19 +58,41 @@ pub(crate) fn export_qcow2(
     }
     let guest_clusters = size.div_ceil(CLUSTER);
     let mut data_clusters = guest_clusters;
+    // At the supported 1 TiB limit the index is at most 2 MiB. Existing callers
+    // retain the two-pass path; explicit streaming memory reserves this bitmap.
+    let mut allocation = if sparse && source.streaming_allocation() {
+        Some(crate::operation_context::scratch_buffer(
+            guest_clusters.div_ceil(8) as usize,
+        )?)
+    } else {
+        None
+    };
+    let mut data_bytes = size;
     if sparse {
         source.begin(crate::OperationPhase::AllocationScan, size)?;
         data_clusters = 0;
+        data_bytes = 0;
         let mut buffer = [0; CLUSTER as usize];
         for index in 0..guest_clusters {
             let count = (size - index * CLUSTER).min(CLUSTER) as usize;
             source.read(index * CLUSTER, &mut buffer[..count])?;
             if source.nonzero(&buffer[..count]) {
                 data_clusters += 1;
+                data_bytes += count as u64;
+                if let Some(allocation) = &mut allocation {
+                    allocation[index as usize / 8] |= 1 << (index % 8);
+                }
             }
         }
     }
-    source.begin(crate::OperationPhase::ImageExport, size)?;
+    source.begin(
+        crate::OperationPhase::ImageExport,
+        if allocation.is_some() {
+            data_bytes
+        } else {
+            size
+        },
+    )?;
     let l2_clusters = guest_clusters.div_ceil(ENTRIES);
     let l1_clusters = l2_clusters.div_ceil(ENTRIES);
     let base = 1 + l1_clusters + l2_clusters + data_clusters;
@@ -157,10 +179,15 @@ pub(crate) fn export_qcow2(
             if index >= guest_clusters {
                 break;
             }
+            if let Some(allocation) = &allocation
+                && allocation[index as usize / 8] & (1 << (index % 8)) == 0
+            {
+                continue;
+            }
             payload.fill(0);
             let count = (size - index * CLUSTER).min(CLUSTER) as usize;
             source.read(index * CLUSTER, &mut payload[..count])?;
-            if sparse && !source.nonzero(&payload[..count]) {
+            if sparse && allocation.is_none() && !source.nonzero(&payload[..count]) {
                 continue;
             }
             if allocated >= data_clusters {

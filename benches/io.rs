@@ -380,33 +380,46 @@ fn main() -> Result<()> {
                 );
                 let barrier = std::sync::Barrier::new(config.readers);
                 let start = Instant::now();
-                std::thread::scope(|scope| -> Result<()> {
-                    let handles: Vec<_> = readers
-                        .iter()
-                        .map(|reader| {
-                            let offsets = &offsets;
-                            let barrier = &barrier;
-                            let config = &config;
-                            scope.spawn(move || -> io::Result<Vec<u128>> {
-                                let mut buffer = vec![0; config.block];
-                                let mut latency = Vec::with_capacity(offsets.len());
-                                barrier.wait();
-                                for &offset in offsets {
-                                    let start = Instant::now();
-                                    reader
-                                        .read_exact_at(black_box(offset), black_box(&mut buffer))?;
-                                    latency.push(start.elapsed().as_nanos());
-                                    black_box(&buffer);
-                                }
-                                Ok(latency)
-                            })
-                        })
-                        .collect();
-                    for handle in handles {
-                        latencies.extend(handle.join().map_err(|_| "reader thread panicked")??);
+                if config.readers == 1 {
+                    // Keep the single-reader baseline free of worker startup/join scheduling.
+                    let mut buffer = vec![0; config.block];
+                    for &offset in &offsets {
+                        let request = Instant::now();
+                        readers[0].read_exact_at(black_box(offset), black_box(&mut buffer))?;
+                        latencies.push(request.elapsed().as_nanos());
+                        black_box(&buffer);
                     }
-                    Ok(())
-                })?;
+                } else {
+                    std::thread::scope(|scope| -> Result<()> {
+                        let handles: Vec<_> = readers
+                            .iter()
+                            .map(|reader| {
+                                let offsets = &offsets;
+                                let barrier = &barrier;
+                                let config = &config;
+                                scope.spawn(move || -> io::Result<Vec<u128>> {
+                                    let mut buffer = vec![0; config.block];
+                                    let mut latency = Vec::with_capacity(offsets.len());
+                                    barrier.wait();
+                                    for &offset in offsets {
+                                        let start = Instant::now();
+                                        reader.read_exact_at(
+                                            black_box(offset),
+                                            black_box(&mut buffer),
+                                        )?;
+                                        latency.push(start.elapsed().as_nanos());
+                                        black_box(&buffer);
+                                    }
+                                    Ok(latency)
+                                })
+                            })
+                            .collect();
+                        for handle in handles {
+                            latencies.extend(handle.join().map_err(|_| "reader thread panicked")??);
+                        }
+                        Ok(())
+                    })?;
+                }
                 report(
                     &config,
                     format,
