@@ -1,8 +1,9 @@
 //! Diagnostic conversion costs; every timed conversion includes verification and publication.
-use std::{fs::File, io::Write, time::Instant};
+use std::{cell::Cell, fs::File, io::Write, ops::ControlFlow, time::Instant};
 use virtdisk::{
     ConversionPolicy, ImageFormat, OperationContext, OperationEvent, OperationLimits,
-    OperationProfiler, RawDisk, convert_image_with_policy_and_context,
+    OperationPhase, OperationProfiler, OperationProgress, RawDisk, ReadAt,
+    convert_image_with_policy_and_context, hash_image,
 };
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -18,9 +19,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .checked_mul(1 << 20)
         .ok_or("size overflow")?;
     let samples = option("--samples", if smoke { 1 } else { 10 })?;
+    let sample_offset = option("--sample-offset", 0)?;
     if size == 0 || samples == 0 {
         return Err("size and samples must be positive".into());
     }
+    let selection = |name: &str| -> Result<&str, Box<dyn std::error::Error>> {
+        match args.iter().position(|arg| arg == name) {
+            Some(index) => Ok(args.get(index + 1).ok_or("missing selection value")?),
+            None => Ok("all"),
+        }
+    };
+    let data = match selection("--data")? {
+        "all" => vec![false, true],
+        "dense" => vec![false],
+        "sparse" => vec![true],
+        _ => return Err("data must be all, dense or sparse".into()),
+    };
+    let policies = match selection("--policy")? {
+        "all" => vec![ConversionPolicy::Default, ConversionPolicy::Sparse],
+        "default" => vec![ConversionPolicy::Default],
+        "sparse" => vec![ConversionPolicy::Sparse],
+        _ => return Err("policy must be all, default or sparse".into()),
+    };
+    let independent_decode = args.iter().any(|arg| arg == "--independent-decode");
     let nonzero_run = option("--nonzero-run-kib", 64)?;
     if ![64, 1024].contains(&nonzero_run) {
         return Err("nonzero run must be 64 or 1024 KiB".into());
@@ -70,9 +91,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     let directory = tempfile::tempdir()?;
     println!(
-        "format,data,nonzero_run_kib,policy,profiling,sample,streaming_allocation,buffer_bytes,workers,memory_bytes,event,calls,bytes,failures,seconds,logical_mib_per_second,container_bytes"
+        "format,data,nonzero_run_kib,policy,profiling,sample,streaming_allocation,buffer_bytes,workers,memory_bytes,independent_decode,event,calls,bytes,failures,seconds,logical_mib_per_second,container_bytes"
     );
-    for sparse_data in [false, true] {
+    for sparse_data in data {
         let input = directory.path().join(if sparse_data {
             "sparse.raw"
         } else {
@@ -98,9 +119,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         file.sync_all()?;
         drop(file);
         let source = RawDisk::open(&input)?;
+        let expected = if independent_decode {
+            Some(hash_image(&source)?)
+        } else {
+            None
+        };
         for &format in &formats {
-            for policy in [ConversionPolicy::Default, ConversionPolicy::Sparse] {
+            for &policy in &policies {
                 for sample in 0..samples {
+                    let sample = sample_offset
+                        .checked_add(sample)
+                        .ok_or("sample index overflow")?;
                     // Alternate pair order to expose, without claiming to remove, cache bias.
                     for enabled in if sample % 2 == 0 {
                         [false, true]
@@ -109,8 +138,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     } {
                         let output = directory.path().join("output.img");
                         let profiler = OperationProfiler::default();
+                        let verification_chunks = Cell::new(0u64);
+                        let mut observer = |progress: OperationProgress| {
+                            if progress.phase == OperationPhase::OutputVerification
+                                && progress.completed_bytes > 0
+                            {
+                                verification_chunks.set(verification_chunks.get() + 1);
+                            }
+                            ControlFlow::Continue(())
+                        };
                         let mut context = if enabled {
-                            OperationContext::new(limits).with_profiler(profiler.clone())
+                            OperationContext::new(limits)
+                                .with_profiler(profiler.clone())
+                                .with_observer(&mut observer)
                         } else {
                             OperationContext::new(limits)
                         };
@@ -127,9 +167,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             &mut context,
                         )?;
                         let elapsed = started.elapsed().as_secs_f64();
+                        if let Some(expected) = expected {
+                            let decoded = directory.path().join("decoded.raw");
+                            let status = std::process::Command::new("qemu-img")
+                                .args([
+                                    "convert",
+                                    "-f",
+                                    &format!("{format:?}").to_lowercase(),
+                                    "-O",
+                                    "raw",
+                                ])
+                                .arg(&output)
+                                .arg(&decoded)
+                                .status()?;
+                            if !status.success() {
+                                return Err("independent decoder failed".into());
+                            }
+                            let image = RawDisk::open(&decoded)?;
+                            if image.len() != size || hash_image(&image)? != expected {
+                                return Err("independent size/hash verification failed".into());
+                            }
+                            drop(image);
+                            std::fs::remove_file(decoded)?;
+                        }
                         let length = std::fs::metadata(&output)?.len();
                         let label = format!(
-                            "{format:?},{},{nonzero_run},{policy:?},{enabled},{sample},{streaming},{buffer},{workers},{}",
+                            "{format:?},{},{nonzero_run},{policy:?},{enabled},{sample},{streaming},{buffer},{workers},{},{independent_decode}",
                             if sparse_data { "6.25_percent" } else { "dense" },
                             if tuned { memory } else { 131072 }
                         );
@@ -138,6 +201,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             size as f64 / 1048576.0 / elapsed
                         );
                         if enabled {
+                            println!(
+                                "{label},VerificationChunks,{},{size},0,0,unavailable,{length}",
+                                verification_chunks.get()
+                            );
                             for event in [
                                 OperationEvent::SourceRead,
                                 OperationEvent::AllocationRead,

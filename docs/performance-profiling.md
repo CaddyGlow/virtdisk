@@ -102,3 +102,40 @@ The [retained exporter/pipeline diagnostics](evidence/performance-export-2026101
 include raw 1/2/4-worker samples and a finite four-buffer smoke with explicit
 memory budgets. The report records missing scale, resource, and repeat-session
 evidence; those runs do not justify a default change or a speedup claim.
+
+## Focused verification-buffer profiling
+
+Use `--data all|dense|sparse` and `--policy all|default|sparse` to restrict the
+matrix without changing the default cases. `--sample-offset N` labels samples
+starting at N and uses that global index to alternate profiling on/off order,
+including when an external runner invokes one sample per process.
+
+```sh
+cargo bench --all-features --locked --bench conversion -- \
+  --size-mib 1024 --samples 10 --data sparse --policy sparse \
+  --formats vdi,vhdx --nonzero-run-kib 1024 --streaming-allocation \
+  --buffer-kib 1024 --memory-mib 16 --independent-decode
+```
+
+`--independent-decode` runs QEMU after each timed conversion and checks decoded
+capacity and SHA-256 against the immutable source. Decoder/hash work is outside
+the public-API total, unlike the separate matched application-wrapper provider
+benchmark. Decoder or verification errors terminate the diagnostic unsuccessfully.
+The CSV identifies whether this independent check was requested.
+
+Profiled samples attach a comparison observer and emit `VerificationChunks`, a
+count-only row whose zero seconds is not a measured duration. Each callback
+counts a chunk whose two logical reads completed; equality is checked immediately
+afterward. Successful total rows still require complete byte equality and verified
+publication. These are logical comparison chunks, not physical I/O syscalls.
+Unprofiled samples have neither observer nor profiler; on/off overhead includes
+both instrumentation costs. Native streaming VDI/VHDX retain fixed 1 MiB export
+buffers, so the preferred 64/256 KiB or 1/4 MiB size isolates comparison chunking.
+Input generation writes logical zero bytes explicitly; source allocation differs
+from the hole-based fixtures in the previous provider experiment.
+
+The [ten-round verification-buffer experiment](evidence/verification-buffers-20261011/findings.md)
+retains 160 independently decoded conversions. It found no reliable total-throughput
+gain from larger comparison buffers; exact verification was a small share of the
+64 KiB profiled total, while synchronization time was substantially larger on the
+shared host. Defaults remain unchanged.
