@@ -273,3 +273,17 @@ See [the 0.3 API migration, identity and accounting contracts](docs/no-std.md).
 
 Performance harnesses: [Rust I/O and provider conversion benchmarks](docs/benchmarks.md)
 cover repeated samples, output verification, and measurement limits.
+
+`PhysicalDisk` (with `std`, Linux and Windows only) is a separate read-only
+`ReadAt` adapter for Linux block devices and Windows `\\.\PhysicalDriveN`
+handles. `RawDisk` continues to accept regular image files only. The adapter
+queries native capacity and logical sector size and supports bounded, unaligned
+byte reads using sector reads internally. It exposes no writer or host-file
+identity. Keep the source device immutable and its capacity unchanged throughout
+capture; opening read-only does not prevent external writes or provide a snapshot.
+Windows generally requires administrator access.
+
+Native device tests use disposable fixtures, never an existing system disk:
+`bash scripts/test-physical-disk.sh` on Linux (sudo and loop-device support), or
+`./scripts/test-physical-disk.ps1` from an elevated Windows PowerShell. Both run
+in CI; ordinary host tests leave the provisioned-device test explicitly ignored.

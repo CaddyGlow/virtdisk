@@ -53,7 +53,11 @@ mod qcow2;
 mod zstd_decoder;
 pub use qcow2::{Qcow2, Qcow2Snapshot, Qcow2SnapshotView, Qcow2Validation};
 
+#[cfg(all(feature = "std", any(target_os = "linux", windows)))]
+mod physical_disk;
 mod physical_validation;
+#[cfg(all(feature = "std", any(target_os = "linux", windows)))]
+pub use physical_disk::PhysicalDisk;
 pub use physical_validation::{
     PhysicalFingerprint, PhysicalValidationBudget, PhysicalValidationLimitExceeded,
     PhysicalValidationLimits, PhysicalValidationResource, PhysicalValidationUsage,

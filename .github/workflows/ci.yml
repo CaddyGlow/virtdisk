@@ -35,6 +35,13 @@ jobs:
       - run: cargo fmt -- --check
       - run: cargo clippy --all-targets --all-features --locked -- -D warnings
       - run: cargo test --all-features --locked --no-fail-fast
+      - name: Native Linux physical device
+        if: runner.os == 'Linux'
+        run: bash scripts/test-physical-disk.sh
+      - name: Native Windows physical device
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/test-physical-disk.ps1
 
   independent-fixtures:
     runs-on: ubuntu-latest
