@@ -16,11 +16,13 @@ fn colon_filename_is_rejected_before_creating_output() {
             "export" => virtdisk::create_vmdk(&path, &source),
             _ => unreachable!(),
         };
-        assert_eq!(
-            result.unwrap_err().kind(),
-            virtdisk::io::ErrorKind::InvalidInput,
-            "{mode}"
-        );
+        // Sparse creation rejects unsupported platforms before validating the path.
+        let expected = if mode == "sparse" && !cfg!(target_os = "linux") {
+            virtdisk::io::ErrorKind::Unsupported
+        } else {
+            virtdisk::io::ErrorKind::InvalidInput
+        };
+        assert_eq!(result.unwrap_err().kind(), expected, "{mode}");
         assert!(!path.try_exists().unwrap(), "{mode} left an output file");
     }
 }
