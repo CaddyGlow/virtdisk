@@ -34,7 +34,7 @@ by extension or a single supported/unsupported flag.
 This section records the original starting point. It is not the current
 capability inventory; use the implementation status document for that.
 
-- Rust 2024 crate with Rust 1.99 MSRV and development toolchain.
+- Rust 2024 crate with Rust 1.96 MSRV and development toolchain.
 - `ReadAt` provides bounded exact positional reads and a fixed logical length.
 - `RawDisk` opens regular files read-only; `DiskView` retains bounded parents.
 - QCOW2 v2/v3 standard mappings, authorized raw/QCOW2 backing chains,
@@ -513,7 +513,7 @@ may supplement honggfuzz where toolchain/platform support is established.
 
 ## Verification and environment
 
-The Nix flake provides Linux x86_64/aarch64 shells, stable Rust 1.99.0,
+The Nix flake provides Linux x86_64/aarch64 shells, stable Rust 1.96.0,
 Windows MSVC target libraries and cargo-xwin, native honggfuzz dependencies,
 and a separate nightly shell. Use stable through the default shell and
 `path:./nix#fuzz`; retain nightly under `path:./nix#nightly` for experiments that require it.

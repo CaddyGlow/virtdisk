@@ -795,9 +795,9 @@ fn reader_controls(
             args = rest;
             continue;
         }
-        if !args
+        if args
             .first()
-            .is_some_and(|argument| argument == "--parser-limit")
+            .is_none_or(|argument| argument != "--parser-limit")
         {
             break;
         }
@@ -856,7 +856,7 @@ fn reader_controls(
         specified = true;
         args = rest;
     }
-    if tuning_specified && !args.first().is_some_and(|command| command == "convert") {
+    if tuning_specified && args.first().is_none_or(|command| command != "convert") {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
             "conversion tuning controls require convert",

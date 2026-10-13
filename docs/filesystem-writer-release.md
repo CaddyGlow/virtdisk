@@ -17,7 +17,7 @@ evidence is recorded in
 The library must export `ImageWriter::{open,open_chain,create,read_exact_at}`,
 `WriteAt::{len,write_all_at,flush}`, `InspectImage::inspection`, `ImageFormat`,
 `ImageOperation`, `Capability`, and inspection geometry. These library APIs do
-not require the optional `cli` feature. The current minimum Rust version is 1.99
+not require the optional `cli` feature. The current minimum Rust version is 1.96
 and the crate uses edition 2024.
 
 `ImageWriter` provides synchronized logical reads through its inherent

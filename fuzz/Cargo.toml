@@ -2,7 +2,7 @@
 name = "virtdisk-fuzz"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.99"
+rust-version = "1.96"
 publish = false
 
 [workspace]
